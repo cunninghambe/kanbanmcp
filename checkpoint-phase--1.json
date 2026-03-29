@@ -1,0 +1,6 @@
+{
+  "phase": -1,
+  "phaseName": "QA",
+  "completedAt": "2026-03-28T19:36:40.325Z",
+  "outcome": "```json\n{\n  \"testsWritten\": 106,\n  \"testsPassed\": 106,\n  \"testsFailed\": 0,\n  \"buildPassed\": false,\n  \"failures\": [\n    {\n      \"test\": \"N/A - build-time TypeScript error\",\n      \"file\": \"/tmp/autogeny-builds/0e2facc7-6a5/app/src/app/api/activity/route.ts\",\n      \"error\": \"Type error at line 52: Parameter 'activity' implicitly has an 'any' type. Promise.all() with a heterogeneous tuple [findMany, count] loses element types when destructured, causing rawActivities to be typed as (AgentActivity | n"
+}

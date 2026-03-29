@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.env
+*.db
+tsconfig.tsbuildinfo
+checkpoint-phase-*.json
+CLAUDE.md

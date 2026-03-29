@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  passwordHash  String
+  name          String
+  createdAt     DateTime     @default(now())
+  orgMembers    OrgMember[]
+  teamMembers   TeamMember[]
+  assignedCards Card[]       @relation("CardAssignee")
+  createdCards  Card[]       @relation("CardCreator")
+  comments      Comment[]
+
+  @@map("users")
+}
+
+model Organization {
+  id         String          @id @default(cuid())
+  name       String
+  slug       String          @unique
+  createdAt  DateTime        @default(now())
+  members    OrgMember[]
+  teams      Team[]
+  boards     Board[]
+  apiKeys    ApiKey[]
+  activities AgentActivity[]
+  webhooks   Webhook[]
+
+  @@map("organizations")
+}
+
+model OrgMember {
+  userId String
+  orgId  String
+  role   String @default("MEMBER")
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org    Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@id([userId, orgId])
+  @@map("org_members")
+}
+
+model Team {
+  id      String       @id @default(cuid())
+  name    String
+  orgId   String
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members TeamMember[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  userId String
+  teamId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([userId, teamId])
+  @@map("team_members")
+}
+
+model Board {
+  id        String       @id @default(cuid())
+  name      String
+  orgId     String
+  createdAt DateTime     @default(now())
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  columns   Column[]
+  sprints   Sprint[]
+  cards     Card[]
+  labels    Label[]
+
+  @@map("boards")
+}
+
+model Column {
+  id       String @id @default(cuid())
+  name     String
+  boardId  String
+  position Int
+  board    Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards    Card[]
+
+  @@map("columns")
+}
+
+model Sprint {
+  id        String       @id @default(cuid())
+  name      String
+  boardId   String
+  startDate DateTime
+  endDate   DateTime
+  status    String @default("PLANNING")
+  board     Board        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards     Card[]
+
+  @@map("sprints")
+}
+
+model Card {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  columnId    String
+  boardId     String
+  sprintId    String?
+  assigneeId  String?
+  agentId     String?
+  position    Int
+  dueDate     DateTime?
+  createdById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  column      Column      @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  board       Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  sprint      Sprint?     @relation(fields: [sprintId], references: [id])
+  assignee    User?       @relation("CardAssignee", fields: [assigneeId], references: [id])
+  createdBy   User        @relation("CardCreator", fields: [createdById], references: [id])
+  labels      CardLabel[]
+  comments    Comment[]
+
+  @@map("cards")
+}
+
+model Label {
+  id      String      @id @default(cuid())
+  name    String
+  color   String
+  boardId String
+  board   Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards   CardLabel[]
+
+  @@map("labels")
+}
+
+model CardLabel {
+  cardId  String
+  labelId String
+  card    Card  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  label   Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, labelId])
+  @@map("card_labels")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  cardId    String
+  userId    String?
+  agentId   String?
+  content   String
+  createdAt DateTime @default(now())
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("comments")
+}
+
+model ApiKey {
+  id          String       @id @default(cuid())
+  orgId       String
+  name        String
+  keyHash     String       @unique
+  agentName   String
+  permissions String
+  lastUsedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model AgentActivity {
+  id           String       @id @default(cuid())
+  orgId        String
+  agentName    String
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     String
+  createdAt    DateTime     @default(now())
+  org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("agent_activities")
+}
+
+model Webhook {
+  id        String       @id @default(cuid())
+  orgId     String
+  url       String
+  events    String
+  secret    String
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("webhooks")
+}

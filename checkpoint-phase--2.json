@@ -1,0 +1,6 @@
+{
+  "phase": -2,
+  "phaseName": "Security",
+  "completedAt": "2026-03-28T19:53:34.094Z",
+  "outcome": "```json\n{\n  \"grade\": \"D\",\n  \"findings\": [\n    {\n      \"severity\": \"critical\",\n      \"title\": \"Hardcoded fallback session secret allows session forgery\",\n      \"file\": \".next/server/app/api/auth/login/route.js\",\n      \"line\": 1,\n      \"description\": \"The session configuration uses a hardcoded fallback password: `process.env.SESSION_SECRET||\\\"complex_password_at_least_32_chars_long!!\\\"`. If SESSION_SECRET is not set in the deployment environment, iron-session cookies are signed with this publicly-"
+}
