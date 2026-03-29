@@ -1,1 +1,1 @@
-{"version":1,"functions":{"/api/activity":{},"/api/apikeys/[keyId]":{},"/api/apikeys":{},"/api/mcp":{},"/api/orgs/[orgId]/members/[userId]":{},"/api/realtime":{},"/api/webhooks/[webhookId]":{},"/api/webhooks/[webhookId]/test":{},"/api/webhooks":{}}}
+{"version":1,"functions":{"/api/apikeys/[keyId]":{},"/api/activity":{},"/api/apikeys":{},"/api/mcp":{},"/api/orgs/[orgId]/members/[userId]":{},"/api/realtime":{},"/api/webhooks/[webhookId]":{},"/api/webhooks/[webhookId]/test":{},"/api/webhooks":{}}}

@@ -14,6 +14,7 @@ model User {
   email         String       @unique
   passwordHash  String
   name          String
+  isAgent       Boolean      @default(false)
   createdAt     DateTime     @default(now())
   orgMembers    OrgMember[]
   teamMembers   TeamMember[]
@@ -117,6 +118,7 @@ model Card {
   sprintId    String?
   assigneeId  String?
   agentId     String?
+  priority    String      @default("none")
   position    Int
   dueDate     DateTime?
   createdById String

@@ -3,6 +3,13 @@ import { logActivity } from '@/lib/agent-activity'
 import { dispatchWebhook } from '@/lib/webhook'
 import type { AgentContext } from '@/types/index'
 
+const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
+type Priority = typeof VALID_PRIORITIES[number]
+
+function isValidPriority(value: unknown): value is Priority {
+  return typeof value === 'string' && (VALID_PRIORITIES as readonly string[]).includes(value)
+}
+
 // ---------------------------------------------------------------------------
 // Tool manifest
 // ---------------------------------------------------------------------------
@@ -61,6 +68,11 @@ export const MCP_TOOLS: McpTool[] = [
           description: 'Optional ISO 8601 due date string.',
         },
         sprintId: { type: 'string', description: 'Optional sprint ID to assign the card to.' },
+        priority: {
+          type: 'string',
+          enum: ['none', 'low', 'medium', 'high', 'critical'],
+          description: 'Optional card priority level. Defaults to "none".',
+        },
       },
       required: ['boardId', 'columnId', 'title'],
     },
@@ -77,6 +89,11 @@ export const MCP_TOOLS: McpTool[] = [
         dueDate: { type: 'string', description: 'New ISO 8601 due date.' },
         assigneeId: { type: 'string', description: 'User ID to assign the card to.' },
         sprintId: { type: 'string', description: 'Sprint ID to assign the card to.' },
+        priority: {
+          type: 'string',
+          enum: ['none', 'low', 'medium', 'high', 'critical'],
+          description: 'Card priority level.',
+        },
       },
       required: ['cardId'],
     },
@@ -235,6 +252,11 @@ async function toolCreateCard(
     throw { code: -32602, message: 'boardId, columnId, and title are required' }
   }
 
+  // Validate priority if provided
+  if (params.priority !== undefined && !isValidPriority(params.priority)) {
+    throw { code: -32602, message: 'priority must be one of: none, low, medium, high, critical' }
+  }
+
   // Verify the board belongs to the agent's org
   const board = await prisma.board.findFirst({
     where: { id: boardId, orgId: agentCtx.orgId },
@@ -268,6 +290,14 @@ async function toolCreateCard(
     throw { code: -32602, message: 'No org member found to associate card with' }
   }
 
+  // Validate dueDate before creating
+  if (params.dueDate) {
+    const d = new Date(params.dueDate as string)
+    if (isNaN(d.getTime())) {
+      throw { code: -32602, message: 'dueDate must be a valid ISO 8601 date string' }
+    }
+  }
+
   const card = await prisma.card.create({
     data: {
       title,
@@ -275,6 +305,7 @@ async function toolCreateCard(
       columnId,
       boardId,
       sprintId: params.sprintId ? (params.sprintId as string) : undefined,
+      priority: isValidPriority(params.priority) ? params.priority : 'none',
       position,
       agentId: agentCtx.agentName,
       createdById: orgMember.userId,
@@ -310,19 +341,48 @@ async function toolUpdateCard(
   const cardId = params.cardId as string
   if (!cardId) throw { code: -32602, message: 'cardId is required' }
 
+  // Validate priority if provided
+  if (params.priority !== undefined && !isValidPriority(params.priority)) {
+    throw { code: -32602, message: 'priority must be one of: none, low, medium, high, critical' }
+  }
+
   // Verify the card belongs to the agent's org
   const existing = await prisma.card.findFirst({
     where: { id: cardId, board: { orgId: agentCtx.orgId } },
   })
   if (!existing) throw { code: -32602, message: 'Card not found or access denied' }
 
+  // Validate assigneeId is a member of the agent's org (prevent IDOR cross-org assignment)
+  if (params.assigneeId !== undefined && params.assigneeId !== null) {
+    const assigneeMembership = await prisma.orgMember.findUnique({
+      where: { userId_orgId: { userId: params.assigneeId as string, orgId: agentCtx.orgId } },
+    })
+    if (!assigneeMembership) {
+      throw { code: -32602, message: 'Assignee must be a member of this organization' }
+    }
+  }
+
+  // Validate dueDate before passing to new Date() to avoid runtime errors
+  if (params.dueDate !== undefined && params.dueDate !== null) {
+    const d = new Date(params.dueDate as string)
+    if (isNaN(d.getTime())) {
+      throw { code: -32602, message: 'dueDate must be a valid ISO 8601 date string' }
+    }
+  }
+
   const updateData: Record<string, unknown> = {}
-  if (params.title !== undefined) updateData.title = params.title as string
+  if (params.title !== undefined) {
+    if (typeof params.title !== 'string' || (params.title as string).length === 0) {
+      throw { code: -32602, message: 'title must be a non-empty string' }
+    }
+    updateData.title = params.title as string
+  }
   if (params.description !== undefined) updateData.description = params.description as string
   if (params.dueDate !== undefined)
     updateData.dueDate = params.dueDate ? new Date(params.dueDate as string) : null
   if (params.assigneeId !== undefined) updateData.assigneeId = params.assigneeId as string
   if (params.sprintId !== undefined) updateData.sprintId = params.sprintId as string
+  if (isValidPriority(params.priority)) updateData.priority = params.priority
 
   const card = await prisma.card.update({
     where: { id: cardId },
@@ -581,8 +641,8 @@ export async function handleMcpRequest(
       const e = err as { code: number; message: string; data?: unknown }
       return rpcError(id, e.code, e.message, e.data)
     }
-    // Unexpected error
-    const message = err instanceof Error ? err.message : 'Internal error'
-    return rpcError(id, -32603, message)
+    // Unexpected error — do not leak internal error details to callers
+    console.error('[MCP] Unhandled tool error:', err)
+    return rpcError(id, -32603, 'Internal server error')
   }
 }

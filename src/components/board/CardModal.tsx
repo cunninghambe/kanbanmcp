@@ -9,6 +9,32 @@ import { useSession } from '@/hooks/useSession'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
+type Priority = 'none' | 'low' | 'medium' | 'high' | 'critical'
+
+const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'critical', label: 'Critical' },
+]
+
+function getPrioritySelectClass(priority: Priority): string {
+  switch (priority) {
+    case 'critical':
+      return 'bg-red-500 text-white'
+    case 'high':
+      return 'bg-orange-500 text-white'
+    case 'medium':
+      return 'bg-yellow-400 text-gray-900'
+    case 'low':
+      return 'bg-blue-400 text-white'
+    case 'none':
+    default:
+      return 'bg-gray-100 text-gray-700'
+  }
+}
+
 // The shape returned by GET /api/cards/[cardId]
 interface CardDetail {
   id: string
@@ -17,6 +43,7 @@ interface CardDetail {
   assigneeId: string | null
   dueDate: string | null
   agentId: string | null
+  priority: string | null
   createdAt: string
   columnId: string
   sprintId: string | null
@@ -30,6 +57,14 @@ interface CardDetail {
     user?: { id: string; name: string; email: string } | null
   }[]
   assignee: { id: string; name: string; email: string } | null
+}
+
+interface OrgMemberEntry {
+  userId?: string
+  user?: { id: string; name: string; email: string; isAgent?: boolean }
+  id?: string
+  name?: string
+  isAgent?: boolean
 }
 
 interface CardModalProps {
@@ -71,8 +106,12 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     }
   }, [card])
 
-  const members = membersData?.members ?? membersData ?? []
+  const allMembers: OrgMemberEntry[] = membersData?.members ?? membersData ?? []
   const labels = labelsData?.labels ?? labelsData ?? []
+
+  // Separate human members from agent members for grouped display
+  const humanMembers = allMembers.filter((m) => !m.user?.isAgent && !m.isAgent)
+  const agentMembers = allMembers.filter((m) => m.user?.isAgent || m.isAgent)
 
   async function saveTitle() {
     if (!cardId || !card || title === card.title) return
@@ -118,6 +157,25 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     onUpdate()
   }
 
+  async function handlePriorityChange(priority: Priority) {
+    if (!cardId) return
+    try {
+      const res = await fetch(`/api/cards/${cardId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority }),
+      })
+      if (!res.ok) {
+        console.error('[CardModal] priority update failed:', res.status)
+        return
+      }
+      mutate()
+      onUpdate()
+    } catch (err) {
+      console.error('[CardModal] priority update error:', err)
+    }
+  }
+
   async function handleLabelToggle(labelId: string) {
     if (!cardId || !card) return
     const currentLabels = card.labels.map((l) => l.label.id)
@@ -161,6 +219,8 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
       setDeleting(false)
     }
   }
+
+  const currentPriority = (card?.priority ?? 'none') as Priority
 
   return (
     <Modal open={!!cardId} onClose={onClose} size="xl" title="Card Details">
@@ -248,6 +308,24 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
 
             {/* Sidebar metadata */}
             <div className="space-y-4">
+              {/* Priority */}
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">
+                  Priority
+                </label>
+                <select
+                  className={`w-full px-2 py-1.5 border border-slate-200 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${getPrioritySelectClass(currentPriority)}`}
+                  value={currentPriority}
+                  onChange={(e) => handlePriorityChange(e.target.value as Priority)}
+                >
+                  {PRIORITY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Assignee */}
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">
@@ -259,13 +337,32 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
                   onChange={(e) => handleAssigneeChange(e.target.value)}
                 >
                   <option value="">Unassigned</option>
-                  {members.map((m: { userId?: string; user?: { id: string; name: string }; id?: string; name?: string }) => {
-                    const id = m.userId ?? m.id ?? ''
-                    const name = m.user?.name ?? m.name ?? ''
-                    return (
-                      <option key={id} value={id}>{name}</option>
-                    )
-                  })}
+
+                  {/* Human members */}
+                  {humanMembers.length > 0 && (
+                    <optgroup label="Team Members">
+                      {humanMembers.map((m) => {
+                        const id = m.userId ?? m.id ?? ''
+                        const name = m.user?.name ?? m.name ?? ''
+                        return (
+                          <option key={id} value={id}>{name}</option>
+                        )
+                      })}
+                    </optgroup>
+                  )}
+
+                  {/* Agent members */}
+                  {agentMembers.length > 0 && (
+                    <optgroup label="Agents">
+                      {agentMembers.map((m) => {
+                        const id = m.userId ?? m.id ?? ''
+                        const name = m.user?.name ?? m.name ?? ''
+                        return (
+                          <option key={id} value={id}>🤖 {name}</option>
+                        )
+                      })}
+                    </optgroup>
+                  )}
                 </select>
               </div>
 

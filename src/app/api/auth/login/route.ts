@@ -50,10 +50,19 @@ export async function POST(req: NextRequest) {
 
     // Always run bcrypt comparison to prevent timing attacks that reveal email existence
     const DUMMY_HASH = '$2a$12$KIXHjPGKPqJDCsPBg4mUcuU5nNRKnOkNbBKXlLFRnRpQJkh7mFkHa'
-    const hashToCheck = user?.passwordHash ?? DUMMY_HASH
+    const hashToCheck = user?.passwordHash || DUMMY_HASH
     const valid = await verifyPassword(password, hashToCheck)
 
     if (!user || !valid) {
+      return NextResponse.json(
+        { error: 'Invalid email or password' },
+        { status: 401 }
+      )
+    }
+
+    // Block agent accounts from logging in via the human auth endpoint
+    // (constant-time bcrypt check already done above to prevent timing oracles)
+    if (user.isAgent) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }

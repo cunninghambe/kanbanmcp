@@ -29,6 +29,7 @@ export async function GET(
             id: true,
             email: true,
             name: true,
+            isAgent: true,
             createdAt: true,
           },
         },

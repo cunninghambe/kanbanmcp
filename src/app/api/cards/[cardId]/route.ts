@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 
+const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
+
 const updateCardSchema = z.object({
   title: z.string().min(1).max(500).optional(),
   description: z.string().nullable().optional(),
@@ -11,6 +13,7 @@ const updateCardSchema = z.object({
   sprintId: z.string().nullable().optional(),
   assigneeId: z.string().nullable().optional(),
   dueDate: z.string().datetime({ offset: true }).nullable().optional(),
+  priority: z.enum(VALID_PRIORITIES).optional(),
   labels: z.array(z.string()).optional(),
   siblingPositions: z
     .array(
@@ -108,6 +111,7 @@ export async function PATCH(
       sprintId,
       assigneeId,
       dueDate,
+      priority,
       labels,
       siblingPositions,
     } = result.data
@@ -153,6 +157,19 @@ export async function PATCH(
       }
     }
 
+    // Validate assigneeId is a member of this org (prevent IDOR cross-org assignment)
+    if (assigneeId !== undefined && assigneeId !== null) {
+      const assigneeMembership = await prisma.orgMember.findUnique({
+        where: { userId_orgId: { userId: assigneeId, orgId: session.orgId } },
+      })
+      if (!assigneeMembership) {
+        return NextResponse.json(
+          { error: 'Assignee must be a member of this organization' },
+          { status: 400 }
+        )
+      }
+    }
+
     await prisma.$transaction(async (tx) => {
       // Bulk-update sibling positions if provided
       if (siblingPositions && siblingPositions.length > 0) {
@@ -184,6 +201,7 @@ export async function PATCH(
       if (assigneeId !== undefined) updateData.assigneeId = assigneeId
       if (dueDate !== undefined)
         updateData.dueDate = dueDate ? new Date(dueDate) : null
+      if (priority !== undefined) updateData.priority = priority
 
       if (Object.keys(updateData).length > 0) {
         await tx.card.update({
