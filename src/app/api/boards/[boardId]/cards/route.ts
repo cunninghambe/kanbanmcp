@@ -64,6 +64,23 @@ export async function POST(
     })
     const position = maxPositionRecord ? maxPositionRecord.position + 1 : 0
 
+    // For API key auth, Card.createdById is required (non-nullable). Use the first
+    // org admin as the creator and set agentId to track the actual agent.
+    let createdById = session.userId
+    let agentId: string | null = null
+    if (session.isApiKeyAuth) {
+      const orgMember = await prisma.orgMember.findFirst({
+        where: { orgId: session.orgId },
+        orderBy: { role: 'desc' }, // ADMIN > MEMBER alphabetically desc
+        select: { userId: true },
+      })
+      if (!orgMember) {
+        return apiError(500, 'No org member found to associate card with')
+      }
+      createdById = orgMember.userId
+      agentId = session.agentName ?? null
+    }
+
     const card = await prisma.card.create({
       data: {
         title,
@@ -74,7 +91,8 @@ export async function POST(
         assigneeId: assigneeId ?? null,
         position,
         dueDate: dueDate ? new Date(dueDate) : null,
-        createdById: session.userId,
+        createdById,
+        agentId,
         ...(labels && labels.length > 0
           ? {
               labels: {

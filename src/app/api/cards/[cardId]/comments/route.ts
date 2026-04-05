@@ -71,10 +71,12 @@ export async function POST(
       )
     }
 
+    // For API key auth, userId is null and agentId tracks the agent name.
     const comment = await prisma.comment.create({
       data: {
         cardId: params.cardId,
-        userId: session.userId,
+        userId: session.isApiKeyAuth ? null : session.userId,
+        agentId: session.isApiKeyAuth ? (session.agentName ?? null) : null,
         content: result.data.content,
       },
       include: {

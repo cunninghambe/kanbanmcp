@@ -18,9 +18,13 @@ model User {
   createdAt     DateTime     @default(now())
   orgMembers    OrgMember[]
   teamMembers   TeamMember[]
-  assignedCards Card[]       @relation("CardAssignee")
-  createdCards  Card[]       @relation("CardCreator")
-  comments      Comment[]
+  assignedCards    Card[]           @relation("CardAssignee")
+  createdCards     Card[]           @relation("CardCreator")
+  comments         Comment[]
+  reportedTickets  Ticket[]         @relation("TicketReporter")
+  assignedTickets  Ticket[]         @relation("TicketAssignee")
+  ticketComments   TicketComment[]
+  ticketActivity   TicketActivity[]
 
   @@map("users")
 }
@@ -36,6 +40,7 @@ model Organization {
   apiKeys    ApiKey[]
   activities AgentActivity[]
   webhooks   Webhook[]
+  tickets    Ticket[]
 
   @@map("organizations")
 }
@@ -208,4 +213,63 @@ model Webhook {
   org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@map("webhooks")
+}
+
+// ─── Helpdesk / Ticketing ────────────────────────────────────────────────────
+
+model Ticket {
+  id          String          @id @default(cuid())
+  orgId       String
+  number      Int
+  title       String
+  description String?
+  status      String          @default("open")
+  priority    String          @default("medium")
+  reporterId  String?
+  assigneeId  String?
+  agentName   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  resolvedAt  DateTime?
+  closedAt    DateTime?
+
+  org      Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  reporter User?            @relation("TicketReporter", fields: [reporterId], references: [id])
+  assignee User?            @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  comments TicketComment[]
+  activity TicketActivity[]
+
+  @@unique([orgId, number])
+  @@map("tickets")
+}
+
+model TicketComment {
+  id        String   @id @default(cuid())
+  ticketId  String
+  userId    String?
+  agentName String?
+  content   String
+  internal  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@map("ticket_comments")
+}
+
+model TicketActivity {
+  id         String   @id @default(cuid())
+  ticketId   String
+  userId     String?
+  agentName  String?
+  action     String
+  fromValue  String?
+  toValue    String?
+  createdAt  DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@map("ticket_activity")
 }

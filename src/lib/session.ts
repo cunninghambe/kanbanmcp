@@ -17,6 +17,10 @@ export const sessionOptions: IronSessionOptions = {
 export interface SessionData {
   userId: string
   orgId: string
+  /** Set to true when the request was authenticated via an API key (Bearer token). */
+  isApiKeyAuth?: boolean
+  /** The agent name from the API key record, when isApiKeyAuth is true. */
+  agentName?: string
 }
 
 declare module 'iron-session' {
