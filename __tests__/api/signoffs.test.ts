@@ -30,6 +30,7 @@ const mockPrisma = {
   signoff: {
     create: vi.fn(),
     findMany: vi.fn(),
+    findFirst: vi.fn(),
   },
   apiKey: {
     findUnique: vi.fn(),
@@ -37,7 +38,7 @@ const mockPrisma = {
   },
 }
 
-vi.mock('../src/lib/db', () => ({
+vi.mock('../../src/lib/db', () => ({
   prisma: mockPrisma,
   default: mockPrisma,
 }))
@@ -95,7 +96,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
     }
     mockPrisma.signoff.create.mockResolvedValue(createdSignoff)
 
-    const { POST } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'POST', {
       role: 'REVIEWER',
       decision: 'APPROVED',
@@ -133,7 +134,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
     }
     mockPrisma.signoff.create.mockResolvedValue(createdSignoff)
 
-    const { POST } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'POST', {
       role: 'APPROVER',
       decision: 'REJECTED',
@@ -149,7 +150,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
     setupCard(baseCard)
     mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-other', orgId: 'org-1', role: 'MEMBER' })
 
-    const { POST } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'POST', {
       role: 'REVIEWER',
       decision: 'APPROVED',
@@ -162,7 +163,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
     // user-reviewer is the reviewer, not the approver
     setupCard(baseCard)
 
-    const { POST } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'POST', {
       role: 'APPROVER',
       decision: 'APPROVED',
@@ -174,7 +175,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
   it('returns 400 when REVIEWER role attempted on card with no reviewer assigned (E15)', async () => {
     setupCard(cardNoRoles)
 
-    const { POST } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'POST', {
       role: 'REVIEWER',
       decision: 'APPROVED',
@@ -188,7 +189,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
   it('returns 400 when decision is invalid (Zod)', async () => {
     setupCard(baseCard)
 
-    const { POST } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'POST', {
       role: 'REVIEWER',
       decision: 'MAYBE',
@@ -202,7 +203,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
   it('returns 400 when comment exceeds 2000 chars (Zod)', async () => {
     setupCard(baseCard)
 
-    const { POST } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'POST', {
       role: 'REVIEWER',
       decision: 'APPROVED',
@@ -214,7 +215,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
     expect(body.issues).toBeDefined()
   })
 
-  it('returns 403 when card belongs to a different org (cross-org IDOR)', async () => {
+  it('returns 404 when card belongs to a different org (cross-org IDOR)', async () => {
     mockPrisma.card.findUnique.mockResolvedValue({
       id: 'card-1',
       board: { orgId: 'other-org' },
@@ -223,13 +224,13 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
     })
     mockPrisma.orgMember.findUnique.mockResolvedValue(membershipRecord)
 
-    const { POST } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'POST', {
       role: 'REVIEWER',
       decision: 'APPROVED',
     })
     const res = await POST(req, { params: { cardId: 'card-1' } })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
   it('returns 403 for API-key authenticated sessions', async () => {
@@ -249,7 +250,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
     // requireOrgRole for API key sessions just checks orgId matches, no DB lookup
     mockPrisma.orgMember.findUnique.mockResolvedValue(null)
 
-    const { POST } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const reqWithBearer = new NextRequest('http://localhost/api/cards/card-1/signoffs', {
       method: 'POST',
       body: JSON.stringify({ role: 'REVIEWER', decision: 'APPROVED' }),
@@ -273,15 +274,16 @@ describe('GET /api/cards/[cardId]/signoffs', () => {
     Object.assign(mockSession, { isApiKeyAuth: undefined, agentName: undefined })
   })
 
+  // signoffRows ordered newest-first to match the DESC orderBy the route uses
   const signoffRows = [
     {
-      id: 's1',
+      id: 's3',
       cardId: 'card-1',
       userId: 'user-reviewer',
       role: 'REVIEWER',
-      decision: 'REQUESTED_CHANGES',
-      comment: 'First pass',
-      createdAt: new Date('2024-01-01T10:00:00Z'),
+      decision: 'APPROVED',
+      comment: 'LGTM',
+      createdAt: new Date('2024-01-03T10:00:00Z'),
       user: { id: 'user-reviewer', name: 'Reviewer', email: 'r@example.com' },
     },
     {
@@ -295,29 +297,30 @@ describe('GET /api/cards/[cardId]/signoffs', () => {
       user: { id: 'user-approver', name: 'Approver', email: 'a@example.com' },
     },
     {
-      id: 's3',
+      id: 's1',
       cardId: 'card-1',
       userId: 'user-reviewer',
       role: 'REVIEWER',
-      decision: 'APPROVED',
-      comment: 'LGTM',
-      createdAt: new Date('2024-01-03T10:00:00Z'),
+      decision: 'REQUESTED_CHANGES',
+      comment: 'First pass',
+      createdAt: new Date('2024-01-01T10:00:00Z'),
       user: { id: 'user-reviewer', name: 'Reviewer', email: 'r@example.com' },
     },
   ]
 
-  it('returns all signoffs in chronological order', async () => {
+  it('returns all signoffs newest-first (DESC order)', async () => {
     setupCard(baseCard)
     mockPrisma.signoff.findMany.mockResolvedValue(signoffRows)
 
-    const { GET } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { GET } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'GET')
     const res = await GET(req, { params: { cardId: 'card-1' } })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.signoffs).toHaveLength(3)
-    expect(body.signoffs[0].id).toBe('s1')
-    expect(body.signoffs[2].id).toBe('s3')
+    // newest first
+    expect(body.signoffs[0].id).toBe('s3')
+    expect(body.signoffs[2].id).toBe('s1')
     // latest not included without param
     expect(body.latest).toBeUndefined()
   })
@@ -325,8 +328,12 @@ describe('GET /api/cards/[cardId]/signoffs', () => {
   it('returns latest per role when ?latestPerRole=true', async () => {
     setupCard(baseCard)
     mockPrisma.signoff.findMany.mockResolvedValue(signoffRows)
+    // findFirst returns the single most-recent row per role
+    mockPrisma.signoff.findFirst
+      .mockResolvedValueOnce(signoffRows[0]) // latest REVIEWER = s3
+      .mockResolvedValueOnce(signoffRows[1]) // latest APPROVER = s2
 
-    const { GET } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { GET } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest(
       'http://localhost/api/cards/card-1/signoffs?latestPerRole=true',
       'GET'
@@ -345,7 +352,7 @@ describe('GET /api/cards/[cardId]/signoffs', () => {
     mockPrisma.card.findUnique.mockResolvedValue(baseCard)
     mockPrisma.orgMember.findUnique.mockResolvedValue(null)
 
-    const { GET } = await import('../src/app/api/cards/[cardId]/signoffs/route')
+    const { GET } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'GET')
     const res = await GET(req, { params: { cardId: 'card-1' } })
     expect(res.status).toBe(403)

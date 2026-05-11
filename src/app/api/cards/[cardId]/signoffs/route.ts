@@ -22,7 +22,7 @@ async function resolveCard(cardId: string, orgId: string) {
     throw NextResponse.json({ error: 'Card not found' }, { status: 404 })
   }
   if (card.board.orgId !== orgId) {
-    throw NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    throw NextResponse.json({ error: 'Card not found' }, { status: 404 })
   }
   return card
 }
@@ -90,7 +90,7 @@ export async function POST(
 }
 
 // GET /api/cards/[cardId]/signoffs
-// Returns all signoffs for the card, ordered by createdAt asc.
+// Returns all signoffs for the card, ordered by createdAt desc (newest first).
 // With ?latestPerRole=true, returns { signoffs, latest: { reviewer, approver } }
 // where each latest entry is the most recent signoff for that role.
 export async function GET(
@@ -105,22 +105,30 @@ export async function GET(
     const latestPerRole =
       new URL(req.url).searchParams.get('latestPerRole') === 'true'
 
+    const userSelect = { select: { id: true, name: true, email: true } }
+
     const signoffs = await prisma.signoff.findMany({
       where: { cardId: params.cardId },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-      },
+      orderBy: { createdAt: 'desc' },
+      include: { user: userSelect },
     })
 
     if (!latestPerRole) {
       return NextResponse.json({ signoffs })
     }
 
-    const reviewer =
-      [...signoffs].reverse().find((s) => s.role === 'REVIEWER') ?? null
-    const approver =
-      [...signoffs].reverse().find((s) => s.role === 'APPROVER') ?? null
+    const [reviewer, approver] = await Promise.all([
+      prisma.signoff.findFirst({
+        where: { cardId: params.cardId, role: 'REVIEWER' },
+        orderBy: { createdAt: 'desc' },
+        include: { user: userSelect },
+      }),
+      prisma.signoff.findFirst({
+        where: { cardId: params.cardId, role: 'APPROVER' },
+        orderBy: { createdAt: 'desc' },
+        include: { user: userSelect },
+      }),
+    ])
 
     return NextResponse.json({ signoffs, latest: { reviewer, approver } })
   } catch (err) {
