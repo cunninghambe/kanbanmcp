@@ -91,7 +91,7 @@ describe('GET /api/cards/[cardId]/children', () => {
   })
 
   it('returns root and descendants', async () => {
-    const child = { ...rootCard, id: 'child-1', parentCardId: 'card-root', path: '/card-root/', depth: 1 }
+    const child = { ...rootCard, id: 'child-1', parentCardId: 'card-root' as unknown as null, path: '/card-root/', depth: 1 }
     setupHappyPath([child])
     const { GET } = await import('../../src/app/api/cards/[cardId]/children/route')
     const req = makeRequest('http://localhost/api/cards/card-root/children?depth=1')

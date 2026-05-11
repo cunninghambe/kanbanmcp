@@ -22,7 +22,7 @@ let txFindUniqueCalls: Array<{ id: string }> = []
 
 const txMock = {
   card: {
-    findUnique: vi.fn(({ where }: { where: { id: string } }) => {
+    findUnique: vi.fn(({ where }: { where: { id: string } }): Promise<unknown> => {
       txFindUniqueCalls.push(where)
       return Promise.resolve(null)
     }),
