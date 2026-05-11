@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import * as bcrypt from 'bcryptjs'
+import { ensureAiReviewerUser } from './seed-ai-reviewer'
 
 const prisma = new PrismaClient()
 
@@ -95,6 +96,8 @@ async function main() {
       },
     })
   }
+
+  await ensureAiReviewerUser(prisma)
 
   console.log('Seed data created successfully')
   console.log(`  Organization: ${org.name} (${org.slug})`)
