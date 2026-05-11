@@ -36,6 +36,7 @@ const mockPrisma = {
   },
   orgMember: {
     findUnique: vi.fn(),
+    findMany: vi.fn(),
   },
   $transaction: vi.fn(),
 }
@@ -304,10 +305,10 @@ describe("PATCH /api/cards/[cardId] - assignee IDOR protection", () => {
     mockPrisma.card.findUnique.mockResolvedValueOnce({
       id: "card-1", columnId: "col-1", boardId: "board-1", board: { orgId: "org-1" },
     })
-    // IDOR check: findUnique for org membership returns null (user not in this org)
-    mockPrisma.orgMember.findUnique
-      .mockResolvedValueOnce({ userId: "user-1", orgId: "org-1", role: "MEMBER" }) // requireOrgRole
-      .mockResolvedValueOnce(null) // assigneeId membership check fails
+    // requireOrgRole uses findUnique; roleMembershipCheck uses findMany
+    mockPrisma.orgMember.findUnique.mockResolvedValueOnce({ userId: "user-1", orgId: "org-1", role: "MEMBER" })
+    // findMany returns empty — user-from-other-org is not in org
+    mockPrisma.orgMember.findMany.mockResolvedValueOnce([])
 
     const { PATCH } = await import("../src/app/api/cards/[cardId]/route")
     const req = makeRequest("http://localhost/api/cards/card-1", "PATCH", { assigneeId: "user-from-other-org" })
