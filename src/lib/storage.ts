@@ -46,20 +46,7 @@ function makeLocalDriver(baseDir: string): StorageDriver {
 }
 
 function makeS3Driver(): StorageDriver {
-  // Use an indirect require so webpack does not statically bundle the missing
-  // module. The package is not installed in M1; this path throws at runtime.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = process.env.STORAGE_DRIVER // keep reference to prevent dead-code elimination
-  void mod
-  // Dynamic require — not statically analysed by webpack.
-  // eslint-disable-next-line no-new-func
-  const tryRequire = new Function('m', 'return require(m)')
-  try {
-    tryRequire('@aws-sdk/client-s3')
-  } catch {
-    throw new Error('S3 driver requires @aws-sdk/client-s3 (not installed in M1)')
-  }
-  throw new Error('S3 driver requires @aws-sdk/client-s3 (not installed in M1)')
+  throw new Error('S3 driver not implemented in M1 (set STORAGE_DRIVER=local)')
 }
 
 /** Returns the configured storage driver. Reads STORAGE_DRIVER and STORAGE_DIR env vars. */

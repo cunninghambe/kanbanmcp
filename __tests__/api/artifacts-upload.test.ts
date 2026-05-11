@@ -14,7 +14,7 @@ vi.mock('next/headers', () => ({ cookies: vi.fn().mockReturnValue({}) }))
 const mockPrisma = {
   card: { findUnique: vi.fn() },
   artifact: { create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-  orgMember: { findUnique: vi.fn() },
+  orgMember: { findUnique: vi.fn(), findFirst: vi.fn() },
 }
 
 vi.mock('../../src/lib/db', () => ({ prisma: mockPrisma }))
@@ -26,6 +26,20 @@ vi.mock('../../src/lib/storage', () => ({ getStorageDriver: () => mockStorage })
 // ─── Mock enqueueAiReview ─────────────────────────────────────────────────────
 const mockEnqueue = vi.fn()
 vi.mock('../../src/lib/ai-review/queue', () => ({ enqueueAiReview: mockEnqueue }))
+
+// ─── Mock api-helpers (allows isApiKeyAuth session override) ──────────────────
+const mockRequireSession = vi.fn()
+const mockRequireOrgRole = vi.fn()
+const mockApiError = vi.fn((status: number, msg: string) => {
+  const { NextResponse } = require('next/server')
+  return NextResponse.json({ error: msg }, { status })
+})
+
+vi.mock('../../src/lib/api-helpers', () => ({
+  requireSession: (...args: unknown[]) => mockRequireSession(...args),
+  requireOrgRole: (...args: unknown[]) => mockRequireOrgRole(...args),
+  apiError: (status: number, msg: string) => mockApiError(status, msg),
+}))
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 const baseCard = {
@@ -62,7 +76,13 @@ function makeFile(name: string, type: string, sizeBytes: number): File {
 describe('POST /api/cards/[cardId]/artifacts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    // Default: normal session (not API key)
+    mockRequireSession.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', isApiKeyAuth: false })
+    mockRequireOrgRole.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockApiError.mockImplementation((status: number, msg: string) => {
+      const { NextResponse } = require('next/server')
+      return NextResponse.json({ error: msg }, { status })
+    })
     mockPrisma.card.findUnique
       .mockResolvedValueOnce(baseCard)        // resolveCard
       .mockResolvedValueOnce(baseCard)        // aiAutoReview re-fetch
@@ -96,6 +116,15 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
     expect(body.error).toBe('Unsupported Media Type')
   })
 
+  it('returns 415 for text/html (removed wildcard allows only explicit text types)', async () => {
+    const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
+    const req = makeFormDataRequest(makeFile('page.html', 'text/html', 100))
+    const res = await POST(req, { params: { cardId: 'card-1' } })
+    expect(res.status).toBe(415)
+    const body = await res.json()
+    expect(body.error).toBe('Unsupported Media Type')
+  })
+
   it('returns 413 when file exceeds 25 MB', async () => {
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const oversizeBytes = 25 * 1024 * 1024 + 1
@@ -104,6 +133,22 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
     expect(res.status).toBe(413)
     const body = await res.json()
     expect(body.error).toBe('Payload Too Large')
+  })
+
+  it('returns 413 via Content-Length pre-check before formData is parsed', async () => {
+    const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
+    const oversizeBytes = 25 * 1024 * 1024 + 1
+    const req = new NextRequest('http://localhost/api/cards/card-1/artifacts', {
+      method: 'POST',
+      headers: { 'content-length': String(oversizeBytes) },
+      body: new Uint8Array(0),
+    })
+    const res = await POST(req, { params: { cardId: 'card-1' } })
+    expect(res.status).toBe(413)
+    const body = await res.json()
+    expect(body.error).toBe('Payload Too Large')
+    // Card lookup happens after the pre-check, so it must not have been called
+    expect(mockPrisma.card.findUnique).not.toHaveBeenCalled()
   })
 
   it('returns 400 when file field is missing', async () => {
@@ -122,7 +167,6 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
       .mockReset()
       .mockResolvedValueOnce({ ...baseCard, aiAutoReview: true })
       .mockResolvedValueOnce({ ...baseCard, aiAutoReview: true })
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
@@ -155,5 +199,35 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
     const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
     const res = await POST(req, { params: { cardId: 'nonexistent' } })
     expect(res.status).toBe(404)
+  })
+
+  it('API-key auth: attributes upload to first org ADMIN', async () => {
+    mockRequireSession.mockResolvedValue({ userId: '', orgId: 'org-1', isApiKeyAuth: true })
+    mockPrisma.orgMember.findFirst.mockResolvedValue({ userId: 'admin-1' })
+    const adminArtifact = { ...baseArtifact, uploaderId: 'admin-1', uploader: { id: 'admin-1', name: 'Admin', email: 'admin@example.com' } }
+    mockPrisma.artifact.create.mockResolvedValue({ ...adminArtifact, storageKey: 'pending' })
+    mockPrisma.artifact.update.mockResolvedValue(adminArtifact)
+
+    const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
+    const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
+    const res = await POST(req, { params: { cardId: 'card-1' } })
+    expect(res.status).toBe(201)
+    expect(mockPrisma.orgMember.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ role: 'ADMIN' }) })
+    )
+    const body = await res.json()
+    expect(body.artifact.uploader.id).toBe('admin-1')
+  })
+
+  it('API-key auth: returns 500 when no org admin exists', async () => {
+    mockRequireSession.mockResolvedValue({ userId: '', orgId: 'org-1', isApiKeyAuth: true })
+    mockPrisma.orgMember.findFirst.mockResolvedValue(null)
+
+    const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
+    const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
+    const res = await POST(req, { params: { cardId: 'card-1' } })
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body.error).toMatch(/admin/)
   })
 })

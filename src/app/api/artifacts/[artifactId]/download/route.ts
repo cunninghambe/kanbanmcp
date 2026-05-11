@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { Readable } from 'node:stream'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
@@ -43,15 +43,16 @@ export async function GET(
 
     const webStream = Readable.toWeb(nodeStream) as ReadableStream
 
-    return new Response(webStream, {
+    return new NextResponse(webStream, {
       headers: {
         'Content-Type': artifact.mimeType,
         'Content-Disposition': `attachment; filename="${safeFilename(artifact.filename)}"`,
         'Content-Length': String(artifact.sizeBytes),
+        'X-Content-Type-Options': 'nosniff',
       },
     })
   } catch (err) {
-    if (err instanceof Response) return err
+    if (err instanceof NextResponse) return err
     console.error('GET /api/artifacts/[artifactId]/download error:', err)
     return apiError(500, 'Internal server error')
   }

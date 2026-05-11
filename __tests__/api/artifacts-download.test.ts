@@ -54,6 +54,15 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
     expect(res.headers.get('Content-Length')).toBe('1024')
   })
 
+  it('includes X-Content-Type-Options: nosniff header', async () => {
+    const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
+    const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
+    const res = await GET(req, { params: { artifactId: 'art-1' } })
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff')
+  })
+
   it('returns 404 when artifact not found', async () => {
     mockPrisma.artifact.findUnique.mockResolvedValue(null)
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
@@ -75,6 +84,7 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
 
   it('returns 410 when file is missing from storage (ENOENT)', async () => {
     const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    mockStorage.getStream.mockResolvedValue(makeNodeStream('pdf bytes'))
     mockStorage.getStream.mockRejectedValue(enoent)
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/download')

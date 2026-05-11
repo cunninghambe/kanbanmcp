@@ -23,19 +23,25 @@ export async function POST(
 ) {
   try {
     const session = await requireSession(req)
+
+    const cl = req.headers.get('content-length')
+    if (cl && parseInt(cl, 10) > MAX_ARTIFACT_BYTES) {
+      return apiError(413, 'Payload Too Large')
+    }
+
     const card = await resolveCard(params.cardId, session.orgId)
     await requireOrgRole(session, session.orgId, 'MEMBER')
 
     // For API key auth, resolve to the first org admin as the uploader.
     let uploaderId = session.userId
     if (session.isApiKeyAuth) {
-      const orgMember = await prisma.orgMember.findFirst({
-        where: { orgId: session.orgId },
-        orderBy: { role: 'desc' },
+      const orgAdmin = await prisma.orgMember.findFirst({
+        where: { orgId: session.orgId, role: 'ADMIN' },
+        orderBy: { userId: 'asc' },
         select: { userId: true },
       })
-      if (!orgMember) return apiError(500, 'No org member found to associate upload with')
-      uploaderId = orgMember.userId
+      if (!orgAdmin) return apiError(500, 'No org admin found to attribute upload to')
+      uploaderId = orgAdmin.userId
     }
 
     const formData = await req.formData()

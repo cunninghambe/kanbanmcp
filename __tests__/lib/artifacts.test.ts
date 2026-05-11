@@ -13,7 +13,7 @@ describe('isAllowedMime', () => {
     ['image/webp', true],
     ['text/plain', true],
     ['text/csv', true],
-    ['text/html', true],
+    ['text/html', false],
     ['application/zip', false],
     ['application/octet-stream', false],
     ['video/mp4', false],

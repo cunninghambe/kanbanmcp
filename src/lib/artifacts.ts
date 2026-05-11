@@ -9,14 +9,15 @@ export const ALLOWED_MIME_TYPES: ReadonlyArray<string> = [
   'application/json',
   'application/x-yaml',
   'text/markdown',
+  'text/plain',
+  'text/csv',
   'image/png',
   'image/jpeg',
   'image/webp',
 ]
 
 export function isAllowedMime(mime: string): boolean {
-  if (mime.startsWith('text/')) return true
-  return (ALLOWED_MIME_TYPES as string[]).includes(mime)
+  return ALLOWED_MIME_TYPES.includes(mime)
 }
 
 export type AiReviewSummary = {
