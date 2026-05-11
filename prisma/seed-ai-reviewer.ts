@@ -3,10 +3,9 @@ import { PrismaClient } from '@prisma/client'
 export const AI_REVIEWER_EMAIL = 'ai-reviewer@kanbanmcp.local'
 export const AI_REVIEWER_NAME = 'AI Reviewer'
 
-// passwordHash is intentionally unusable; this account is for AI-authored comments only.
-// Hash of '!unusable-clh7k9x2m0000qwerty1234abcd', computed once with bcrypt.hash(str, 12).
+// Unusable bcrypt hash — service account, login is blocked by isAgent check in auth/login route.
 const AI_REVIEWER_PASSWORD_HASH =
-  '$2a$12$7A7jNhaS3VveKnoni8QGQuc0gpyKmAC66VQHO4MXva3SsEGp/Nk7q'
+  '$2a$12$I2IzYybCYMKhJG4L6DFE5.DDzTl09Ak7/5VjVPDmJO.OM/pqIS6e2'
 
 export async function ensureAiReviewerUser(
   prisma: PrismaClient
