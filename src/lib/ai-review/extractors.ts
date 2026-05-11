@@ -1,13 +1,12 @@
 import { PDFParse } from 'pdf-parse'
 
 const IMAGE_SIZE_CAP = 5 * 1024 * 1024 // 5 MB
+export const PDF_SIZE_CAP = 10 * 1024 * 1024 // 10 MB
 
-export interface ExtractedContent {
-  kind: 'text' | 'image' | 'empty'
-  text?: string
-  imageBase64?: string
-  imageMimeType?: string
-}
+export type ExtractedContent =
+  | { kind: 'text'; text: string; imageBase64?: undefined; imageMimeType?: undefined }
+  | { kind: 'image'; imageBase64: string; imageMimeType: string; text?: undefined }
+  | { kind: 'empty'; text?: undefined; imageBase64?: undefined; imageMimeType?: undefined }
 
 const TEXT_MIMES = new Set([
   'application/json',
@@ -36,6 +35,7 @@ export async function extractContent(
   }
 
   if (mimeType === 'application/pdf') {
+    if (bytes.length > PDF_SIZE_CAP) return { kind: 'empty' }
     try {
       const text = await extractPdfText(bytes)
       if (text.trim().length > 0) return { kind: 'text', text }

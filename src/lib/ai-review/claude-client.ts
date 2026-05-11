@@ -28,7 +28,7 @@ function buildUserMessage(content: ExtractedContent, filename: string): Anthropi
           source: {
             type: 'base64',
             media_type: content.imageMimeType as 'image/png' | 'image/jpeg' | 'image/webp',
-            data: content.imageBase64!,
+            data: content.imageBase64,
           },
         },
         { type: 'text', text: `Review this artifact (filename: ${filename}).` },
