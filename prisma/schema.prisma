@@ -18,9 +18,13 @@ model User {
   createdAt     DateTime     @default(now())
   orgMembers    OrgMember[]
   teamMembers   TeamMember[]
-  assignedCards    Card[]           @relation("CardAssignee")
-  createdCards     Card[]           @relation("CardCreator")
-  comments         Comment[]
+  assignedCards     Card[]           @relation("CardAssignee")
+  createdCards      Card[]           @relation("CardCreator")
+  reviewedCards     Card[]           @relation("CardReviewer")
+  approvedCards     Card[]           @relation("CardApprover")
+  comments          Comment[]
+  uploadedArtifacts Artifact[]
+  signoffs          Signoff[]
   reportedTickets  Ticket[]         @relation("TicketReporter")
   assignedTickets  Ticket[]         @relation("TicketAssignee")
   ticketComments   TicketComment[]
@@ -121,6 +125,7 @@ model Card {
   columnId    String
   boardId     String
   sprintId    String?
+  // Required at the API layer (Zod). DB-nullable for SQLite ALTER COLUMN practicality.
   assigneeId  String?
   agentId     String?
   priority    String      @default("none")
@@ -129,14 +134,31 @@ model Card {
   createdById String
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
-  column      Column      @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  board       Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  sprint      Sprint?     @relation(fields: [sprintId], references: [id])
-  assignee    User?       @relation("CardAssignee", fields: [assigneeId], references: [id])
-  createdBy   User        @relation("CardCreator", fields: [createdById], references: [id])
-  labels      CardLabel[]
-  comments    Comment[]
 
+  reviewerId     String?
+  approverId     String?
+  parentCardId   String?
+  path           String   @default("")  // "/ancestorA/ancestorB/" — empty for root cards
+  depth          Int      @default(0)
+  aiAutoReview   Boolean  @default(false)
+  aiReviewParams String?  // JSON string: { model, rubric, customInstructions? }
+
+  column    Column      @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  board     Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  sprint    Sprint?     @relation(fields: [sprintId], references: [id])
+  assignee  User?       @relation("CardAssignee", fields: [assigneeId], references: [id])
+  createdBy User        @relation("CardCreator", fields: [createdById], references: [id])
+  reviewer  User?       @relation("CardReviewer", fields: [reviewerId], references: [id])
+  approver  User?       @relation("CardApprover", fields: [approverId], references: [id])
+  parent    Card?       @relation("CardChildren", fields: [parentCardId], references: [id], onDelete: SetNull)
+  children  Card[]      @relation("CardChildren")
+  labels    CardLabel[]
+  comments  Comment[]
+  artifacts Artifact[]
+  signoffs  Signoff[]
+
+  @@index([parentCardId])
+  @@index([path])
   @@map("cards")
 }
 
@@ -213,6 +235,69 @@ model Webhook {
   org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@map("webhooks")
+}
+
+// ─── Review Workflow ─────────────────────────────────────────────────────────
+
+model Artifact {
+  id         String   @id @default(cuid())
+  cardId     String
+  uploaderId String
+  filename   String
+  mimeType   String
+  sizeBytes  Int
+  storageKey String
+  // values: UPLOAD (M1); reserved for M2: GOOGLE_DOC | GOOGLE_SHEET | GOOGLE_SLIDE | URL
+  source     String   @default("UPLOAD")
+  createdAt  DateTime @default(now())
+
+  card     Card       @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  uploader User       @relation(fields: [uploaderId], references: [id])
+  reviews  AiReview[]
+
+  @@index([cardId])
+  @@map("artifacts")
+}
+
+model AiReview {
+  id             String    @id @default(cuid())
+  artifactId     String
+  // values: pending | running | done | failed | skipped
+  status         String    @default("pending")
+  model          String
+  rubricSnapshot String
+  instructions   String?
+  output         String?
+  errorMessage   String?
+  inputTokens    Int?
+  outputTokens   Int?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+
+  @@index([artifactId])
+  @@index([status])
+  @@map("ai_reviews")
+}
+
+model Signoff {
+  id        String   @id @default(cuid())
+  cardId    String
+  userId    String
+  // values: REVIEWER | APPROVER
+  role      String
+  // values: APPROVED | REJECTED | REQUESTED_CHANGES
+  decision  String
+  comment   String?
+  createdAt DateTime @default(now())
+
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([cardId])
+  @@map("signoffs")
 }
 
 // ─── Helpdesk / Ticketing ────────────────────────────────────────────────────
