@@ -7,6 +7,7 @@ import {
   roleMembershipCheck,
   decodeAiReviewParams,
 } from '@/lib/cards'
+import { recomputeSubtreePathAndDepth } from '@/lib/tree'
 
 const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
 
@@ -288,7 +289,19 @@ export async function DELETE(
     await resolveCard(params.cardId, session.orgId)
     await requireOrgRole(session, session.orgId, 'MEMBER')
 
+    const cardWithChildren = await prisma.card.findUnique({
+      where: { id: params.cardId },
+      select: { children: { select: { id: true } } },
+    })
+    const orphanedChildren = cardWithChildren?.children ?? []
+
     await prisma.card.delete({ where: { id: params.cardId } })
+
+    for (const child of orphanedChildren) {
+      await prisma.$transaction(async (tx) => {
+        await recomputeSubtreePathAndDepth(tx, child.id, null)
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
