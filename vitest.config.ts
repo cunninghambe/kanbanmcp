@@ -7,6 +7,10 @@ export default defineConfig({
     globals: true,
     setupFiles: [],
     testTimeout: 10000,
+    env: {
+      SESSION_SECRET: 'test-session-secret-for-vitest-only',
+      DATABASE_URL: 'file:./kanban-test.db',
+    },
   },
   resolve: {
     alias: {
