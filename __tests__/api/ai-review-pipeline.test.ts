@@ -308,6 +308,39 @@ describe('AI Review Pipeline', () => {
     })
   })
 
+  describe('E7: toggling aiAutoReview on does not auto-review historical artifacts', () => {
+    it('existing artifact is NOT auto-reviewed when toggle is enabled; only a manual POST triggers review', async () => {
+      // Simulates: artifact 'art-existing' was uploaded before aiAutoReview was enabled.
+      // When the feature is toggled on, enqueueAiReview is NOT called for it.
+      // Only a direct call to enqueueAiReview (manual POST) triggers a review.
+
+      // No enqueue has been called for the pre-existing artifact yet.
+      expect(mockPrisma.aiReview.create).not.toHaveBeenCalled()
+
+      // Now the user manually POSTs to re-review the historical artifact.
+      const reviewRow = makeReviewRow({ artifactId: ARTIFACT_ID })
+      mockPrisma.aiReview.create.mockResolvedValue(reviewRow)
+      mockPrisma.aiReview.findUnique.mockResolvedValue(reviewRow)
+      mockPrisma.aiReview.update.mockResolvedValue({ ...reviewRow, status: 'done' })
+
+      __setClaudeClientForTests(async () => ({
+        output: 'Manual review result',
+        inputTokens: 10,
+        outputTokens: 5,
+      }))
+
+      await enqueueAiReview(ARTIFACT_ID)
+      await flushForTests()
+
+      // Exactly one review was created — triggered by the explicit manual call, not the toggle.
+      expect(mockPrisma.aiReview.create).toHaveBeenCalledTimes(1)
+      const doneCall = mockPrisma.aiReview.update.mock.calls.find(
+        (c: Array<{ data: { status?: string } }>) => c[0].data.status === 'done'
+      )
+      expect(doneCall).toBeDefined()
+    })
+  })
+
   describe('failure modes', () => {
     it('marks failed when Claude throws', async () => {
       const reviewRow = makeReviewRow()

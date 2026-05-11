@@ -13,6 +13,10 @@ let cachedReviewerUserId: string | null = null
 
 async function getReviewerUserId(): Promise<string | null> {
   if (cachedReviewerUserId) return cachedReviewerUserId
+  if (process.env.AI_REVIEWER_USER_ID) {
+    cachedReviewerUserId = process.env.AI_REVIEWER_USER_ID
+    return cachedReviewerUserId
+  }
   try {
     let user: { id: string } | null = await prisma.user.findUnique({
       where: { email: AI_REVIEWER_EMAIL },
@@ -58,16 +62,49 @@ async function processJob(reviewId: string): Promise<void> {
   }
 }
 
+async function fetchAndExtract(
+  artifact: { storageKey: string; mimeType: string; filename: string }
+): Promise<{ content: ExtractedContent } | { skipped: string }> {
+  let bytes: Buffer
+  try {
+    const storage = getStorageDriver()
+    const stream = await storage.getStream(artifact.storageKey)
+    bytes = await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = []
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+      stream.on('end', () => resolve(Buffer.concat(chunks)))
+      stream.on('error', reject)
+    })
+  } catch {
+    return { skipped: 'Artifact deleted before review' }
+  }
+
+  const content = await extractContent(bytes, artifact.mimeType, artifact.filename)
+  return { content }
+}
+
+async function postReviewComment(
+  reviewerUserId: string,
+  artifact: { cardId: string; filename: string },
+  output: string
+): Promise<void> {
+  await prisma.comment.create({
+    data: {
+      cardId: artifact.cardId,
+      userId: reviewerUserId,
+      content: `**AI review of ${artifact.filename}:**\n\n${output}`,
+    },
+  })
+}
+
 async function runReview(reviewId: string): Promise<void> {
   const now = () => new Date()
 
-  // Mark running
   await prisma.aiReview.update({
     where: { id: reviewId },
     data: { status: 'running', startedAt: now() },
   })
 
-  // Fetch the review row to get artifactId and snapshot params
   const review = await prisma.aiReview.findUnique({
     where: { id: reviewId },
     include: { artifact: true },
@@ -80,7 +117,6 @@ async function runReview(reviewId: string): Promise<void> {
 
   const artifact = review.artifact
 
-  // Check artifact still exists
   if (!artifact) {
     await prisma.aiReview.update({
       where: { id: reviewId },
@@ -89,39 +125,16 @@ async function runReview(reviewId: string): Promise<void> {
     return
   }
 
-  // Fetch bytes from storage
-  let bytes: Buffer
-  try {
-    const storage = getStorageDriver()
-    const stream = await storage.getStream(artifact.storageKey)
-    bytes = await new Promise<Buffer>((resolve, reject) => {
-      const chunks: Buffer[] = []
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-      stream.on('end', () => resolve(Buffer.concat(chunks)))
-      stream.on('error', reject)
-    })
-  } catch {
+  const fetchResult = await fetchAndExtract(artifact)
+  if ('skipped' in fetchResult) {
     await prisma.aiReview.update({
       where: { id: reviewId },
-      data: { status: 'skipped', errorMessage: 'Artifact deleted before review' },
+      data: { status: 'skipped', errorMessage: fetchResult.skipped },
     })
     return
   }
 
-  // Extract content
-  let content: ExtractedContent
-  try {
-    content = await extractContent(bytes, artifact.mimeType, artifact.filename)
-  } catch (err) {
-    await prisma.aiReview.update({
-      where: { id: reviewId },
-      data: {
-        status: 'failed',
-        errorMessage: err instanceof Error ? err.message : String(err),
-      },
-    })
-    return
-  }
+  const { content } = fetchResult
 
   if (content.kind === 'empty') {
     await prisma.aiReview.update({
@@ -131,18 +144,15 @@ async function runReview(reviewId: string): Promise<void> {
     return
   }
 
-  // Reconstruct params from snapshot stored in the review row
   const params: AiReviewParams = {
     model: review.model,
     rubric: review.rubricSnapshot,
     customInstructions: review.instructions ?? undefined,
   }
 
-  // Call Claude
   let result: ClaudeReviewResult
   try {
-    const callFn = claudeClientOverride ?? runClaudeReview
-    result = await callFn(params, content, artifact.filename)
+    result = await (claudeClientOverride ?? runClaudeReview)(params, content, artifact.filename)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     await prisma.aiReview.update({
@@ -156,7 +166,6 @@ async function runReview(reviewId: string): Promise<void> {
     return
   }
 
-  // Mark done
   await prisma.aiReview.update({
     where: { id: reviewId },
     data: {
@@ -178,13 +187,7 @@ async function runReview(reviewId: string): Promise<void> {
     return
   }
 
-  await prisma.comment.create({
-    data: {
-      cardId: artifact.cardId,
-      userId: reviewerUserId,
-      content: `**AI review of ${artifact.filename}:**\n\n${result.output}`,
-    },
-  })
+  await postReviewComment(reviewerUserId, artifact, result.output)
 }
 
 /**
@@ -245,7 +248,6 @@ export function resetQueueForTests(): void {
  * interrupted by a restart) and re-enqueues all pending rows.
  */
 export async function bootstrapWorker(): Promise<void> {
-  // Reset interrupted running rows
   await prisma.aiReview.updateMany({
     where: { status: 'running' },
     data: { status: 'pending' },

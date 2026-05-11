@@ -10,7 +10,7 @@ vi.mock('pdf-parse', () => {
   return { PDFParse }
 })
 
-import { extractContent } from '../../src/lib/ai-review/extractors'
+import { extractContent, PDF_SIZE_CAP } from '../../src/lib/ai-review/extractors'
 import { PDFParse } from 'pdf-parse'
 
 const IMAGE_SIZE_CAP = 5 * 1024 * 1024
@@ -91,6 +91,25 @@ describe('extractContent', () => {
       const buf = Buffer.from('%PDF-fake')
       const result = await extractContent(buf, 'application/pdf', 'locked.pdf')
       expect(result).toEqual({ kind: 'empty' })
+    })
+
+    it('PDF over 10 MB → empty (PDF size cap)', async () => {
+      const buf = Buffer.alloc(PDF_SIZE_CAP + 1)
+      const result = await extractContent(buf, 'application/pdf', 'huge.pdf')
+      expect(result).toEqual({ kind: 'empty' })
+      // PDFParse should not be called when over cap
+      expect(vi.mocked(PDFParse)).not.toHaveBeenCalled()
+    })
+
+    it('PDF exactly at 10 MB → parsed normally (boundary)', async () => {
+      const getText = vi.fn().mockResolvedValue({ text: 'boundary content' })
+      const destroy = vi.fn().mockResolvedValue(undefined)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(PDFParse).mockImplementationOnce(function (this: any) { this.getText = getText; this.destroy = destroy })
+
+      const buf = Buffer.alloc(PDF_SIZE_CAP)
+      const result = await extractContent(buf, 'application/pdf', 'boundary.pdf')
+      expect(result).toEqual({ kind: 'text', text: 'boundary content' })
     })
   })
 

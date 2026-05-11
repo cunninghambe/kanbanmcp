@@ -144,9 +144,10 @@ describe('runClaudeReview', () => {
       .mockRejectedValueOnce(err)
 
     const promise = runClaudeReview(baseParams, textContent, 'test.txt')
+    const assertion = expect(promise).rejects.toThrow()
     await vi.advanceTimersByTimeAsync(1500)
     await vi.advanceTimersByTimeAsync(5000)
-    await expect(promise).rejects.toThrow()
+    await assertion
 
     expect(mockCreate).toHaveBeenCalledTimes(3)
   })
@@ -156,8 +157,9 @@ describe('runClaudeReview', () => {
     mockCreate.mockRejectedValueOnce(new APIError(401, 'Unauthorized'))
 
     const promise = runClaudeReview(baseParams, textContent, 'test.txt')
+    const assertion = expect(promise).rejects.toThrow()
     await vi.runAllTimersAsync()
-    await expect(promise).rejects.toThrow()
+    await assertion
 
     expect(mockCreate).toHaveBeenCalledTimes(1)
   })
@@ -167,8 +169,9 @@ describe('runClaudeReview', () => {
     mockCreate.mockRejectedValueOnce(new APIError(400, 'Bad request'))
 
     const promise = runClaudeReview(baseParams, textContent, 'test.txt')
+    const assertion = expect(promise).rejects.toThrow()
     await vi.runAllTimersAsync()
-    await expect(promise).rejects.toThrow()
+    await assertion
 
     expect(mockCreate).toHaveBeenCalledTimes(1)
   })

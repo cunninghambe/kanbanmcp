@@ -2,41 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { enqueueAiReview } from '@/lib/ai-review/queue'
-import type { AiReview } from '@prisma/client'
-
-export interface AiReviewResponse {
-  id: string
-  artifactId: string
-  status: string
-  model: string
-  rubricSnapshot: string
-  instructions: string | null
-  output: string | null
-  errorMessage: string | null
-  inputTokens: number | null
-  outputTokens: number | null
-  startedAt: string | null
-  finishedAt: string | null
-  createdAt: string
-}
-
-function shapeReview(r: AiReview): AiReviewResponse {
-  return {
-    id: r.id,
-    artifactId: r.artifactId,
-    status: r.status,
-    model: r.model,
-    rubricSnapshot: r.rubricSnapshot,
-    instructions: r.instructions,
-    output: r.output,
-    errorMessage: r.errorMessage,
-    inputTokens: r.inputTokens,
-    outputTokens: r.outputTokens,
-    startedAt: r.startedAt?.toISOString() ?? null,
-    finishedAt: r.finishedAt?.toISOString() ?? null,
-    createdAt: r.createdAt.toISOString(),
-  }
-}
+import { shapeReview } from '@/lib/ai-review/response'
+export type { AiReviewResponse } from '@/lib/ai-review/response'
 
 async function resolveArtifactOrgId(artifactId: string): Promise<string | null> {
   const artifact = await prisma.artifact.findUnique({
