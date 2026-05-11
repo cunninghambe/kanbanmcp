@@ -75,7 +75,7 @@ export async function GET(req: NextRequest): Promise<Response> {
           const now = new Date()
           const changedCards = await prisma.card.findMany({
             where: {
-              boardId,
+              boardId: boardId!,
               board: { orgId: session.orgId },
               updatedAt: { gt: checkFrom },
             },

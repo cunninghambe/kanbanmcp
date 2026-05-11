@@ -49,7 +49,6 @@ async function main() {
         name: agent.name,
         email: agent.email,
         passwordHash: 'agent-no-login',
-        orgId: ORG_ID,
       },
     })
     // Ensure org member record
