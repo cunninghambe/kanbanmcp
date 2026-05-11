@@ -246,18 +246,12 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
     expect(body.error).toBe('Maximum nesting depth (50) reached')
   })
 
-  it('succeeds when parent is at depth 49 (creates child at depth 50)', async () => {
+  it('returns 400 when parent is at depth 49 (AC-10: cap at depth 49)', async () => {
     mockPrisma.card.findUnique.mockResolvedValue({
       id: 'parent-49',
       boardId: 'board-1',
-      path: 'long/path/',
+      path: '/long/path/',
       depth: 49,
-    })
-    mockPrisma.card.create.mockResolvedValue({
-      ...createdCard,
-      parentCardId: 'parent-49',
-      path: 'long/path/parent-49/',
-      depth: 50,
     })
     const { POST } = await import('../../src/app/api/boards/[boardId]/cards/route')
     const req = makeRequest('http://localhost/api/boards/board-1/cards', {
@@ -265,10 +259,33 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
       parentCardId: 'parent-49',
     })
     const res = await POST(req, { params: { boardId: 'board-1' } })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe('Maximum nesting depth (50) reached')
+  })
+
+  it('succeeds when parent is at depth 48 (boundary: child at depth 49)', async () => {
+    mockPrisma.card.findUnique.mockResolvedValue({
+      id: 'parent-48',
+      boardId: 'board-1',
+      path: '/long/path/',
+      depth: 48,
+    })
+    mockPrisma.card.create.mockResolvedValue({
+      ...createdCard,
+      parentCardId: 'parent-48',
+      path: '/long/path/parent-48/',
+      depth: 49,
+    })
+    const { POST } = await import('../../src/app/api/boards/[boardId]/cards/route')
+    const req = makeRequest('http://localhost/api/boards/board-1/cards', {
+      ...baseCreateBody,
+      parentCardId: 'parent-48',
+    })
+    const res = await POST(req, { params: { boardId: 'board-1' } })
     expect(res.status).toBe(201)
     const body = await res.json()
-    expect(body.card.depth).toBe(50)
-    expect(body.card.path).toBe('long/path/parent-49/')
+    expect(body.card.depth).toBe(49)
   })
 
   it('creates child card with correct path and depth from root parent', async () => {
@@ -281,7 +298,7 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
     mockPrisma.card.create.mockResolvedValue({
       ...createdCard,
       parentCardId: 'parent-root',
-      path: 'parent-root/',
+      path: '/parent-root/',
       depth: 1,
     })
     const { POST } = await import('../../src/app/api/boards/[boardId]/cards/route')
@@ -293,7 +310,7 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.card.depth).toBe(1)
-    expect(body.card.path).toBe('parent-root/')
+    expect(body.card.path).toBe('/parent-root/')
   })
 })
 
@@ -339,5 +356,29 @@ describe('POST /api/boards/[boardId]/cards — aiReviewParams', () => {
     })
     const res = await POST(req, { params: { boardId: 'board-1' } })
     expect(res.status).toBe(400)
+  })
+
+  it('rejects aiReviewParams with model over 200 chars', async () => {
+    const { POST } = await import('../../src/app/api/boards/[boardId]/cards/route')
+    const req = makeRequest('http://localhost/api/boards/board-1/cards', {
+      ...baseCreateBody,
+      aiReviewParams: { model: 'x'.repeat(201), rubric: 'Check quality' },
+    })
+    const res = await POST(req, { params: { boardId: 'board-1' } })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe('Validation failed')
+  })
+
+  it('rejects aiReviewParams with rubric over 10000 chars', async () => {
+    const { POST } = await import('../../src/app/api/boards/[boardId]/cards/route')
+    const req = makeRequest('http://localhost/api/boards/board-1/cards', {
+      ...baseCreateBody,
+      aiReviewParams: { model: 'claude-sonnet-4-6', rubric: 'x'.repeat(10001) },
+    })
+    const res = await POST(req, { params: { boardId: 'board-1' } })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe('Validation failed')
   })
 })

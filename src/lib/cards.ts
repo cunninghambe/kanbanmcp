@@ -4,24 +4,26 @@ import type { PrismaClient } from '@prisma/client'
 export const MAX_NESTING_DEPTH = 50
 
 export const aiReviewParamsSchema = z.object({
-  model: z.string().min(1),
-  rubric: z.string().min(1),
-  customInstructions: z.string().optional(),
+  model: z.string().min(1).max(200),
+  rubric: z.string().min(1).max(10000),
+  customInstructions: z.string().max(10000).optional(),
 })
 
 export type AiReviewParams = z.infer<typeof aiReviewParamsSchema>
 
 /**
  * Computes the path and depth for a child card given its parent.
- * depth 49 + 1 = 50 is the cap; rejection is at parent.depth + 1 > MAX_NESTING_DEPTH.
+ * Root card has path "". Child of root has path "/rootId/". Grandchild has "/rootId/childId/".
+ * Rejection at parent.depth + 1 >= MAX_NESTING_DEPTH (i.e. parent at depth 49 -> 400).
  */
 export function computeChildPathAndDepth(parent: {
   id: string
   path: string
   depth: number
 }): { path: string; depth: number } {
+  const prefix = parent.path === '' ? '/' : parent.path
   return {
-    path: `${parent.path}${parent.id}/`,
+    path: `${prefix}${parent.id}/`,
     depth: parent.depth + 1,
   }
 }

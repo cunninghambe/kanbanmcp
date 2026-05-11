@@ -16,14 +16,14 @@ describe('MAX_NESTING_DEPTH', () => {
 describe('computeChildPathAndDepth', () => {
   it('root parent → child path and depth 1', () => {
     expect(computeChildPathAndDepth({ id: 'A', path: '', depth: 0 })).toEqual({
-      path: 'A/',
+      path: '/A/',
       depth: 1,
     })
   })
 
   it('nested parent → extends path and increments depth', () => {
-    expect(computeChildPathAndDepth({ id: 'C', path: 'A/B/', depth: 2 })).toEqual({
-      path: 'A/B/C/',
+    expect(computeChildPathAndDepth({ id: 'C', path: '/A/B/', depth: 2 })).toEqual({
+      path: '/A/B/C/',
       depth: 3,
     })
   })
@@ -81,6 +81,46 @@ describe('aiReviewParamsSchema', () => {
     const result = aiReviewParamsSchema.safeParse({
       model: 'claude-sonnet-4-6',
       rubric: '',
+    })
+    expect(result.success).toBe(false)
+  })
+  it('rejects model over 200 chars', () => {
+    const result = aiReviewParamsSchema.safeParse({
+      model: 'x'.repeat(201),
+      rubric: 'Check quality',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts model exactly 200 chars', () => {
+    const result = aiReviewParamsSchema.safeParse({
+      model: 'x'.repeat(200),
+      rubric: 'Check quality',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects rubric over 10000 chars', () => {
+    const result = aiReviewParamsSchema.safeParse({
+      model: 'claude-sonnet-4-6',
+      rubric: 'x'.repeat(10001),
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts rubric exactly 10000 chars', () => {
+    const result = aiReviewParamsSchema.safeParse({
+      model: 'claude-sonnet-4-6',
+      rubric: 'x'.repeat(10000),
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects customInstructions over 10000 chars', () => {
+    const result = aiReviewParamsSchema.safeParse({
+      model: 'claude-sonnet-4-6',
+      rubric: 'Check quality',
+      customInstructions: 'x'.repeat(10001),
     })
     expect(result.success).toBe(false)
   })

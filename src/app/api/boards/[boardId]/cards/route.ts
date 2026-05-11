@@ -85,15 +85,17 @@ export async function POST(
     }
 
     // Validate all role user IDs are org members (IDOR protection)
-    const roleIds = ([assigneeId, reviewerId, approverId] as const).filter(
-      (id): id is string => id !== undefined
+    const roleIdEntries: Array<[string, string]> = [['assigneeId', assigneeId]]
+    if (reviewerId !== undefined) roleIdEntries.push(['reviewerId', reviewerId])
+    if (approverId !== undefined) roleIdEntries.push(['approverId', approverId])
+
+    const memberCheck = await roleMembershipCheck(
+      prisma,
+      roleIdEntries.map(([, id]) => id),
+      session.orgId
     )
-    const memberCheck = await roleMembershipCheck(prisma, roleIds, session.orgId)
     if (!memberCheck.ok) {
-      const missingId = memberCheck.missingId
-      let role = 'assigneeId'
-      if (missingId === reviewerId) role = 'reviewerId'
-      else if (missingId === approverId) role = 'approverId'
+      const [role] = roleIdEntries.find(([, id]) => id === memberCheck.missingId) ?? ['assigneeId']
       return apiError(400, `${role} must be a member of this organization`)
     }
 
@@ -111,8 +113,8 @@ export async function POST(
       if (parentCard.boardId !== params.boardId) {
         return apiError(400, 'Parent card must be on the same board')
       }
-      // depth 49 + 1 = 50 is allowed; reject at > MAX_NESTING_DEPTH
-      if (parentCard.depth + 1 > MAX_NESTING_DEPTH) {
+      // parent at depth 49 -> child would be depth 50 = MAX_NESTING_DEPTH -> reject
+      if (parentCard.depth + 1 >= MAX_NESTING_DEPTH) {
         return apiError(400, 'Maximum nesting depth (50) reached')
       }
       const computed = computeChildPathAndDepth(parentCard)
