@@ -2,13 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
+import {
+  aiReviewParamsSchema,
+  computeChildPathAndDepth,
+  roleMembershipCheck,
+  decodeAiReviewParams,
+  MAX_NESTING_DEPTH,
+} from '@/lib/cards'
 
 const createCardSchema = z.object({
   title: z.string().min(1, 'Title is required').max(500),
   columnId: z.string().min(1, 'Column ID is required'),
   description: z.string().optional(),
   sprintId: z.string().optional(),
-  assigneeId: z.string().optional(),
+  assigneeId: z.string().min(1), // NOW REQUIRED — AC-4
+  reviewerId: z.string().min(1).optional(),
+  approverId: z.string().min(1).optional(),
+  parentCardId: z.string().min(1).optional(),
+  aiAutoReview: z.boolean().optional(),
+  aiReviewParams: aiReviewParamsSchema.nullable().optional(),
   dueDate: z.string().datetime({ offset: true }).optional(),
   labels: z.array(z.string()).optional(),
 })
@@ -41,19 +53,73 @@ export async function POST(
     const body = await req.json()
     const result = createCardSchema.safeParse(body)
     if (!result.success) {
+      const hasAssigneeIssue = result.error.issues.some((i) => i.path[0] === 'assigneeId')
+      if (hasAssigneeIssue) {
+        return apiError(400, 'assigneeId is required')
+      }
       return NextResponse.json(
         { error: 'Validation failed', issues: result.error.issues },
         { status: 400 }
       )
     }
 
-    const { title, columnId, description, sprintId, assigneeId, dueDate, labels } =
-      result.data
+    const {
+      title,
+      columnId,
+      description,
+      sprintId,
+      assigneeId,
+      reviewerId,
+      approverId,
+      parentCardId,
+      aiAutoReview,
+      aiReviewParams,
+      dueDate,
+      labels,
+    } = result.data
 
     // Verify the column belongs to this board
     const column = await prisma.column.findUnique({ where: { id: columnId } })
     if (!column || column.boardId !== params.boardId) {
       return apiError(400, 'Column does not belong to this board')
+    }
+
+    // Validate all role user IDs are org members (IDOR protection)
+    const roleIdEntries: Array<[string, string]> = [['assigneeId', assigneeId]]
+    if (reviewerId !== undefined) roleIdEntries.push(['reviewerId', reviewerId])
+    if (approverId !== undefined) roleIdEntries.push(['approverId', approverId])
+
+    const memberCheck = await roleMembershipCheck(
+      prisma,
+      roleIdEntries.map(([, id]) => id),
+      session.orgId
+    )
+    if (!memberCheck.ok) {
+      const [role] = roleIdEntries.find(([, id]) => id === memberCheck.missingId) ?? ['assigneeId']
+      return apiError(400, `${role} must be a member of this organization`)
+    }
+
+    // Validate parent card if provided; compute path and depth
+    let path = ''
+    let depth = 0
+    if (parentCardId !== undefined) {
+      const parentCard = await prisma.card.findUnique({
+        where: { id: parentCardId },
+        select: { id: true, boardId: true, path: true, depth: true },
+      })
+      if (!parentCard) {
+        return apiError(400, 'Parent card not found')
+      }
+      if (parentCard.boardId !== params.boardId) {
+        return apiError(400, 'Parent card must be on the same board')
+      }
+      // parent at depth 49 -> child would be depth 50 = MAX_NESTING_DEPTH -> reject
+      if (parentCard.depth + 1 >= MAX_NESTING_DEPTH) {
+        return apiError(400, 'Maximum nesting depth (50) reached')
+      }
+      const computed = computeChildPathAndDepth(parentCard)
+      path = computed.path
+      depth = computed.depth
     }
 
     // Determine position: max existing position in the column + 1
@@ -88,7 +154,14 @@ export async function POST(
         columnId,
         boardId: params.boardId,
         sprintId: sprintId ?? null,
-        assigneeId: assigneeId ?? null,
+        assigneeId,
+        reviewerId: reviewerId ?? null,
+        approverId: approverId ?? null,
+        parentCardId: parentCardId ?? null,
+        path,
+        depth,
+        aiAutoReview: aiAutoReview ?? false,
+        aiReviewParams: aiReviewParams ? JSON.stringify(aiReviewParams) : null,
         position,
         dueDate: dueDate ? new Date(dueDate) : null,
         createdById,
@@ -104,11 +177,21 @@ export async function POST(
       include: {
         labels: { include: { label: true } },
         assignee: { select: { id: true, email: true, name: true } },
+        reviewer: { select: { id: true, email: true, name: true } },
+        approver: { select: { id: true, email: true, name: true } },
         createdBy: { select: { id: true, email: true, name: true } },
       },
     })
 
-    return NextResponse.json({ card }, { status: 201 })
+    return NextResponse.json(
+      {
+        card: {
+          ...card,
+          aiReviewParams: decodeAiReviewParams(card.aiReviewParams),
+        },
+      },
+      { status: 201 }
+    )
   } catch (err) {
     if (err instanceof NextResponse) return err
     console.error('POST /api/boards/[boardId]/cards error:', err)

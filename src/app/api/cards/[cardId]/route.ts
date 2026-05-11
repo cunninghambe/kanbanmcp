@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
+import {
+  aiReviewParamsSchema,
+  roleMembershipCheck,
+  decodeAiReviewParams,
+} from '@/lib/cards'
 
 const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
 
@@ -11,7 +16,12 @@ const updateCardSchema = z.object({
   columnId: z.string().optional(),
   position: z.number().int().min(0).optional(),
   sprintId: z.string().nullable().optional(),
-  assigneeId: z.string().nullable().optional(),
+  // PATCH no longer accepts null — see spec §8 "App-layer Zod"
+  assigneeId: z.string().min(1).optional(),
+  reviewerId: z.string().min(1).nullable().optional(),
+  approverId: z.string().min(1).nullable().optional(),
+  aiAutoReview: z.boolean().optional(),
+  aiReviewParams: aiReviewParamsSchema.nullable().optional(),
   dueDate: z.string().datetime({ offset: true }).nullable().optional(),
   priority: z.enum(VALID_PRIORITIES).optional(),
   labels: z.array(z.string()).optional(),
@@ -44,7 +54,7 @@ async function resolveCard(cardId: string, orgId: string) {
 }
 
 // GET /api/cards/[cardId]
-// Returns card with labels, comments, and assignee details.
+// Returns card with labels, comments, assignee, reviewer, and approver details.
 export async function GET(
   req: NextRequest,
   { params }: { params: { cardId: string } }
@@ -65,6 +75,8 @@ export async function GET(
           },
         },
         assignee: { select: { id: true, email: true, name: true } },
+        reviewer: { select: { id: true, email: true, name: true } },
+        approver: { select: { id: true, email: true, name: true } },
         createdBy: { select: { id: true, email: true, name: true } },
         column: { select: { id: true, name: true } },
         sprint: { select: { id: true, name: true, status: true } },
@@ -75,7 +87,12 @@ export async function GET(
       return apiError(404, 'Card not found')
     }
 
-    return NextResponse.json({ card })
+    return NextResponse.json({
+      card: {
+        ...card,
+        aiReviewParams: decodeAiReviewParams(card.aiReviewParams),
+      },
+    })
   } catch (err) {
     if (err instanceof NextResponse) return err
     console.error('GET /api/cards/[cardId] error:', err)
@@ -84,7 +101,7 @@ export async function GET(
 }
 
 // PATCH /api/cards/[cardId]
-// Updates card fields. Handles column moves and bulk position updates.
+// Updates card fields. Handles column moves, bulk position updates, and new M1 fields.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { cardId: string } }
@@ -110,6 +127,10 @@ export async function PATCH(
       position,
       sprintId,
       assigneeId,
+      reviewerId,
+      approverId,
+      aiAutoReview,
+      aiReviewParams,
       dueDate,
       priority,
       labels,
@@ -157,16 +178,22 @@ export async function PATCH(
       }
     }
 
-    // Validate assigneeId is a member of this org (prevent IDOR cross-org assignment)
-    if (assigneeId !== undefined && assigneeId !== null) {
-      const assigneeMembership = await prisma.orgMember.findUnique({
-        where: { userId_orgId: { userId: assigneeId, orgId: session.orgId } },
-      })
-      if (!assigneeMembership) {
-        return NextResponse.json(
-          { error: 'Assignee must be a member of this organization' },
-          { status: 400 }
-        )
+    // Validate role user IDs are org members (IDOR protection)
+    const roleIdEntries: Array<[string, string]> = []
+    if (assigneeId !== undefined) roleIdEntries.push(['assigneeId', assigneeId])
+    if (reviewerId !== undefined && reviewerId !== null) roleIdEntries.push(['reviewerId', reviewerId])
+    if (approverId !== undefined && approverId !== null) roleIdEntries.push(['approverId', approverId])
+
+    if (roleIdEntries.length > 0) {
+      const memberCheck = await roleMembershipCheck(
+        prisma,
+        roleIdEntries.map(([, id]) => id),
+        session.orgId
+      )
+      if (!memberCheck.ok) {
+        const missingId = memberCheck.missingId
+        const [role] = roleIdEntries.find(([, id]) => id === missingId) ?? ['assigneeId']
+        return apiError(400, `${role} must be a member of this organization`)
       }
     }
 
@@ -199,6 +226,13 @@ export async function PATCH(
       if (resolvedPosition !== undefined) updateData.position = resolvedPosition
       if (sprintId !== undefined) updateData.sprintId = sprintId
       if (assigneeId !== undefined) updateData.assigneeId = assigneeId
+      if (reviewerId !== undefined) updateData.reviewerId = reviewerId
+      if (approverId !== undefined) updateData.approverId = approverId
+      if (aiAutoReview !== undefined) updateData.aiAutoReview = aiAutoReview
+      if (aiReviewParams !== undefined) {
+        updateData.aiReviewParams =
+          aiReviewParams === null ? null : JSON.stringify(aiReviewParams)
+      }
       if (dueDate !== undefined)
         updateData.dueDate = dueDate ? new Date(dueDate) : null
       if (priority !== undefined) updateData.priority = priority
@@ -222,13 +256,20 @@ export async function PATCH(
           },
         },
         assignee: { select: { id: true, email: true, name: true } },
+        reviewer: { select: { id: true, email: true, name: true } },
+        approver: { select: { id: true, email: true, name: true } },
         createdBy: { select: { id: true, email: true, name: true } },
         column: { select: { id: true, name: true } },
         sprint: { select: { id: true, name: true, status: true } },
       },
     })
 
-    return NextResponse.json({ card })
+    return NextResponse.json({
+      card: {
+        ...card,
+        aiReviewParams: decodeAiReviewParams(card?.aiReviewParams ?? null),
+      },
+    })
   } catch (err) {
     if (err instanceof NextResponse) return err
     console.error('PATCH /api/cards/[cardId] error:', err)
