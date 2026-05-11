@@ -188,4 +188,18 @@ describe('GET /api/cards/[cardId]/children', () => {
     expect(body.root.signoffs.reviewer).toMatchObject({ id: 'sig-1', decision: 'APPROVED' })
     expect(body.root.signoffs.approver).toBeNull()
   })
+
+  it('depth=0 returns root only with no findMany call (AC-8)', async () => {
+    mockPrisma.card.findUnique.mockResolvedValue(rootCard)
+    mockPrisma.signoff.findMany.mockResolvedValue([])
+    mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
+    const { GET } = await import('../../src/app/api/cards/[cardId]/children/route')
+    const req = makeRequest('http://localhost/api/cards/card-root/children?depth=0')
+    const res = await GET(req, { params: { cardId: 'card-root' } })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.root.id).toBe('card-root')
+    expect(body.descendants).toEqual([])
+    expect(mockPrisma.card.findMany).not.toHaveBeenCalled()
+  })
 })

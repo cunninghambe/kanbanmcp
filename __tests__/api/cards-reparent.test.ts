@@ -220,4 +220,44 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     const res = await POST(req, { params: { cardId: 'card-A' } })
     expect(res.status).toBe(400)
   })
+
+  it('accepts reparent when new parent is at depth 48 and card has no children (final depth 49)', async () => {
+    const cardA = { ...baseCard, id: 'card-A', depth: 0, path: '' }
+    const updatedCard = { ...cardA, parentCardId: 'card-B', path: '/card-B/', depth: 49 }
+    mockPrisma.card.findUnique
+      .mockResolvedValueOnce({ ...cardA, board: { orgId: 'org-1', id: 'board-1' } })
+      .mockResolvedValueOnce(updatedCard)
+    mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
+
+    txMock.card.findUnique
+      .mockResolvedValueOnce({ boardId: 'board-1', depth: 48, path: '/deep/' })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(cardA)
+
+    txMock.$queryRaw.mockResolvedValue([{ maxDepth: null }])
+
+    const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: 'card-B' })
+    const res = await POST(req, { params: { cardId: 'card-A' } })
+    expect(res.status).toBe(200)
+  })
+
+  it('rejects reparent when new parent is at depth 49 (would reach depth 50, AC-10)', async () => {
+    const cardA = { ...baseCard, id: 'card-A', depth: 0 }
+    mockPrisma.card.findUnique.mockResolvedValue({ ...cardA, board: { orgId: 'org-1', id: 'board-1' } })
+    mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
+
+    txMock.card.findUnique
+      .mockResolvedValueOnce({ boardId: 'board-1', depth: 49, path: '/very/deep/' })
+      .mockResolvedValueOnce(null)
+
+    txMock.$queryRaw.mockResolvedValue([{ maxDepth: null }])
+
+    const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: 'card-B' })
+    const res = await POST(req, { params: { cardId: 'card-A' } })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe('Maximum nesting depth (50) reached')
+  })
 })

@@ -3,17 +3,7 @@ import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { recomputeSubtreePathAndDepth } from '@/lib/tree'
 import { decodeAiReviewParams } from '@/lib/cards'
-
-async function resolveCard(cardId: string, orgId: string) {
-  const card = await prisma.card.findUnique({
-    where: { id: cardId },
-    include: { board: { select: { orgId: true } } },
-  })
-  if (!card || card.board.orgId !== orgId) {
-    throw NextResponse.json({ error: 'Card not found' }, { status: 404 })
-  }
-  return card
-}
+import { resolveCard } from '@/lib/resolve-card'
 
 // POST /api/cards/[cardId]/promote
 export async function POST(

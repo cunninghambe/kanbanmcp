@@ -101,64 +101,74 @@ export async function wouldFormCycle(
   return true
 }
 
-export async function fetchSubtree(
-  prisma: PrismaClient,
-  rootId: string,
-  maxDepth: number
-): Promise<SubtreeNode[]> {
-  const root = await prisma.card.findUnique({
-    where: { id: rootId },
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      parentCardId: true,
-      path: true,
-      depth: true,
-      aiAutoReview: true,
-      aiReviewParams: true,
-      assigneeId: true,
-      reviewerId: true,
-      approverId: true,
-      assignee: { select: { id: true, email: true, name: true } },
-      reviewer: { select: { id: true, email: true, name: true } },
-      approver: { select: { id: true, email: true, name: true } },
+const CARD_SUBTREE_SELECT = {
+  id: true,
+  title: true,
+  description: true,
+  parentCardId: true,
+  path: true,
+  depth: true,
+  aiAutoReview: true,
+  aiReviewParams: true,
+  assigneeId: true,
+  reviewerId: true,
+  approverId: true,
+  assignee: { select: { id: true, email: true, name: true } },
+  reviewer: { select: { id: true, email: true, name: true } },
+  approver: { select: { id: true, email: true, name: true } },
+} as const
+
+/** Maximum number of descendant rows returned per fetchSubtree call. */
+const SUBTREE_ROW_CAP = 1000
+
+type SignoffRow = {
+  id: string
+  cardId: string
+  role: string
+  decision: string
+  createdAt: Date
+  user: { id: string; name: string; email: string }
+}
+
+type CardRow = Prisma.CardGetPayload<{ select: typeof CARD_SUBTREE_SELECT }>
+
+function toSignoffSummary(s: SignoffRow): SignoffSummary {
+  return { id: s.id, decision: s.decision, createdAt: s.createdAt, user: s.user }
+}
+
+function toNode(c: CardRow, latestByCardRole: Map<string, SignoffRow>): SubtreeNode {
+  return {
+    id: c.id,
+    title: c.title,
+    description: c.description,
+    parentCardId: c.parentCardId,
+    path: c.path,
+    depth: c.depth,
+    aiAutoReview: c.aiAutoReview,
+    assigneeId: c.assigneeId,
+    reviewerId: c.reviewerId,
+    approverId: c.approverId,
+    assignee: c.assignee,
+    reviewer: c.reviewer,
+    approver: c.approver,
+    aiReviewParams: parseAiReviewParams(c.aiReviewParams),
+    signoffs: {
+      reviewer: latestByCardRole.has(`${c.id}:REVIEWER`)
+        ? toSignoffSummary(latestByCardRole.get(`${c.id}:REVIEWER`)!)
+        : null,
+      approver: latestByCardRole.has(`${c.id}:APPROVER`)
+        ? toSignoffSummary(latestByCardRole.get(`${c.id}:APPROVER`)!)
+        : null,
     },
-  })
-  if (!root) return []
+  }
+}
 
-  const subtreePrefix = root.path === '' ? `/${rootId}/` : `${root.path}${rootId}/`
-  const maxAbsoluteDepth = root.depth + maxDepth
-
-  const descendants = await prisma.card.findMany({
-    where: {
-      path: { startsWith: subtreePrefix },
-      depth: { lte: maxAbsoluteDepth },
-    },
-    orderBy: [{ path: 'asc' }, { position: 'asc' }],
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      parentCardId: true,
-      path: true,
-      depth: true,
-      aiAutoReview: true,
-      aiReviewParams: true,
-      assigneeId: true,
-      reviewerId: true,
-      approverId: true,
-      assignee: { select: { id: true, email: true, name: true } },
-      reviewer: { select: { id: true, email: true, name: true } },
-      approver: { select: { id: true, email: true, name: true } },
-    },
-  })
-
-  const allCards = [root, ...descendants]
-  const allIds = allCards.map((c) => c.id)
-
-  const allSignoffs = await prisma.signoff.findMany({
-    where: { cardId: { in: allIds } },
+async function fetchSignoffs(
+  prismaClient: PrismaClient,
+  cardIds: string[]
+): Promise<Map<string, SignoffRow>> {
+  const rows = await prismaClient.signoff.findMany({
+    where: { cardId: { in: cardIds } },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -169,48 +179,51 @@ export async function fetchSubtree(
       user: { select: { id: true, name: true, email: true } },
     },
   })
-
-  type SignoffRow = (typeof allSignoffs)[number]
-  const latestByCardRole = new Map<string, SignoffRow>()
-  for (const s of allSignoffs) {
+  const map = new Map<string, SignoffRow>()
+  for (const s of rows) {
     const key = `${s.cardId}:${s.role}`
-    if (!latestByCardRole.has(key)) latestByCardRole.set(key, s)
+    if (!map.has(key)) map.set(key, s)
+  }
+  return map
+}
+
+export async function fetchSubtree(
+  prismaClient: PrismaClient,
+  rootId: string,
+  maxDepth: number
+): Promise<{ nodes: SubtreeNode[]; truncated: boolean }> {
+  const root = await prismaClient.card.findUnique({
+    where: { id: rootId },
+    select: CARD_SUBTREE_SELECT,
+  })
+  if (!root) return { nodes: [], truncated: false }
+
+  if (maxDepth === 0) {
+    const signoffs = await fetchSignoffs(prismaClient, [root.id])
+    return { nodes: [toNode(root, signoffs)], truncated: false }
   }
 
-  function toSignoffSummary(s: SignoffRow): SignoffSummary {
-    return { id: s.id, decision: s.decision, createdAt: s.createdAt, user: s.user }
-  }
+  const subtreePrefix = root.path === '' ? `/${rootId}/` : `${root.path}${rootId}/`
+  const maxAbsoluteDepth = root.depth + maxDepth
 
-  function toNode(c: (typeof allCards)[number]): SubtreeNode {
-    const reviewerKey = `${c.id}:REVIEWER`
-    const approverKey = `${c.id}:APPROVER`
-    return {
-      id: c.id,
-      title: c.title,
-      description: c.description,
-      parentCardId: c.parentCardId,
-      path: c.path,
-      depth: c.depth,
-      aiAutoReview: c.aiAutoReview,
-      assigneeId: c.assigneeId,
-      reviewerId: c.reviewerId,
-      approverId: c.approverId,
-      assignee: c.assignee,
-      reviewer: c.reviewer,
-      approver: c.approver,
-      aiReviewParams: parseAiReviewParams(c.aiReviewParams),
-      signoffs: {
-        reviewer: latestByCardRole.has(reviewerKey)
-          ? toSignoffSummary(latestByCardRole.get(reviewerKey)!)
-          : null,
-        approver: latestByCardRole.has(approverKey)
-          ? toSignoffSummary(latestByCardRole.get(approverKey)!)
-          : null,
-      },
-    }
-  }
+  const descendants = await prismaClient.card.findMany({
+    where: {
+      path: { startsWith: subtreePrefix },
+      depth: { lte: maxAbsoluteDepth },
+    },
+    orderBy: [{ path: 'asc' }, { position: 'asc' }],
+    take: SUBTREE_ROW_CAP,
+    select: CARD_SUBTREE_SELECT,
+  })
+  const truncated = descendants.length === SUBTREE_ROW_CAP
 
-  return allCards.map(toNode)
+  const allCards = [root, ...descendants]
+  const signoffs = await fetchSignoffs(
+    prismaClient,
+    allCards.map((c) => c.id)
+  )
+
+  return { nodes: allCards.map((c) => toNode(c, signoffs)), truncated }
 }
 
 function parseAiReviewParams(

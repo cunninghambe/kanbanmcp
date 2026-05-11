@@ -297,9 +297,11 @@ export async function DELETE(
 
     await prisma.card.delete({ where: { id: params.cardId } })
 
-    for (const child of orphanedChildren) {
+    if (orphanedChildren.length > 0) {
       await prisma.$transaction(async (tx) => {
-        await recomputeSubtreePathAndDepth(tx, child.id, null)
+        for (const child of orphanedChildren) {
+          await recomputeSubtreePathAndDepth(tx, child.id, null)
+        }
       })
     }
 

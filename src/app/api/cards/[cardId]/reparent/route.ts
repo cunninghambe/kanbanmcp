@@ -4,21 +4,11 @@ import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { recomputeSubtreePathAndDepth, wouldFormCycle } from '@/lib/tree'
 import { MAX_NESTING_DEPTH, decodeAiReviewParams } from '@/lib/cards'
+import { resolveCard } from '@/lib/resolve-card'
 
 const reparentSchema = z.object({
   parentCardId: z.string().nullable(),
 })
-
-async function resolveCard(cardId: string, orgId: string) {
-  const card = await prisma.card.findUnique({
-    where: { id: cardId },
-    include: { board: { select: { orgId: true, id: true } } },
-  })
-  if (!card || card.board.orgId !== orgId) {
-    throw NextResponse.json({ error: 'Card not found' }, { status: 404 })
-  }
-  return card
-}
 
 // POST /api/cards/[cardId]/reparent
 // Body: { parentCardId: string | null }
