@@ -10,6 +10,7 @@
     "db:push": "npx prisma db push",
     "db:seed": "npx ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",
     "db:push-seed": "npm run db:push && npm run db:seed",
+    "db:seed-ai-reviewer": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed-ai-reviewer.ts",
     "test": "SESSION_SECRET=test-secret DATABASE_URL=file:./kanban.db npx vitest run"
   },
   "dependencies": {
