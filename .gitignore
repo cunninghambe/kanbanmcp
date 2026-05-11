@@ -5,3 +5,4 @@ node_modules/
 tsconfig.tsbuildinfo
 checkpoint-phase-*.json
 CLAUDE.md
+uploads/
