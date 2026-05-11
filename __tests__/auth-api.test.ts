@@ -252,8 +252,7 @@ describe('POST /api/auth/logout', () => {
 
   it('destroys session and returns 200', async () => {
     const { POST } = await import('../src/app/api/auth/logout/route')
-    const req = makeRequest('http://localhost/api/auth/logout', 'POST')
-    const res = await POST(req)
+    const res = await POST()
     expect(res.status).toBe(200)
     expect(mockSession.destroy).toHaveBeenCalled()
   })

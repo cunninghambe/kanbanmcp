@@ -1,10 +1,10 @@
-import { IronSessionOptions } from 'iron-session'
+import { SessionOptions } from 'iron-session'
 
 if (!process.env.SESSION_SECRET) {
   throw new Error('SESSION_SECRET env var is required')
 }
 
-export const sessionOptions: IronSessionOptions = {
+export const sessionOptions: SessionOptions = {
   cookieName: 'kanban-session',
   password: process.env.SESSION_SECRET,
   cookieOptions: {
