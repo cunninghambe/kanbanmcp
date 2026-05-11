@@ -2,13 +2,11 @@ import type {
   User,
   Organization,
   OrgMember,
-  OrgMemberRole,
   Team,
   TeamMember,
   Board,
   Column,
   Sprint,
-  SprintStatus,
   Card,
   Label,
   CardLabel,
@@ -23,13 +21,11 @@ export type {
   User,
   Organization,
   OrgMember,
-  OrgMemberRole,
   Team,
   TeamMember,
   Board,
   Column,
   Sprint,
-  SprintStatus,
   Card,
   Label,
   CardLabel,
@@ -38,6 +34,10 @@ export type {
   AgentActivity,
   Webhook,
 }
+
+// String literal unions replacing removed Prisma enums (schema uses String fields)
+export type OrgMemberRole = 'OWNER' | 'ADMIN' | 'MEMBER'
+export type SprintStatus = 'PLANNING' | 'ACTIVE' | 'COMPLETED'
 
 // Composite types
 export type BoardWithColumns = Board & {
