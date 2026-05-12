@@ -58,7 +58,7 @@ export async function POST(
         return apiError(400, 'assigneeId is required')
       }
       return NextResponse.json(
-        { error: 'Validation failed', issues: result.error.issues },
+        { error: 'Validation failed' },
         { status: 400 }
       )
     }

@@ -114,7 +114,6 @@ describe("SubcardTree", () => {
       ok: true,
       json: async () => ({ card: root }),
     });
-    global.confirm = vi.fn().mockReturnValue(true);
   });
 
   // ---- Loading state -------------------------------------------------------
@@ -126,6 +125,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -145,6 +145,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -169,6 +170,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -186,6 +188,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -206,6 +209,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -228,6 +232,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -262,6 +267,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -285,6 +291,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -306,6 +313,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -334,6 +342,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -364,6 +373,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={onOpenCard}
       />,
     );
@@ -372,12 +382,40 @@ describe("SubcardTree", () => {
     expect(onOpenCard).toHaveBeenCalledWith("card-child-1");
   });
 
-  // ---- Promote action ------------------------------------------------------
+  // ---- Promote action — dialog-based confirmation -------------------------
+
+  it("opens promote confirm dialog when Promote menu item is clicked", async () => {
+    setupMock({ root, descendants: [child1], truncated: false });
+    const user = userEvent.setup();
+
+    render(
+      <SubcardTree
+        cardId="card-root"
+        boardId="board-1"
+        columnId="col-1"
+        onOpenCard={defaultOnOpenCard}
+      />,
+    );
+
+    const actionBtn = screen.getByRole("button", {
+      name: /Actions for Child one/i,
+    });
+    await user.click(actionBtn);
+    await user.click(
+      screen.getByRole("menuitem", { name: /Promote to top-level/i }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(
+      screen.getByRole("heading", { name: /Promote to top-level card/i }),
+    ).toBeInTheDocument();
+  });
 
   it("shows promote confirm dialog and calls promote endpoint on confirm", async () => {
     setupMock({ root, descendants: [child1], truncated: false });
     const user = userEvent.setup();
-    global.confirm = vi.fn().mockReturnValue(true);
     vi.mocked(global.fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ card: child1 }),
@@ -387,24 +425,22 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
 
-    // Open the action menu
     const actionBtn = screen.getByRole("button", {
       name: /Actions for Child one/i,
     });
     await user.click(actionBtn);
-
-    const promoteBtn = screen.getByRole("menuitem", {
-      name: /Promote to top-level/i,
-    });
-    await user.click(promoteBtn);
-
-    expect(global.confirm).toHaveBeenCalledWith(
-      expect.stringContaining("Child one"),
+    await user.click(
+      screen.getByRole("menuitem", { name: /Promote to top-level/i }),
     );
+
+    // Confirm via Promote button in dialog
+    await user.click(screen.getByRole("button", { name: /^Promote$/i }));
+
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/cards/card-child-1/promote",
@@ -413,15 +449,15 @@ describe("SubcardTree", () => {
     });
   });
 
-  it("does NOT call promote endpoint when confirm is cancelled", async () => {
+  it("does NOT call promote endpoint when dialog Cancel is clicked", async () => {
     setupMock({ root, descendants: [child1], truncated: false });
     const user = userEvent.setup();
-    global.confirm = vi.fn().mockReturnValue(false);
 
     render(
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -430,12 +466,46 @@ describe("SubcardTree", () => {
       name: /Actions for Child one/i,
     });
     await user.click(actionBtn);
+    await user.click(
+      screen.getByRole("menuitem", { name: /Promote to top-level/i }),
+    );
 
-    const promoteBtn = screen.getByRole("menuitem", {
-      name: /Promote to top-level/i,
+    // Cancel via Cancel button in dialog
+    await user.click(screen.getByRole("button", { name: /^Cancel$/i }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/promote"),
+      expect.anything(),
+    );
+  });
+
+  it("closes promote dialog when Escape is pressed", async () => {
+    setupMock({ root, descendants: [child1], truncated: false });
+    const user = userEvent.setup();
+
+    render(
+      <SubcardTree
+        cardId="card-root"
+        boardId="board-1"
+        columnId="col-1"
+        onOpenCard={defaultOnOpenCard}
+      />,
+    );
+
+    const actionBtn = screen.getByRole("button", {
+      name: /Actions for Child one/i,
     });
-    await user.click(promoteBtn);
+    await user.click(actionBtn);
+    await user.click(
+      screen.getByRole("menuitem", { name: /Promote to top-level/i }),
+    );
 
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(global.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/promote"),
       expect.anything(),
@@ -445,7 +515,6 @@ describe("SubcardTree", () => {
   it("shows inline error when promote API call fails", async () => {
     setupMock({ root, descendants: [child1], truncated: false });
     const user = userEvent.setup();
-    global.confirm = vi.fn().mockReturnValue(true);
     vi.mocked(global.fetch).mockResolvedValue({
       ok: false,
       status: 500,
@@ -456,6 +525,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -464,10 +534,10 @@ describe("SubcardTree", () => {
       name: /Actions for Child one/i,
     });
     await user.click(actionBtn);
-
     await user.click(
       screen.getByRole("menuitem", { name: /Promote to top-level/i }),
     );
+    await user.click(screen.getByRole("button", { name: /^Promote$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/Promote failed/i);
@@ -484,6 +554,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -506,6 +577,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -529,6 +601,43 @@ describe("SubcardTree", () => {
     });
   });
 
+  it("sends correct columnId in add sub-card POST body", async () => {
+    setupMock({ root, descendants: [], truncated: false });
+    const user = userEvent.setup();
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ card: child1 }),
+    } as Response);
+
+    render(
+      <SubcardTree
+        cardId="card-root"
+        boardId="board-1"
+        columnId="col-correct"
+        onOpenCard={defaultOnOpenCard}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /\+ Add sub-card/i }));
+    await user.type(
+      screen.getByRole("textbox", { name: /Sub-card title/i }),
+      "A sub-card",
+    );
+    await user.click(screen.getByRole("button", { name: /^Add$/i }));
+
+    await waitFor(() => {
+      const call = vi.mocked(global.fetch).mock.calls.find((c) =>
+        (c[0] as string).includes("/api/boards/board-1/cards"),
+      );
+      expect(call).toBeDefined();
+      const body = JSON.parse(call![1]!.body as string) as Record<
+        string,
+        unknown
+      >;
+      expect(body.columnId).toBe("col-correct");
+    });
+  });
+
   it("shows inline error when add sub-card API call fails", async () => {
     setupMock({ root, descendants: [], truncated: false });
     const user = userEvent.setup();
@@ -542,6 +651,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -566,6 +676,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );
@@ -592,6 +703,7 @@ describe("SubcardTree", () => {
       <SubcardTree
         cardId="card-root"
         boardId="board-1"
+        columnId="col-1"
         onOpenCard={defaultOnOpenCard}
       />,
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import { z } from "zod";
 import { useSubcardTree } from "./useSubcardTree";
 import { SubcardRow } from "./SubcardRow";
 import type { SubtreeNode } from "@/lib/tree";
@@ -8,12 +9,62 @@ import type { SubtreeNode } from "@/lib/tree";
 // Relative depth at which nodes start collapsed
 const COLLAPSE_FROM_DEPTH = 3;
 
+// ---- Zod schema for lazy-fetch subtree response -----------------------------
+
+const userSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+});
+
+const signoffSummarySchema = z.object({
+  id: z.string(),
+  decision: z.string(),
+  createdAt: z.coerce.date(),
+  user: userSchema,
+});
+
+const subtreeNodeSchema: z.ZodType<SubtreeNode> = z.lazy(() =>
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    description: z.string().nullable(),
+    parentCardId: z.string().nullable(),
+    path: z.string(),
+    depth: z.number(),
+    aiAutoReview: z.boolean(),
+    assigneeId: z.string().nullable(),
+    reviewerId: z.string().nullable(),
+    approverId: z.string().nullable(),
+    assignee: userSchema.nullable(),
+    reviewer: userSchema.nullable(),
+    approver: userSchema.nullable(),
+    aiReviewParams: z
+      .object({
+        model: z.string(),
+        rubric: z.string(),
+        customInstructions: z.string().optional(),
+      })
+      .nullable(),
+    signoffs: z.object({
+      reviewer: signoffSummarySchema.nullable(),
+      approver: signoffSummarySchema.nullable(),
+    }),
+  }),
+);
+
+const subtreeResponseSchema = z.object({
+  root: subtreeNodeSchema,
+  descendants: z.array(subtreeNodeSchema),
+});
+
 // Max siblings to show before a "Show N more" expander
 const SIBLINGS_PAGE_SIZE = 50;
 
 export interface SubcardTreeProps {
   cardId: string;
   boardId: string;
+  columnId: string;
   onOpenCard: (cardId: string) => void;
 }
 
@@ -67,7 +118,7 @@ function TreeList({
   if (allChildren.length === 0) return null;
 
   return (
-    <ul className="list-none m-0 p-0" aria-label="Sub-cards">
+    <ul id={`children-${parentId}`} className="list-none m-0 p-0" aria-label="Sub-cards">
       {visible.map((node) => {
         const relDepth = node.depth - rootDepth;
         const expanded = isNodeExpanded(node.id, relDepth);
@@ -223,7 +274,12 @@ function AddSubcardForm({
 
 // ---- SubcardTree (main) -----------------------------------------------------
 
-export function SubcardTree({ cardId, boardId, onOpenCard }: SubcardTreeProps) {
+export function SubcardTree({
+  cardId,
+  boardId,
+  columnId,
+  onOpenCard,
+}: SubcardTreeProps) {
   const { data, isLoading, error, refresh } = useSubcardTree(cardId, 3);
 
   // Nodes explicitly expanded by the user
@@ -286,10 +342,8 @@ export function SubcardTree({ cardId, boardId, onOpenCard }: SubcardTreeProps) {
         try {
           const res = await fetch(`/api/cards/${node.id}/children?depth=3`);
           if (res.ok) {
-            const payload = (await res.json()) as {
-              root: SubtreeNode;
-              descendants: SubtreeNode[];
-            };
+            const json: unknown = await res.json();
+            const payload = subtreeResponseSchema.parse(json);
             setExtraDescendants((prev) => {
               // Avoid duplicate node IDs
               const existingIds = new Set(prev.map((n) => n.id));
@@ -388,11 +442,6 @@ export function SubcardTree({ cardId, boardId, onOpenCard }: SubcardTreeProps) {
     );
   }
 
-  // Resolve the columnId for the add-form default
-  const defaultColumnId = root
-    ? (root.path.split("/").filter(Boolean)[0] ?? "")
-    : "";
-
   return (
     <section aria-labelledby="subcards-heading">
       <div className="flex items-center justify-between mb-3">
@@ -423,7 +472,7 @@ export function SubcardTree({ cardId, boardId, onOpenCard }: SubcardTreeProps) {
         <AddSubcardForm
           boardId={boardId}
           parentCardId={cardId}
-          columnId={defaultColumnId}
+          columnId={columnId}
           assigneeId={root.assigneeId ?? ""}
           onCreated={() => {
             setShowAddForm(false);
