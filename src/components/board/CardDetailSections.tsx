@@ -11,6 +11,7 @@ import { SubcardTree } from "./SubcardTree";
 
 interface CardDetailSectionsCard {
   id: string;
+  columnId: string;
   assigneeId: string | null;
   reviewerId: string | null;
   approverId: string | null;
@@ -203,7 +204,12 @@ export function CardDetailSections({
       </section>
 
       {/* Sub-cards */}
-      <SubcardTree cardId={card.id} boardId={boardId} onOpenCard={onOpenCard} />
+      <SubcardTree
+        cardId={card.id}
+        boardId={boardId}
+        columnId={card.columnId}
+        onOpenCard={onOpenCard}
+      />
     </>
   );
 }
