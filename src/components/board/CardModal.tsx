@@ -373,6 +373,7 @@ export function CardModal({
 
               <CardDetailSections
                 card={card}
+                boardId={boardId}
                 orgMembers={orgMembers}
                 currentUserId={currentUserId}
                 isReviewer={isReviewer}
@@ -384,6 +385,17 @@ export function CardModal({
                 onSignoffSubmitted={() => {
                   mutateSignoffs();
                   mutate();
+                  onUpdate();
+                }}
+                onOpenCard={(subCardId) => {
+                  onClose();
+                  // Re-open modal with the sub-card. Since CardModal is controlled by
+                  // the parent via cardId prop, we surface this through onUpdate which
+                  // signals the parent board to refresh. The parent can intercept
+                  // card opens; for now we navigate to the sub-card by updating the URL.
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("cardId", subCardId);
+                  window.history.pushState({}, "", url.toString());
                   onUpdate();
                 }}
               />

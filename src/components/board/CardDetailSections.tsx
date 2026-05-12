@@ -7,6 +7,7 @@ import { ArtifactList } from "./ArtifactList";
 import { SignoffPanel } from "./SignoffPanel";
 import type { ExistingSignoff } from "./SignoffPanel";
 import type { AiReviewParams } from "@/lib/cards";
+import { SubcardTree } from "./SubcardTree";
 
 interface CardDetailSectionsCard {
   id: string;
@@ -29,6 +30,7 @@ interface LatestSignoffs {
 
 interface CardDetailSectionsProps {
   card: CardDetailSectionsCard;
+  boardId: string;
   orgMembers: OrgMember[];
   currentUserId: string | null;
   isReviewer: boolean;
@@ -44,6 +46,7 @@ interface CardDetailSectionsProps {
     params: AiReviewParams | null;
   }) => Promise<void>;
   onSignoffSubmitted: () => void;
+  onOpenCard: (cardId: string) => void;
 }
 
 function canDeleteArtifact(
@@ -57,6 +60,7 @@ function canDeleteArtifact(
 
 export function CardDetailSections({
   card,
+  boardId,
   orgMembers,
   currentUserId,
   isReviewer,
@@ -66,6 +70,7 @@ export function CardDetailSections({
   handleRoleChange,
   handleAiReviewSave,
   onSignoffSubmitted,
+  onOpenCard,
 }: CardDetailSectionsProps) {
   return (
     <>
@@ -196,6 +201,9 @@ export function CardDetailSections({
           </div>
         )}
       </section>
+
+      {/* Sub-cards */}
+      <SubcardTree cardId={card.id} boardId={boardId} onOpenCard={onOpenCard} />
     </>
   );
 }
