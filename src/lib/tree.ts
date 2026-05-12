@@ -190,7 +190,8 @@ async function fetchSignoffs(
 export async function fetchSubtree(
   prismaClient: PrismaClient,
   rootId: string,
-  maxDepth: number
+  maxDepth: number,
+  boardId?: string
 ): Promise<{ nodes: SubtreeNode[]; truncated: boolean }> {
   const root = await prismaClient.card.findUnique({
     where: { id: rootId },
@@ -210,6 +211,7 @@ export async function fetchSubtree(
     where: {
       path: { startsWith: subtreePrefix },
       depth: { lte: maxAbsoluteDepth },
+      ...(boardId !== undefined ? { boardId } : {}),
     },
     orderBy: [{ path: 'asc' }, { position: 'asc' }],
     take: SUBTREE_ROW_CAP,

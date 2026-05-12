@@ -20,15 +20,11 @@ export async function GET(
 ) {
   try {
     const session = await requireSession(req)
-    await resolveCard(params.cardId, session.orgId)
+    const card = await resolveCard(params.cardId, session.orgId)
     await requireOrgRole(session, session.orgId, 'MEMBER')
 
     const depth = parseDepth(req.nextUrl.searchParams.get('depth'))
-    const { nodes, truncated } = await fetchSubtree(prisma, params.cardId, depth)
-
-    if (nodes.length === 0) {
-      return apiError(404, 'Card not found')
-    }
+    const { nodes, truncated } = await fetchSubtree(prisma, params.cardId, depth, card.boardId)
 
     const [root, ...descendants] = nodes
     return NextResponse.json({ root, descendants, truncated })
