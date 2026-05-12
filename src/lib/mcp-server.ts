@@ -1,6 +1,9 @@
 import { prisma } from '@/lib/db'
 import { logActivity } from '@/lib/agent-activity'
 import { dispatchWebhook } from '@/lib/webhook'
+import { computeChildPathAndDepth, MAX_NESTING_DEPTH, roleMembershipCheck, aiReviewParamsSchema, decodeAiReviewParams } from '@/lib/cards'
+import { fetchSubtree } from '@/lib/tree'
+import { shapeArtifact } from '@/lib/artifacts'
 import type { AgentContext } from '@/types/index'
 
 const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
@@ -148,6 +151,96 @@ export const MCP_TOOLS: McpTool[] = [
         page: { type: 'number', description: 'Page number, 1-indexed (default 1).' },
       },
       required: ['orgId'],
+    },
+  },
+  {
+    name: 'create_subcard',
+    description: 'Create a child card under an existing parent card. The new card inherits the parent\'s board and column unless columnId is provided.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        parentCardId: { type: 'string', description: 'ID of the parent card.' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        assigneeId: { type: 'string', description: 'Required org member id.' },
+        reviewerId: { type: 'string', description: 'Optional org member id.' },
+        approverId: { type: 'string', description: 'Optional org member id.' },
+        columnId: { type: 'string', description: 'Optional override; defaults to the parent card\'s column.' },
+        priority: { type: 'string', enum: ['none', 'low', 'medium', 'high', 'critical'] },
+        dueDate: { type: 'string', description: 'Optional ISO 8601 datetime.' },
+      },
+      required: ['parentCardId', 'title', 'assigneeId'],
+    },
+  },
+  {
+    name: 'set_card_reviewers',
+    description: 'Update the reviewerId and/or approverId on a card. Pass null to clear; omit to leave unchanged.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cardId: { type: 'string' },
+        reviewerId: { type: ['string', 'null'] },
+        approverId: { type: ['string', 'null'] },
+      },
+      required: ['cardId'],
+    },
+  },
+  {
+    name: 'toggle_ai_review',
+    description: 'Toggle aiAutoReview on a card and optionally set aiReviewParams. Enabling this flag does NOT trigger review of already-uploaded artifacts (see list_artifacts + artifact review endpoints for that).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cardId: { type: 'string' },
+        enabled: { type: 'boolean' },
+        params: {
+          type: 'object',
+          properties: {
+            model: { type: 'string' },
+            rubric: { type: 'string' },
+            customInstructions: { type: 'string' },
+          },
+          required: ['model', 'rubric'],
+        },
+      },
+      required: ['cardId', 'enabled'],
+    },
+  },
+  {
+    name: 'list_card_tree',
+    description: 'List the subtree rooted at a card up to `depth` levels (default 1, max 5).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cardId: { type: 'string' },
+        depth: { type: 'number', description: 'Default 1, max 5.' },
+      },
+      required: ['cardId'],
+    },
+  },
+  {
+    name: 'record_signoff',
+    description: 'Record a signoff decision as the calling user. NOTE: This tool always returns an error in M1 because MCP authentication is API-key-only and signoffs require a human user session. This tool surface is reserved for future cookie-based MCP auth.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cardId: { type: 'string' },
+        role: { type: 'string', enum: ['REVIEWER', 'APPROVER'] },
+        decision: { type: 'string', enum: ['APPROVED', 'REJECTED', 'REQUESTED_CHANGES'] },
+        comment: { type: 'string' },
+      },
+      required: ['cardId', 'role', 'decision'],
+    },
+  },
+  {
+    name: 'list_artifacts',
+    description: 'List artifacts for a card with their AI reviews, ordered by creation time descending.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cardId: { type: 'string' },
+      },
+      required: ['cardId'],
     },
   },
 ]
@@ -559,6 +652,239 @@ async function toolGetActivity(
   }
 }
 
+async function toolCreateSubcard(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const parentCardId = params.parentCardId as string
+  const title = params.title as string
+  const assigneeId = params.assigneeId as string
+
+  if (!parentCardId) throw { code: -32602, message: 'parentCardId is required' }
+  if (!title) throw { code: -32602, message: 'title is required' }
+  if (!assigneeId) throw { code: -32602, message: 'assigneeId is required' }
+
+  if (params.priority !== undefined && !isValidPriority(params.priority)) {
+    throw { code: -32602, message: 'priority must be one of: none, low, medium, high, critical' }
+  }
+
+  const parent = await prisma.card.findFirst({
+    where: { id: parentCardId, board: { orgId: agentCtx.orgId } },
+    select: { id: true, path: true, depth: true, columnId: true, boardId: true },
+  })
+  if (!parent) throw { code: -32602, message: 'Parent card not found or access denied' }
+
+  if (parent.depth + 1 >= MAX_NESTING_DEPTH) {
+    throw { code: -32602, message: `Maximum nesting depth (${MAX_NESTING_DEPTH}) reached` }
+  }
+
+  const roleIds = [assigneeId, params.reviewerId, params.approverId]
+    .filter((id): id is string => typeof id === 'string')
+  const memberCheck = await roleMembershipCheck(prisma, roleIds, agentCtx.orgId)
+  if (!memberCheck.ok) {
+    throw { code: -32602, message: `User ${memberCheck.missingId} is not a member of this organization` }
+  }
+
+  const columnId = typeof params.columnId === 'string' ? params.columnId : parent.columnId
+
+  if (params.dueDate) {
+    const d = new Date(params.dueDate as string)
+    if (isNaN(d.getTime())) throw { code: -32602, message: 'dueDate must be a valid ISO 8601 date string' }
+  }
+
+  const aggregate = await prisma.card.aggregate({
+    where: { columnId },
+    _max: { position: true },
+  })
+  const position = (aggregate._max.position ?? 0) + 1
+
+  const orgMember = await prisma.orgMember.findFirst({
+    where: { orgId: agentCtx.orgId },
+    orderBy: { role: 'asc' },
+    select: { userId: true },
+  })
+  if (!orgMember) throw { code: -32602, message: 'No org member found to associate card with' }
+
+  const { path, depth } = computeChildPathAndDepth(parent)
+
+  const card = await prisma.card.create({
+    data: {
+      title,
+      description: typeof params.description === 'string' ? params.description : undefined,
+      columnId,
+      boardId: parent.boardId,
+      parentCardId,
+      path,
+      depth,
+      assigneeId,
+      reviewerId: typeof params.reviewerId === 'string' ? params.reviewerId : undefined,
+      approverId: typeof params.approverId === 'string' ? params.approverId : undefined,
+      priority: isValidPriority(params.priority) ? params.priority : 'none',
+      position,
+      agentId: agentCtx.agentName,
+      createdById: orgMember.userId,
+      dueDate: params.dueDate ? new Date(params.dueDate as string) : undefined,
+    },
+  })
+
+  logActivity(agentCtx.orgId, agentCtx.agentName, 'create_subcard', 'card', card.id, {
+    title,
+    parentCardId,
+    boardId: parent.boardId,
+    columnId,
+  }).catch(() => {})
+
+  dispatchWebhook(agentCtx.orgId, 'card.created', {
+    cardId: card.id,
+    title: card.title,
+    parentCardId,
+    boardId: parent.boardId,
+    columnId,
+    agentName: agentCtx.agentName,
+  }).catch(() => {})
+
+  return card
+}
+
+async function toolSetCardReviewers(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const cardId = params.cardId as string
+  if (!cardId) throw { code: -32602, message: 'cardId is required' }
+
+  const existing = await prisma.card.findFirst({
+    where: { id: cardId, board: { orgId: agentCtx.orgId } },
+  })
+  if (!existing) throw { code: -32602, message: 'Card not found or access denied' }
+
+  const idsToCheck = [params.reviewerId, params.approverId].filter(
+    (id): id is string => typeof id === 'string'
+  )
+  if (idsToCheck.length > 0) {
+    const memberCheck = await roleMembershipCheck(prisma, idsToCheck, agentCtx.orgId)
+    if (!memberCheck.ok) {
+      throw { code: -32602, message: `User ${memberCheck.missingId} is not a member of this organization` }
+    }
+  }
+
+  const updateData: Record<string, string | null> = {}
+  if ('reviewerId' in params) updateData.reviewerId = params.reviewerId as string | null
+  if ('approverId' in params) updateData.approverId = params.approverId as string | null
+
+  const card = await prisma.card.update({
+    where: { id: cardId },
+    data: updateData,
+  })
+
+  logActivity(agentCtx.orgId, agentCtx.agentName, 'set_card_reviewers', 'card', card.id, {
+    updatedFields: Object.keys(updateData),
+  }).catch(() => {})
+
+  dispatchWebhook(agentCtx.orgId, 'card.updated', {
+    cardId: card.id,
+    updatedFields: Object.keys(updateData),
+    agentName: agentCtx.agentName,
+  }).catch(() => {})
+
+  return card
+}
+
+async function toolToggleAiReview(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const cardId = params.cardId as string
+  if (!cardId) throw { code: -32602, message: 'cardId is required' }
+  if (typeof params.enabled !== 'boolean') throw { code: -32602, message: 'enabled must be a boolean' }
+
+  const existing = await prisma.card.findFirst({
+    where: { id: cardId, board: { orgId: agentCtx.orgId } },
+  })
+  if (!existing) throw { code: -32602, message: 'Card not found or access denied' }
+
+  const updateData: Record<string, unknown> = { aiAutoReview: params.enabled }
+
+  if (params.params !== undefined) {
+    const parsed = aiReviewParamsSchema.safeParse(params.params)
+    if (!parsed.success) {
+      throw { code: -32602, message: `Invalid aiReviewParams: ${parsed.error.issues.map((i) => i.message).join(', ')}` }
+    }
+    updateData.aiReviewParams = JSON.stringify(parsed.data)
+  }
+
+  const card = await prisma.card.update({
+    where: { id: cardId },
+    data: updateData,
+  })
+
+  logActivity(agentCtx.orgId, agentCtx.agentName, 'toggle_ai_review', 'card', card.id, {
+    enabled: params.enabled,
+  }).catch(() => {})
+
+  dispatchWebhook(agentCtx.orgId, 'card.updated', {
+    cardId: card.id,
+    updatedFields: ['aiAutoReview', ...(params.params !== undefined ? ['aiReviewParams'] : [])],
+    agentName: agentCtx.agentName,
+  }).catch(() => {})
+
+  return { ...card, aiReviewParams: decodeAiReviewParams(card.aiReviewParams) }
+}
+
+async function toolListCardTree(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const cardId = params.cardId as string
+  if (!cardId) throw { code: -32602, message: 'cardId is required' }
+
+  const existing = await prisma.card.findFirst({
+    where: { id: cardId, board: { orgId: agentCtx.orgId } },
+    select: { id: true, boardId: true },
+  })
+  if (!existing) throw { code: -32602, message: 'Card not found or access denied' }
+
+  const rawDepth = typeof params.depth === 'number' ? params.depth : 1
+  const depth = Math.min(Math.max(rawDepth, 0), 5)
+
+  const { nodes, truncated } = await fetchSubtree(prisma, cardId, depth, existing.boardId)
+
+  const [root, ...descendants] = nodes
+  return { root, descendants, truncated }
+}
+
+async function toolRecordSignoff(
+  _params: Record<string, unknown>,
+  _agentCtx: AgentContext
+): Promise<unknown> {
+  throw {
+    code: -32602,
+    message: 'record_signoff requires a human user session; MCP is API-key-only in M1',
+  }
+}
+
+async function toolListArtifacts(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const cardId = params.cardId as string
+  if (!cardId) throw { code: -32602, message: 'cardId is required' }
+
+  const existing = await prisma.card.findFirst({
+    where: { id: cardId, board: { orgId: agentCtx.orgId } },
+    select: { id: true },
+  })
+  if (!existing) throw { code: -32602, message: 'Card not found or access denied' }
+
+  const artifacts = await prisma.artifact.findMany({
+    where: { cardId },
+    orderBy: { createdAt: 'desc' },
+    include: { uploader: true, reviews: true },
+  })
+
+  return { artifacts: artifacts.map(shapeArtifact) }
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch table
 // ---------------------------------------------------------------------------
@@ -575,6 +901,12 @@ const TOOL_HANDLERS: Record<
   list_sprints: toolListSprints,
   add_comment: toolAddComment,
   get_activity: toolGetActivity,
+  create_subcard: toolCreateSubcard,
+  set_card_reviewers: toolSetCardReviewers,
+  toggle_ai_review: toolToggleAiReview,
+  list_card_tree: toolListCardTree,
+  record_signoff: toolRecordSignoff,
+  list_artifacts: toolListArtifacts,
 }
 
 // ---------------------------------------------------------------------------
