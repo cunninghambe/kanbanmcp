@@ -359,7 +359,7 @@ describe('list_card_tree', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.card.findFirst.mockResolvedValue({ id: 'card-root', board: { orgId: 'org-1' } })
+    mockPrisma.card.findFirst.mockResolvedValue({ id: 'card-root', boardId: 'board-1', board: { orgId: 'org-1' } })
     mockPrisma.card.findUnique.mockResolvedValue(rootNode)
     mockPrisma.card.findMany.mockResolvedValue([])
     mockPrisma.signoff.findMany.mockResolvedValue([])
@@ -436,14 +436,14 @@ describe('list_card_tree', () => {
 
 // ─── record_signoff ───────────────────────────────────────────────────────────
 describe('record_signoff', () => {
-  it('always returns error code -32004 (M1: API key cannot record signoffs)', async () => {
+  it('always returns error code -32602 (M1: API key cannot record signoffs)', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
     const result = await handleMcpRequest(
       makeRpc('record_signoff', { cardId: 'card-1', role: 'REVIEWER', decision: 'APPROVED' }),
       agentCtx
     ) as { error: { code: number; message: string } }
     expect(result.error).toBeDefined()
-    expect(result.error.code).toBe(-32004)
+    expect(result.error.code).toBe(-32602)
     expect(result.error.message).toContain('human user session')
   })
 
@@ -458,7 +458,7 @@ describe('record_signoff', () => {
       }),
       agentCtx
     ) as { error: { code: number } }
-    expect(result.error.code).toBe(-32004)
+    expect(result.error.code).toBe(-32602)
   })
 
   it('never reads or writes any card data (throws before touching DB)', async () => {

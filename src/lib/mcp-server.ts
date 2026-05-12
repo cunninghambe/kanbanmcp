@@ -840,16 +840,14 @@ async function toolListCardTree(
 
   const existing = await prisma.card.findFirst({
     where: { id: cardId, board: { orgId: agentCtx.orgId } },
-    select: { id: true },
+    select: { id: true, boardId: true },
   })
   if (!existing) throw { code: -32602, message: 'Card not found or access denied' }
 
   const rawDepth = typeof params.depth === 'number' ? params.depth : 1
   const depth = Math.min(Math.max(rawDepth, 0), 5)
 
-  const { nodes, truncated } = await fetchSubtree(prisma, cardId, depth)
-
-  if (nodes.length === 0) throw { code: -32602, message: 'Card not found' }
+  const { nodes, truncated } = await fetchSubtree(prisma, cardId, depth, existing.boardId)
 
   const [root, ...descendants] = nodes
   return { root, descendants, truncated }
@@ -860,7 +858,7 @@ async function toolRecordSignoff(
   _agentCtx: AgentContext
 ): Promise<unknown> {
   throw {
-    code: -32004,
+    code: -32602,
     message: 'record_signoff requires a human user session; MCP is API-key-only in M1',
   }
 }
