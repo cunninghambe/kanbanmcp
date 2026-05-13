@@ -112,6 +112,7 @@ export function CardDetailSections({
           AI Auto-Review
         </h3>
         <AiReviewToggle
+          key={card.id}
           enabled={card.aiAutoReview}
           params={card.aiReviewParams}
           parentTitle={card.parent?.title ?? null}

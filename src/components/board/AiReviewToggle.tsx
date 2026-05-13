@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useId, useState, useEffect } from 'react'
+import React, { useId, useState } from 'react'
 import { z } from 'zod'
 import type { AiReviewParams } from '@/lib/cards'
 import { Button } from '@/components/ui/Button'
@@ -62,17 +62,6 @@ export function AiReviewToggle({
   const [errors, setErrors] = useState<ParamsFormErrors>({})
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-
-  // Sync props when card refreshes
-  useEffect(() => {
-    setLocalEnabled(enabled)
-    setShowParams(enabled)
-    setForm({
-      model: params?.model ?? 'claude-sonnet-4-6',
-      rubric: params?.rubric ?? '',
-      customInstructions: params?.customInstructions ?? '',
-    })
-  }, [enabled, params])
 
   async function handleToggle(e: React.ChangeEvent<HTMLInputElement>) {
     const next = e.target.checked
