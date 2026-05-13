@@ -7,6 +7,7 @@ import { useSession } from '@/hooks/useSession'
 import { Header } from '@/components/layout/Header'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { AssignmentWidget } from '@/components/dashboard/AssignmentWidget'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -43,54 +44,69 @@ export default function DashboardPage() {
     }
   }
 
+  function handleCardClick(boardId: string, _cardId: string) {
+    router.push(`/board/${boardId}`)
+  }
+
   return (
     <>
       <Header title="Dashboard" />
       <main className="flex-1 p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-2xl font-bold text-slate-900">Your Boards</h1>
-            <Button onClick={() => setShowNewBoard(true)}>New Board</Button>
-          </div>
+        <div className="max-w-6xl mx-auto space-y-8">
+          <section aria-labelledby="assignments-heading">
+            <h2 id="assignments-heading" className="text-xl font-bold text-slate-900 mb-4">
+              My Assignments
+            </h2>
+            <AssignmentWidget onCardClick={handleCardClick} />
+          </section>
 
-          {boards.length === 0 ? (
-            <div className="text-center py-16 text-slate-500">
-              <p className="text-lg mb-4">No boards yet</p>
-              <Button onClick={() => setShowNewBoard(true)}>Create your first board</Button>
+          <section aria-labelledby="boards-heading">
+            <div className="flex items-center justify-between mb-4">
+              <h2 id="boards-heading" className="text-xl font-bold text-slate-900">
+                Your Boards
+              </h2>
+              <Button onClick={() => setShowNewBoard(true)}>New Board</Button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {boards.map(
-                (board: {
-                  id: string
-                  name: string
-                  columnCount?: number
-                  cardCount?: number
-                  createdAt?: string
-                  updatedAt?: string
-                }) => (
-                  <button
-                    key={board.id}
-                    onClick={() => router.push(`/board/${board.id}`)}
-                    className="bg-white rounded-lg border border-slate-200 p-5 text-left hover:border-blue-300 hover:shadow-md transition-all group"
-                  >
-                    <h3 className="font-semibold text-slate-900 group-hover:text-blue-700 transition-colors mb-3">
-                      {board.name}
-                    </h3>
-                    <div className="flex items-center gap-4 text-sm text-slate-500">
-                      <span>{board.columnCount ?? 0} columns</span>
-                      <span>{board.cardCount ?? 0} cards</span>
-                    </div>
-                    {(board.updatedAt ?? board.createdAt) && (
-                      <p className="text-xs text-slate-400 mt-2">
-                        Updated {new Date(board.updatedAt ?? board.createdAt!).toLocaleDateString()}
-                      </p>
-                    )}
-                  </button>
-                )
-              )}
-            </div>
-          )}
+
+            {boards.length === 0 ? (
+              <div className="text-center py-16 text-slate-500">
+                <p className="text-lg mb-4">No boards yet</p>
+                <Button onClick={() => setShowNewBoard(true)}>Create your first board</Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {boards.map(
+                  (board: {
+                    id: string
+                    name: string
+                    columnCount?: number
+                    cardCount?: number
+                    createdAt?: string
+                    updatedAt?: string
+                  }) => (
+                    <button
+                      key={board.id}
+                      onClick={() => router.push(`/board/${board.id}`)}
+                      className="bg-white rounded-lg border border-slate-200 p-5 text-left hover:border-blue-300 hover:shadow-md transition-all group"
+                    >
+                      <h3 className="font-semibold text-slate-900 group-hover:text-blue-700 transition-colors mb-3">
+                        {board.name}
+                      </h3>
+                      <div className="flex items-center gap-4 text-sm text-slate-500">
+                        <span>{board.columnCount ?? 0} columns</span>
+                        <span>{board.cardCount ?? 0} cards</span>
+                      </div>
+                      {(board.updatedAt ?? board.createdAt) && (
+                        <p className="text-xs text-slate-400 mt-2">
+                          Updated {new Date(board.updatedAt ?? board.createdAt!).toLocaleDateString()}
+                        </p>
+                      )}
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </section>
         </div>
       </main>
 
