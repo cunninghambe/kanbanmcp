@@ -17,11 +17,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ reviewId: s
         artifact: {
           select: { card: { select: { board: { select: { orgId: true } } } } },
         },
+        card: {
+          select: { board: { select: { orgId: true } } },
+        },
       },
     })
 
     if (!review) return apiError(404, 'Review not found')
-    if (review.artifact.card.board.orgId !== session.orgId) return apiError(404, 'Review not found')
+
+    const orgId = review.artifact?.card.board.orgId ?? review.card.board.orgId
+    if (orgId !== session.orgId) return apiError(404, 'Review not found')
 
     return NextResponse.json({ review: shapeReview(review) })
   } catch (err) {

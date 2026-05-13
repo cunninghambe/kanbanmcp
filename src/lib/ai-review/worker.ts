@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db'
 import { getStorageDriver } from '@/lib/storage'
 import { AI_REVIEWER_EMAIL, ensureAiReviewerUser } from '../../../prisma/seed-ai-reviewer'
 import { resolveEffectiveAiReviewParams } from './inheritance'
-import { extractContent } from './extractors'
+import { extractContent, PDF_SIZE_CAP } from './extractors'
 import { runClaudeReview } from './claude-client'
 import type { ExtractedContent } from './extractors'
 import type { AiReviewParams } from '@/lib/cards'
@@ -85,16 +85,31 @@ async function fetchAndExtract(artifact: {
   return { content }
 }
 
+async function getContentForDescriptionReview(
+  cardId: string
+): Promise<{ content: ExtractedContent } | { skipped: string }> {
+  const card = await prisma.card.findUnique({
+    where: { id: cardId },
+    select: { description: true },
+  })
+  if (!card) return { skipped: 'Card deleted before review' }
+  const desc = card.description?.trim() ?? ''
+  if (!desc) return { skipped: 'No description to review' }
+  const text = desc.slice(0, PDF_SIZE_CAP)
+  return { content: { kind: 'text', text } }
+}
+
 async function postReviewComment(
   reviewerUserId: string,
-  artifact: { cardId: string; filename: string },
+  cardId: string,
+  subject: string,
   output: string
 ): Promise<void> {
   await prisma.comment.create({
     data: {
-      cardId: artifact.cardId,
+      cardId,
       userId: reviewerUserId,
-      content: `**AI review of ${artifact.filename}:**\n\n${output}`,
+      content: `**AI review of ${subject}:**\n\n${output}`,
     },
   })
 }
@@ -117,17 +132,24 @@ async function runReview(reviewId: string): Promise<void> {
     return
   }
 
-  const artifact = review.artifact
+  const isDescriptionReview = review.artifactId === null
 
-  if (!artifact) {
-    await prisma.aiReview.update({
-      where: { id: reviewId },
-      data: { status: 'skipped', errorMessage: 'Artifact deleted before review' },
-    })
-    return
+  let fetchResult: { content: ExtractedContent } | { skipped: string }
+
+  if (isDescriptionReview) {
+    fetchResult = await getContentForDescriptionReview(review.cardId)
+  } else {
+    const artifact = review.artifact
+    if (!artifact) {
+      await prisma.aiReview.update({
+        where: { id: reviewId },
+        data: { status: 'skipped', errorMessage: 'Artifact deleted before review' },
+      })
+      return
+    }
+    fetchResult = await fetchAndExtract(artifact)
   }
 
-  const fetchResult = await fetchAndExtract(artifact)
   if ('skipped' in fetchResult) {
     await prisma.aiReview.update({
       where: { id: reviewId },
@@ -152,9 +174,13 @@ async function runReview(reviewId: string): Promise<void> {
     customInstructions: review.instructions ?? undefined,
   }
 
+  const filename = isDescriptionReview
+    ? 'card description'
+    : (review.artifact?.filename ?? 'unknown')
+
   let result: ClaudeReviewResult
   try {
-    result = await (claudeClientOverride ?? runClaudeReview)(params, content, artifact.filename)
+    result = await (claudeClientOverride ?? runClaudeReview)(params, content, filename)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     await prisma.aiReview.update({
@@ -179,9 +205,11 @@ async function runReview(reviewId: string): Promise<void> {
     },
   })
 
-  // Post comment — check artifact still exists first (E14)
-  const stillExists = await prisma.artifact.findUnique({ where: { id: artifact.id } })
-  if (!stillExists) return
+  // For artifact reviews: verify artifact still exists before posting comment (E14)
+  if (!isDescriptionReview) {
+    const stillExists = await prisma.artifact.findUnique({ where: { id: review.artifactId! } })
+    if (!stillExists) return
+  }
 
   const reviewerUserId = await getReviewerUserId()
   if (!reviewerUserId) {
@@ -189,7 +217,16 @@ async function runReview(reviewId: string): Promise<void> {
     return
   }
 
-  await postReviewComment(reviewerUserId, artifact, result.output)
+  // review.cardId is always set. Fall back to artifact.cardId for backward-compat with
+  // test fixtures that mock the row without a top-level cardId field.
+  const commentCardId = review.cardId ?? review.artifact?.cardId
+  if (!commentCardId) {
+    console.warn('[ai-review-worker] Could not resolve cardId for comment posting')
+    return
+  }
+
+  const subject = isDescriptionReview ? 'card description' : (review.artifact?.filename ?? 'unknown')
+  await postReviewComment(reviewerUserId, commentCardId, subject, result.output)
 }
 
 /**
@@ -216,6 +253,7 @@ export async function enqueueAiReview(artifactId: string): Promise<boolean> {
     await prisma.aiReview.create({
       data: {
         artifactId,
+        cardId: artifact.cardId,
         status: 'failed',
         model: 'unknown',
         rubricSnapshot: '',
@@ -228,6 +266,59 @@ export async function enqueueAiReview(artifactId: string): Promise<boolean> {
   const review = await prisma.aiReview.create({
     data: {
       artifactId,
+      cardId: artifact.cardId,
+      status: 'pending',
+      model: params.model,
+      rubricSnapshot: params.rubric,
+      instructions: params.customInstructions ?? null,
+    },
+  })
+
+  if (inFlightIds.has(review.id)) return true
+  inFlightIds.add(review.id)
+  queueTail = queueTail.then(() => processJob(review.id))
+  return true
+}
+
+/**
+ * Enqueues a description-only AI review for the given card.
+ * Returns false without creating a row if a pending or running description review already exists.
+ * Returns false if the card does not exist.
+ * Creates a failed row and returns true if params are not configured.
+ */
+export async function enqueueCardDescriptionReview(cardId: string): Promise<boolean> {
+  const card = await prisma.card.findUnique({
+    where: { id: cardId },
+    select: { id: true },
+  })
+  if (!card) return false
+
+  const existing = await prisma.aiReview.findFirst({
+    where: { cardId, artifactId: null, status: { in: ['pending', 'running'] } },
+    select: { id: true },
+  })
+  if (existing) return false
+
+  const params = await resolveEffectiveAiReviewParams(prisma, cardId)
+
+  if (!params) {
+    await prisma.aiReview.create({
+      data: {
+        artifactId: null,
+        cardId,
+        status: 'failed',
+        model: 'unknown',
+        rubricSnapshot: '',
+        errorMessage: 'No review params configured',
+      },
+    })
+    return true
+  }
+
+  const review = await prisma.aiReview.create({
+    data: {
+      artifactId: null,
+      cardId,
       status: 'pending',
       model: params.model,
       rubricSnapshot: params.rubric,

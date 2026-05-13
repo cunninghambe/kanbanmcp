@@ -156,6 +156,7 @@ model Card {
   comments  Comment[]
   artifacts Artifact[]
   signoffs  Signoff[]
+  aiReviews AiReview[]
 
   @@index([parentCardId])
   @@index([path])
@@ -261,7 +262,8 @@ model Artifact {
 
 model AiReview {
   id             String    @id @default(cuid())
-  artifactId     String
+  artifactId     String?
+  cardId         String
   // values: pending | running | done | failed | skipped
   status         String    @default("pending")
   model          String
@@ -275,9 +277,11 @@ model AiReview {
   finishedAt     DateTime?
   createdAt      DateTime  @default(now())
 
-  artifact Artifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  artifact Artifact? @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  card     Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
 
   @@index([artifactId])
+  @@index([cardId])
   @@index([status])
   @@map("ai_reviews")
 }

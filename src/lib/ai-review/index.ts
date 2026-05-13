@@ -1,1 +1,1 @@
-export { enqueueAiReview, flushForTests, bootstrapWorker } from './worker'
+export { enqueueAiReview, enqueueCardDescriptionReview, flushForTests, bootstrapWorker } from './worker'
