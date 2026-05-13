@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import useSWR from 'swr'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -120,13 +120,13 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
   const [comment, setComment] = useState('')
   const [submittingComment, setSubmittingComment] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [syncedCardId, setSyncedCardId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (card) {
-      setTitle(card.title)
-      setDescription(card.description ?? '')
-    }
-  }, [card])
+  if (card && card.id !== syncedCardId) {
+    setSyncedCardId(card.id)
+    setTitle(card.title)
+    setDescription(card.description ?? '')
+  }
 
   const allMembers: OrgMemberEntry[] = membersData?.members ?? membersData ?? []
   const labels = labelsData?.labels ?? labelsData ?? []
