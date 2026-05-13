@@ -49,7 +49,7 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
 
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
-    const res = await DELETE(req, { params: { artifactId: 'art-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
     expect(res.status).toBe(204)
   })
 
@@ -64,7 +64,7 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
 
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
-    const res = await DELETE(req, { params: { artifactId: 'art-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
     expect(res.status).toBe(204)
   })
 
@@ -79,7 +79,7 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
 
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
-    const res = await DELETE(req, { params: { artifactId: 'art-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toMatch(/uploader or an org admin/)
@@ -95,7 +95,7 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
 
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
-    const res = await DELETE(req, { params: { artifactId: 'art-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
     expect(res.status).toBe(204)
   })
 
@@ -103,7 +103,7 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
     mockPrisma.artifact.findUnique.mockResolvedValue(null)
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
-    const res = await DELETE(req, { params: { artifactId: 'art-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -114,7 +114,7 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
     })
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
-    const res = await DELETE(req, { params: { artifactId: 'art-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
     expect(res.status).toBe(404)
   })
 })

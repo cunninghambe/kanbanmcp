@@ -5,7 +5,8 @@ import { shapeReview } from '@/lib/ai-review/response'
 export type { AiReviewResponse } from '@/lib/ai-review/response'
 
 // GET /api/reviews/[reviewId]
-export async function GET(req: NextRequest, { params }: { params: { reviewId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ reviewId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, session.orgId, 'MEMBER')

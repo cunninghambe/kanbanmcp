@@ -98,7 +98,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
   it('returns 201 with artifact body on success', async () => {
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('test.pdf', 'application/pdf', 100))
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.artifact).toMatchObject({
@@ -113,7 +113,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
   it('returns 415 for disallowed MIME type', async () => {
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('evil.zip', 'application/zip', 100))
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(415)
     const body = await res.json()
     expect(body.error).toBe('Unsupported Media Type')
@@ -122,7 +122,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
   it('returns 415 for text/html (removed wildcard allows only explicit text types)', async () => {
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('page.html', 'text/html', 100))
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(415)
     const body = await res.json()
     expect(body.error).toBe('Unsupported Media Type')
@@ -132,7 +132,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const oversizeBytes = 25 * 1024 * 1024 + 1
     const req = makeFormDataRequest(makeFile('big.pdf', 'application/pdf', oversizeBytes))
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(413)
     const body = await res.json()
     expect(body.error).toBe('Payload Too Large')
@@ -146,7 +146,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
       headers: { 'content-length': String(oversizeBytes) },
       body: new Uint8Array(0),
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(413)
     const body = await res.json()
     expect(body.error).toBe('Payload Too Large')
@@ -162,7 +162,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
       method: 'POST',
       body: fd,
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Missing file field')
@@ -176,14 +176,14 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
-    await POST(req, { params: { cardId: 'card-1' } })
+    await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(mockEnqueue).toHaveBeenCalledWith('art-1')
   })
 
   it('does not call enqueueAiReview when card.aiAutoReview is false', async () => {
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
-    await POST(req, { params: { cardId: 'card-1' } })
+    await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(mockEnqueue).not.toHaveBeenCalled()
   })
 
@@ -193,7 +193,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(500)
     expect(mockPrisma.artifact.delete).toHaveBeenCalledWith({ where: { id: 'art-1' } })
   })
@@ -203,7 +203,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
     mockPrisma.card.findUnique.mockResolvedValue(null)
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
-    const res = await POST(req, { params: { cardId: 'nonexistent' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'nonexistent' }) })
     expect(res.status).toBe(404)
   })
 
@@ -220,7 +220,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(201)
     expect(mockPrisma.orgMember.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ role: 'ADMIN' }) })
@@ -235,7 +235,7 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = makeFormDataRequest(makeFile('doc.pdf', 'application/pdf', 100))
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(500)
     const body = await res.json()
     expect(body.error).toMatch(/admin/)

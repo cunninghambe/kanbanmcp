@@ -13,8 +13,9 @@ export const dynamic = 'force-dynamic'
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { webhookId: string } }
+  ctx: { params: Promise<{ webhookId: string }> }
 ): Promise<NextResponse> {
+  const params = await ctx.params
   let session
   try {
     session = await requireSession(req)

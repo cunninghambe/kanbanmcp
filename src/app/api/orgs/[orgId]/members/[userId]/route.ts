@@ -13,8 +13,9 @@ export const dynamic = 'force-dynamic'
 // Updates a member's role. Requires ADMIN role. Admins cannot demote themselves.
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { orgId: string; userId: string } }
+  ctx: { params: Promise<{ orgId: string; userId: string }> }
 ) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, params.orgId, 'ADMIN')

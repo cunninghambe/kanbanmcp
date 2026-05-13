@@ -13,7 +13,7 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 export async function getSessionUser() {
-  const session = await getIronSession<SessionData>(cookies(), sessionOptions)
+  const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
 
   if (!session.userId) {
     return null

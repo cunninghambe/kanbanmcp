@@ -14,7 +14,8 @@ async function resolveArtifactOrgId(artifactId: string): Promise<string | null> 
 }
 
 // GET /api/artifacts/[artifactId]/reviews
-export async function GET(req: NextRequest, { params }: { params: { artifactId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ artifactId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     const orgId = await resolveArtifactOrgId(params.artifactId)
@@ -36,7 +37,8 @@ export async function GET(req: NextRequest, { params }: { params: { artifactId: 
 }
 
 // POST /api/artifacts/[artifactId]/reviews — manually trigger a re-review
-export async function POST(req: NextRequest, { params }: { params: { artifactId: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ artifactId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     const orgId = await resolveArtifactOrgId(params.artifactId)

@@ -50,7 +50,7 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
   it('streams the file with correct headers', async () => {
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
-    const res = await GET(req, { params: { artifactId: 'art-1' } })
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
 
     expect(res.status).toBe(200)
     expect(res.headers.get('Content-Type')).toBe('application/pdf')
@@ -61,7 +61,7 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
   it('includes X-Content-Type-Options: nosniff header', async () => {
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
-    const res = await GET(req, { params: { artifactId: 'art-1' } })
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
 
     expect(res.status).toBe(200)
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff')
@@ -71,7 +71,7 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
     mockPrisma.artifact.findUnique.mockResolvedValue(null)
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
-    const res = await GET(req, { params: { artifactId: 'art-1' } })
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -82,7 +82,7 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
     })
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
-    const res = await GET(req, { params: { artifactId: 'art-1' } })
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -92,7 +92,7 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
     mockStorage.getStream.mockRejectedValue(enoent)
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
-    const res = await GET(req, { params: { artifactId: 'art-1' } })
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
     expect(res.status).toBe(410)
   })
 })

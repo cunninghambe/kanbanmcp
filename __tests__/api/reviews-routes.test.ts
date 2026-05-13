@@ -126,7 +126,7 @@ describe('GET /api/artifacts/[artifactId]/reviews', () => {
 
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/reviews/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/reviews')
-    const res = await GET(req, { params: { artifactId: 'art-1' } })
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
 
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -140,7 +140,7 @@ describe('GET /api/artifacts/[artifactId]/reviews', () => {
 
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/reviews/route')
     const req = new NextRequest('http://localhost/api/artifacts/nonexistent/reviews')
-    const res = await GET(req, { params: { artifactId: 'nonexistent' } })
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'nonexistent' }) })
 
     expect(res.status).toBe(404)
   })
@@ -150,7 +150,7 @@ describe('GET /api/artifacts/[artifactId]/reviews', () => {
 
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/reviews/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/reviews')
-    const res = await GET(req, { params: { artifactId: 'art-1' } })
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
 
     expect(res.status).toBe(404)
   })
@@ -180,7 +180,7 @@ describe('POST /api/artifacts/[artifactId]/reviews', () => {
 
     const { POST } = await import('../../src/app/api/artifacts/[artifactId]/reviews/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/reviews', { method: 'POST' })
-    const res = await POST(req, { params: { artifactId: 'art-1' } })
+    const res = await POST(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
 
     expect(res.status).toBe(202)
     const body = await res.json()
@@ -193,7 +193,7 @@ describe('POST /api/artifacts/[artifactId]/reviews', () => {
 
     const { POST } = await import('../../src/app/api/artifacts/[artifactId]/reviews/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/reviews', { method: 'POST' })
-    const res = await POST(req, { params: { artifactId: 'art-1' } })
+    const res = await POST(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
 
     expect(res.status).toBe(404)
     expect(mockEnqueue).not.toHaveBeenCalled()
@@ -206,7 +206,7 @@ describe('POST /api/artifacts/[artifactId]/reviews', () => {
 
     const { POST } = await import('../../src/app/api/artifacts/[artifactId]/reviews/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/reviews', { method: 'POST' })
-    const res = await POST(req, { params: { artifactId: 'art-1' } })
+    const res = await POST(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
 
     expect(res.status).toBe(409)
     const body = await res.json()
@@ -234,7 +234,7 @@ describe('GET /api/reviews/[reviewId]', () => {
 
     const { GET } = await import('../../src/app/api/reviews/[reviewId]/route')
     const req = new NextRequest('http://localhost/api/reviews/rev-1')
-    const res = await GET(req, { params: { reviewId: 'rev-1' } })
+    const res = await GET(req, { params: Promise.resolve({ reviewId: 'rev-1' }) })
 
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -249,7 +249,7 @@ describe('GET /api/reviews/[reviewId]', () => {
 
     const { GET } = await import('../../src/app/api/reviews/[reviewId]/route')
     const req = new NextRequest('http://localhost/api/reviews/nonexistent')
-    const res = await GET(req, { params: { reviewId: 'nonexistent' } })
+    const res = await GET(req, { params: Promise.resolve({ reviewId: 'nonexistent' }) })
 
     expect(res.status).toBe(404)
   })
@@ -263,7 +263,7 @@ describe('GET /api/reviews/[reviewId]', () => {
 
     const { GET } = await import('../../src/app/api/reviews/[reviewId]/route')
     const req = new NextRequest('http://localhost/api/reviews/rev-1')
-    const res = await GET(req, { params: { reviewId: 'rev-1' } })
+    const res = await GET(req, { params: Promise.resolve({ reviewId: 'rev-1' }) })
 
     expect(res.status).toBe(404)
   })

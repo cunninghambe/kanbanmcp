@@ -17,7 +17,8 @@ async function resolveCard(cardId: string, orgId: string) {
 
 // POST /api/cards/[cardId]/artifacts
 // Uploads a file as an artifact attached to the card.
-export async function POST(req: NextRequest, { params }: { params: { cardId: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ cardId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
 
@@ -106,7 +107,8 @@ export async function POST(req: NextRequest, { params }: { params: { cardId: str
 
 // GET /api/cards/[cardId]/artifacts
 // Lists all artifacts for the card, ordered by creation time descending.
-export async function GET(req: NextRequest, { params }: { params: { cardId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ cardId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     await resolveCard(params.cardId, session.orgId)

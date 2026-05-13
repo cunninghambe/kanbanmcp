@@ -85,7 +85,7 @@ describe('DELETE /api/cards/[cardId] with children', () => {
 
     const { DELETE } = await import('../../src/app/api/cards/[cardId]/route')
     const req = makeDeleteRequest('http://localhost/api/cards/parent-1')
-    const res = await DELETE(req, { params: { cardId: 'parent-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ cardId: 'parent-1' }) })
 
     expect(res.status).toBe(200)
     expect(mockPrisma.card.delete).toHaveBeenCalledWith({ where: { id: 'parent-1' } })
@@ -112,7 +112,7 @@ describe('DELETE /api/cards/[cardId] with children', () => {
 
     const { DELETE } = await import('../../src/app/api/cards/[cardId]/route')
     const req = makeDeleteRequest('http://localhost/api/cards/solo-card')
-    const res = await DELETE(req, { params: { cardId: 'solo-card' } })
+    const res = await DELETE(req, { params: Promise.resolve({ cardId: 'solo-card' }) })
 
     expect(res.status).toBe(200)
     expect(mockPrisma.card.delete).toHaveBeenCalledWith({ where: { id: 'solo-card' } })
@@ -129,7 +129,7 @@ describe('DELETE /api/cards/[cardId] with children', () => {
 
     const { DELETE } = await import('../../src/app/api/cards/[cardId]/route')
     const req = makeDeleteRequest('http://localhost/api/cards/card-1')
-    const res = await DELETE(req, { params: { cardId: 'card-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ cardId: 'card-1' }) })
 
     expect(res.status).toBe(500)
   })
