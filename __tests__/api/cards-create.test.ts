@@ -44,6 +44,23 @@ vi.mock('../../src/lib/db', () => ({
   default: mockPrisma,
 }))
 
+// Default $transaction passes through to the same mock card methods.
+// This mirrors the transaction object passed to the callback in the real code.
+function setupTransactionMock() {
+  mockPrisma.$transaction.mockImplementation(
+    async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
+      return fn({
+        ...mockPrisma,
+        card: {
+          findUnique: mockPrisma.card.findUnique,
+          findFirst: mockPrisma.card.findFirst,
+          create: mockPrisma.card.create,
+        },
+      } as unknown as typeof mockPrisma)
+    }
+  )
+}
+
 function makeRequest(url: string, body?: unknown): NextRequest {
   return new NextRequest(url, {
     method: 'POST',
@@ -94,6 +111,7 @@ function setupHappyPath() {
   mockPrisma.orgMember.findMany.mockResolvedValue([{ userId: 'user-1' }])
   mockPrisma.card.findFirst.mockResolvedValue(null)
   mockPrisma.card.create.mockResolvedValue(createdCard)
+  setupTransactionMock()
 }
 
 // ─── AC-4: assigneeId is required ────────────────────────────────────────────
@@ -195,6 +213,7 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
     mockPrisma.column.findUnique.mockResolvedValue({ id: 'col-1', boardId: 'board-1' })
     mockPrisma.orgMember.findMany.mockResolvedValue([{ userId: 'user-1' }])
     mockPrisma.card.findFirst.mockResolvedValue(null)
+    setupTransactionMock()
   })
 
   it('returns 400 when parentCardId does not exist', async () => {

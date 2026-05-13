@@ -34,7 +34,7 @@ async function resolveBoard(boardId: string, orgId: string) {
     throw NextResponse.json({ error: 'Board not found' }, { status: 404 })
   }
   if (board.orgId !== orgId) {
-    throw NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    throw NextResponse.json({ error: 'Board not found' }, { status: 404 })
   }
   return board
 }
@@ -99,37 +99,6 @@ export async function POST(
       return apiError(400, `${role} must be a member of this organization`)
     }
 
-    // Validate parent card if provided; compute path and depth
-    let path = ''
-    let depth = 0
-    if (parentCardId !== undefined) {
-      const parentCard = await prisma.card.findUnique({
-        where: { id: parentCardId },
-        select: { id: true, boardId: true, path: true, depth: true },
-      })
-      if (!parentCard) {
-        return apiError(400, 'Parent card not found')
-      }
-      if (parentCard.boardId !== params.boardId) {
-        return apiError(400, 'Parent card must be on the same board')
-      }
-      // parent at depth 49 -> child would be depth 50 = MAX_NESTING_DEPTH -> reject
-      if (parentCard.depth + 1 >= MAX_NESTING_DEPTH) {
-        return apiError(400, 'Maximum nesting depth (50) reached')
-      }
-      const computed = computeChildPathAndDepth(parentCard)
-      path = computed.path
-      depth = computed.depth
-    }
-
-    // Determine position: max existing position in the column + 1
-    const maxPositionRecord = await prisma.card.findFirst({
-      where: { columnId },
-      orderBy: { position: 'desc' },
-      select: { position: true },
-    })
-    const position = maxPositionRecord ? maxPositionRecord.position + 1 : 0
-
     // For API key auth, Card.createdById is required (non-nullable). Use the first
     // org admin as the creator and set agentId to track the actual agent.
     let createdById = session.userId
@@ -147,40 +116,75 @@ export async function POST(
       agentId = session.agentName ?? null
     }
 
-    const card = await prisma.card.create({
-      data: {
-        title,
-        description,
-        columnId,
-        boardId: params.boardId,
-        sprintId: sprintId ?? null,
-        assigneeId,
-        reviewerId: reviewerId ?? null,
-        approverId: approverId ?? null,
-        parentCardId: parentCardId ?? null,
-        path,
-        depth,
-        aiAutoReview: aiAutoReview ?? false,
-        aiReviewParams: aiReviewParams ? JSON.stringify(aiReviewParams) : null,
-        position,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        createdById,
-        agentId,
-        ...(labels && labels.length > 0
-          ? {
-              labels: {
-                create: labels.map((labelId) => ({ labelId })),
-              },
-            }
-          : {}),
-      },
-      include: {
-        labels: { include: { label: true } },
-        assignee: { select: { id: true, email: true, name: true } },
-        reviewer: { select: { id: true, email: true, name: true } },
-        approver: { select: { id: true, email: true, name: true } },
-        createdBy: { select: { id: true, email: true, name: true } },
-      },
+    // Wrap the depth re-check and insert in a single transaction to close the
+    // read-check-insert race: two concurrent requests at depth 49 could both
+    // pass the check and produce two depth-50 children without this guard.
+    const card = await prisma.$transaction(async (tx) => {
+      let path = ''
+      let depth = 0
+      if (parentCardId !== undefined) {
+        const parentCard = await tx.card.findUnique({
+          where: { id: parentCardId },
+          select: { id: true, boardId: true, path: true, depth: true },
+        })
+        if (!parentCard) {
+          throw NextResponse.json({ error: 'Parent card not found' }, { status: 400 })
+        }
+        if (parentCard.boardId !== params.boardId) {
+          throw NextResponse.json({ error: 'Parent card must be on the same board' }, { status: 400 })
+        }
+        // parent at depth 49 -> child would be depth 50 = MAX_NESTING_DEPTH -> reject
+        if (parentCard.depth + 1 >= MAX_NESTING_DEPTH) {
+          throw NextResponse.json({ error: 'Maximum nesting depth (50) reached' }, { status: 400 })
+        }
+        const computed = computeChildPathAndDepth(parentCard)
+        path = computed.path
+        depth = computed.depth
+      }
+
+      // Determine position: max existing position in the column + 1
+      const maxPositionRecord = await tx.card.findFirst({
+        where: { columnId },
+        orderBy: { position: 'desc' },
+        select: { position: true },
+      })
+      const position = maxPositionRecord ? maxPositionRecord.position + 1 : 0
+
+      return tx.card.create({
+        data: {
+          title,
+          description,
+          columnId,
+          boardId: params.boardId,
+          sprintId: sprintId ?? null,
+          assigneeId,
+          reviewerId: reviewerId ?? null,
+          approverId: approverId ?? null,
+          parentCardId: parentCardId ?? null,
+          path,
+          depth,
+          aiAutoReview: aiAutoReview ?? false,
+          aiReviewParams: aiReviewParams ? JSON.stringify(aiReviewParams) : null,
+          position,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          createdById,
+          agentId,
+          ...(labels && labels.length > 0
+            ? {
+                labels: {
+                  create: labels.map((labelId) => ({ labelId })),
+                },
+              }
+            : {}),
+        },
+        include: {
+          labels: { include: { label: true } },
+          assignee: { select: { id: true, email: true, name: true } },
+          reviewer: { select: { id: true, email: true, name: true } },
+          approver: { select: { id: true, email: true, name: true } },
+          createdBy: { select: { id: true, email: true, name: true } },
+        },
+      })
     })
 
     return NextResponse.json(

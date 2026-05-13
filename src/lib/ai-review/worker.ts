@@ -193,13 +193,20 @@ async function runReview(reviewId: string): Promise<void> {
 /**
  * Enqueues a new AI review for the given artifact.
  * Creates an AiReview row (or marks failed immediately if params are unavailable).
+ * Returns false without creating a row if a pending or running review already exists.
  */
-export async function enqueueAiReview(artifactId: string): Promise<void> {
+export async function enqueueAiReview(artifactId: string): Promise<boolean> {
   const artifact = await prisma.artifact.findUnique({
     where: { id: artifactId },
     select: { id: true, cardId: true },
   })
-  if (!artifact) return
+  if (!artifact) return false
+
+  const existing = await prisma.aiReview.findFirst({
+    where: { artifactId, status: { in: ['pending', 'running'] } },
+    select: { id: true },
+  })
+  if (existing) return false
 
   const params = await resolveEffectiveAiReviewParams(prisma, artifact.cardId)
 
@@ -213,7 +220,7 @@ export async function enqueueAiReview(artifactId: string): Promise<void> {
         errorMessage: 'No review params configured',
       },
     })
-    return
+    return true
   }
 
   const review = await prisma.aiReview.create({
@@ -226,9 +233,10 @@ export async function enqueueAiReview(artifactId: string): Promise<void> {
     },
   })
 
-  if (inFlightIds.has(review.id)) return
+  if (inFlightIds.has(review.id)) return true
   inFlightIds.add(review.id)
   queueTail = queueTail.then(() => processJob(review.id))
+  return true
 }
 
 /** For tests: returns when all queued jobs have drained. */
@@ -250,7 +258,7 @@ export function resetQueueForTests(): void {
 export async function bootstrapWorker(): Promise<void> {
   await prisma.aiReview.updateMany({
     where: { status: 'running' },
-    data: { status: 'pending' },
+    data: { status: 'pending', startedAt: null },
   })
 
   const pendingRows = await prisma.aiReview.findMany({

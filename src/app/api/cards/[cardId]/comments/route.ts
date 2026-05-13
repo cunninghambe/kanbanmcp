@@ -19,7 +19,7 @@ async function resolveCard(cardId: string, orgId: string) {
     throw NextResponse.json({ error: 'Card not found' }, { status: 404 })
   }
   if (card.board.orgId !== orgId) {
-    throw NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    throw NextResponse.json({ error: 'Card not found' }, { status: 404 })
   }
   return card
 }

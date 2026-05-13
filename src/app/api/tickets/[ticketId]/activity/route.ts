@@ -25,7 +25,7 @@ export async function GET(
 
     const ticket = await prisma.ticket.findUnique({ where: { id: params.ticketId } })
     if (!ticket) return apiError(404, 'Ticket not found')
-    if (ticket.orgId !== auth.orgId) return apiError(403, 'Forbidden')
+    if (ticket.orgId !== auth.orgId) return apiError(404, 'Ticket not found')
 
     const activity = await prisma.ticketActivity.findMany({
       where: { ticketId: params.ticketId },

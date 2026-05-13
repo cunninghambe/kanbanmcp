@@ -89,7 +89,7 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 403 when artifact belongs to different org', async () => {
+  it('returns 404 when artifact belongs to different org', async () => {
     mockPrisma.artifact.findUnique.mockResolvedValue({
       ...baseArtifact,
       card: { board: { orgId: 'other-org' } },
@@ -97,6 +97,6 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
     const res = await DELETE(req, { params: { artifactId: 'art-1' } })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 })

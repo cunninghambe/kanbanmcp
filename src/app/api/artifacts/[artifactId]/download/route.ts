@@ -26,7 +26,7 @@ export async function GET(
     })
 
     if (!artifact) return apiError(404, 'Artifact not found')
-    if (artifact.card.board.orgId !== session.orgId) return apiError(403, 'Forbidden')
+    if (artifact.card.board.orgId !== session.orgId) return apiError(404, 'Artifact not found')
 
     await requireOrgRole(session, session.orgId, 'MEMBER')
 

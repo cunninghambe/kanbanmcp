@@ -159,8 +159,13 @@ describe('POST /api/artifacts/[artifactId]/reviews', () => {
 
   it('triggers re-review, returns 202 with pending row', async () => {
     mockPrisma.artifact.findUnique.mockResolvedValue(makeArtifactWithOrg('org-1'))
-    const pendingRow = makeReview({ status: 'pending', output: null, startedAt: null, finishedAt: null })
-    mockEnqueue.mockResolvedValue(undefined)
+    const pendingRow = makeReview({
+      status: 'pending',
+      output: null,
+      startedAt: null,
+      finishedAt: null,
+    })
+    mockEnqueue.mockResolvedValue(true)
     mockPrisma.aiReview.findFirst.mockResolvedValue(pendingRow)
 
     const { POST } = await import('../../src/app/api/artifacts/[artifactId]/reviews/route')
@@ -182,6 +187,20 @@ describe('POST /api/artifacts/[artifactId]/reviews', () => {
 
     expect(res.status).toBe(404)
     expect(mockEnqueue).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 when a review is already pending or running (#5 cooldown)', async () => {
+    mockPrisma.artifact.findUnique.mockResolvedValue(makeArtifactWithOrg('org-1'))
+    // enqueueAiReview returns false when a pending/running review already exists
+    mockEnqueue.mockResolvedValue(false)
+
+    const { POST } = await import('../../src/app/api/artifacts/[artifactId]/reviews/route')
+    const req = new NextRequest('http://localhost/api/artifacts/art-1/reviews', { method: 'POST' })
+    const res = await POST(req, { params: { artifactId: 'art-1' } })
+
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.error).toMatch(/already pending or running/)
   })
 })
 

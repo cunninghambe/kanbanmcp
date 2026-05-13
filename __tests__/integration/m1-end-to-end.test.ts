@@ -355,6 +355,12 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     // AI review comment
     mockPrisma.comment.create.mockResolvedValue({ id: 'comment-1' })
 
+    // $transaction passthrough — delegates to the same mock methods used outside tx.
+    // Required for card create (depth-cap tx) and card PATCH (sibling positions tx).
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)
+    )
+
     __setClaudeClientForTests(null)
   })
 
