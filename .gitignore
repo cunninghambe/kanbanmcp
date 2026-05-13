@@ -6,3 +6,6 @@ tsconfig.tsbuildinfo
 checkpoint-phase-*.json
 CLAUDE.md
 uploads/
+test-results/
+playwright-report/
+playwright/.cache/
