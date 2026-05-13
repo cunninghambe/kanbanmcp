@@ -20,7 +20,7 @@ async function resolveSprint(sprintId: string, orgId: string) {
     throw NextResponse.json({ error: 'Sprint not found' }, { status: 404 })
   }
   if (sprint.board.orgId !== orgId) {
-    throw NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    throw NextResponse.json({ error: 'Sprint not found' }, { status: 404 })
   }
   return sprint
 }

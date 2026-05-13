@@ -15,7 +15,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { artifactI
     })
 
     if (!artifact) return apiError(404, 'Artifact not found')
-    if (artifact.card.board.orgId !== session.orgId) return apiError(403, 'Forbidden')
+    if (artifact.card.board.orgId !== session.orgId) return apiError(404, 'Artifact not found')
 
     const isUploader = !session.isApiKeyAuth && session.userId === artifact.uploaderId
 

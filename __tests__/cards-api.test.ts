@@ -97,7 +97,7 @@ describe('GET /api/cards/[cardId]', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 403 when card belongs to different org', async () => {
+  it('returns 404 when card belongs to different org', async () => {
     mockPrisma.card.findUnique.mockResolvedValue({
       ...baseCard,
       board: { orgId: 'other-org' },
@@ -105,7 +105,7 @@ describe('GET /api/cards/[cardId]', () => {
     const { GET } = await import('../src/app/api/cards/[cardId]/route')
     const req = makeRequest('http://localhost/api/cards/card-1', 'GET')
     const res = await GET(req, { params: { cardId: 'card-1' } })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
   it('returns card details on success', async () => {

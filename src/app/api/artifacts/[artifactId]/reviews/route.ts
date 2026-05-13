@@ -44,7 +44,14 @@ export async function POST(req: NextRequest, { params }: { params: { artifactId:
     if (orgId !== session.orgId) return apiError(404, 'Artifact not found')
     await requireOrgRole(session, session.orgId, 'MEMBER')
 
-    await enqueueAiReview(params.artifactId)
+    const enqueued = await enqueueAiReview(params.artifactId)
+
+    if (!enqueued) {
+      return NextResponse.json(
+        { error: 'An AI review for this artifact is already pending or running' },
+        { status: 409 }
+      )
+    }
 
     // Return the newly created pending review (most recent row)
     const review = await prisma.aiReview.findFirst({

@@ -90,12 +90,12 @@ describe('GET /api/sprints', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 403 when board belongs to different org', async () => {
+  it('returns 404 when board belongs to different org', async () => {
     mockPrisma.board.findUnique.mockResolvedValue({ id: 'board-1', orgId: 'other-org' })
     const { GET } = await import('../src/app/api/sprints/route')
     const req = makeRequest('http://localhost/api/sprints?boardId=board-1', 'GET')
     const res = await GET(req)
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
   it('returns list of sprints for the board', async () => {

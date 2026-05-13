@@ -84,7 +84,7 @@ describe('GET /api/boards/[boardId]', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 403 when board belongs to different org', async () => {
+  it('returns 404 when board belongs to different org', async () => {
     mockPrisma.board.findUnique.mockResolvedValue({
       id: 'board-1',
       orgId: 'other-org',
@@ -93,7 +93,7 @@ describe('GET /api/boards/[boardId]', () => {
     const { GET } = await import('../src/app/api/boards/[boardId]/route')
     const req = makeRequest('http://localhost/api/boards/board-1', 'GET')
     const res = await GET(req, { params: { boardId: 'board-1' } })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
   it('returns board with columns and cards', async () => {
