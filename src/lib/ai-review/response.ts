@@ -2,7 +2,8 @@ import type { AiReview } from '@prisma/client'
 
 export interface AiReviewResponse {
   id: string
-  artifactId: string
+  artifactId: string | null
+  cardId: string
   status: 'pending' | 'running' | 'done' | 'failed' | 'skipped'
   model: string
   rubricSnapshot: string
@@ -20,6 +21,7 @@ export function shapeReview(r: AiReview): AiReviewResponse {
   return {
     id: r.id,
     artifactId: r.artifactId,
+    cardId: r.cardId,
     status: r.status as AiReviewResponse['status'],
     model: r.model,
     rubricSnapshot: r.rubricSnapshot,
