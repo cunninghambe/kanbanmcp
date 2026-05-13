@@ -65,7 +65,7 @@ const baseCard = {
   agentId: null,
   position: 0,
   dueDate: null,
-  priority: "none",
+  priority: 'none',
   createdById: 'user-1',
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -82,7 +82,11 @@ const baseCard = {
 describe('GET /api/cards/[cardId]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('returns 404 when card not found', async () => {
@@ -123,7 +127,11 @@ describe('GET /api/cards/[cardId]', () => {
 describe('PATCH /api/cards/[cardId]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('returns 400 for empty title', async () => {
@@ -136,17 +144,26 @@ describe('PATCH /api/cards/[cardId]', () => {
 
   it('updates card title successfully', async () => {
     // resolveCard call
-    mockPrisma.card.findUnique.mockResolvedValueOnce({ id: 'card-1', columnId: 'col-1', boardId: 'board-1', board: { orgId: 'org-1' } })
+    mockPrisma.card.findUnique.mockResolvedValueOnce({
+      id: 'card-1',
+      columnId: 'col-1',
+      boardId: 'board-1',
+      board: { orgId: 'org-1' },
+    })
     // final fetch after update
     mockPrisma.card.findUnique.mockResolvedValueOnce({ ...baseCard, title: 'Updated Title' })
-    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
-      return fn({
-        card: { update: vi.fn().mockResolvedValue({}) },
-        cardLabel: { deleteMany: vi.fn(), createMany: vi.fn() },
-      } as unknown as typeof mockPrisma)
-    })
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
+        return fn({
+          card: { update: vi.fn().mockResolvedValue({}) },
+          cardLabel: { deleteMany: vi.fn(), createMany: vi.fn() },
+        } as unknown as typeof mockPrisma)
+      }
+    )
     const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
-    const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', { title: 'Updated Title' })
+    const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', {
+      title: 'Updated Title',
+    })
     const res = await PATCH(req, { params: { cardId: 'card-1' } })
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -162,12 +179,14 @@ describe('PATCH /api/cards/[cardId]', () => {
     })
     mockPrisma.card.findFirst.mockResolvedValue({ position: 2 })
     mockPrisma.card.findMany.mockResolvedValue([])
-    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
-      return fn({
-        card: { update: vi.fn().mockResolvedValue({}) },
-        cardLabel: { deleteMany: vi.fn(), createMany: vi.fn() },
-      } as unknown as typeof mockPrisma)
-    })
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
+        return fn({
+          card: { update: vi.fn().mockResolvedValue({}) },
+          cardLabel: { deleteMany: vi.fn(), createMany: vi.fn() },
+        } as unknown as typeof mockPrisma)
+      }
+    )
     mockPrisma.card.findUnique.mockResolvedValueOnce({ ...baseCard, columnId: 'col-2' })
 
     const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
@@ -206,7 +225,11 @@ describe('PATCH /api/cards/[cardId]', () => {
 describe('DELETE /api/cards/[cardId]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('deletes card and returns success', async () => {
@@ -229,92 +252,131 @@ describe('DELETE /api/cards/[cardId]', () => {
   })
 })
 
-
 // ─── Priority field tests ─────────────────────────────────────────────────────
-describe("PATCH /api/cards/[cardId] - priority field", () => {
+describe('PATCH /api/cards/[cardId] - priority field', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: "user-1", orgId: "org-1", role: "MEMBER" })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
-  it("accepts valid priority values", async () => {
-    const validPriorities = ["none", "low", "medium", "high", "critical"]
+  it('accepts valid priority values', async () => {
+    const validPriorities = ['none', 'low', 'medium', 'high', 'critical']
     for (const priority of validPriorities) {
       vi.clearAllMocks()
-      mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: "user-1", orgId: "org-1", role: "MEMBER" })
+      mockPrisma.orgMember.findUnique.mockResolvedValue({
+        userId: 'user-1',
+        orgId: 'org-1',
+        role: 'MEMBER',
+      })
       mockPrisma.card.findUnique.mockResolvedValueOnce({
-        id: "card-1", columnId: "col-1", boardId: "board-1", board: { orgId: "org-1" },
+        id: 'card-1',
+        columnId: 'col-1',
+        boardId: 'board-1',
+        board: { orgId: 'org-1' },
       })
       mockPrisma.card.findUnique.mockResolvedValueOnce({ ...baseCard, priority })
-      mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
-        return fn({
-          card: { update: vi.fn().mockResolvedValue({}) },
-          cardLabel: { deleteMany: vi.fn(), createMany: vi.fn() },
-        } as unknown as typeof mockPrisma)
-      })
-      const { PATCH } = await import("../src/app/api/cards/[cardId]/route")
-      const req = makeRequest("http://localhost/api/cards/card-1", "PATCH", { priority })
-      const res = await PATCH(req, { params: { cardId: "card-1" } })
+      mockPrisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
+          return fn({
+            card: { update: vi.fn().mockResolvedValue({}) },
+            cardLabel: { deleteMany: vi.fn(), createMany: vi.fn() },
+          } as unknown as typeof mockPrisma)
+        }
+      )
+      const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
+      const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', { priority })
+      const res = await PATCH(req, { params: { cardId: 'card-1' } })
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.card.priority).toBe(priority)
     }
   })
 
-  it("rejects invalid priority value", async () => {
+  it('rejects invalid priority value', async () => {
     mockPrisma.card.findUnique.mockResolvedValueOnce({
-      id: "card-1", columnId: "col-1", boardId: "board-1", board: { orgId: "org-1" },
+      id: 'card-1',
+      columnId: 'col-1',
+      boardId: 'board-1',
+      board: { orgId: 'org-1' },
     })
-    const { PATCH } = await import("../src/app/api/cards/[cardId]/route")
-    const req = makeRequest("http://localhost/api/cards/card-1", "PATCH", { priority: "urgent" })
-    const res = await PATCH(req, { params: { cardId: "card-1" } })
+    const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
+    const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', { priority: 'urgent' })
+    const res = await PATCH(req, { params: { cardId: 'card-1' } })
     expect(res.status).toBe(400)
   })
 
-  it("does not clobber existing priority when priority absent from body", async () => {
+  it('does not clobber existing priority when priority absent from body', async () => {
     mockPrisma.card.findUnique.mockResolvedValueOnce({
-      id: "card-1", columnId: "col-1", boardId: "board-1", board: { orgId: "org-1" },
+      id: 'card-1',
+      columnId: 'col-1',
+      boardId: 'board-1',
+      board: { orgId: 'org-1' },
     })
-    mockPrisma.card.findUnique.mockResolvedValueOnce({ ...baseCard, priority: "high", title: "New Title" })
-    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
-      return fn({
-        card: { update: vi.fn().mockResolvedValue({}) },
-        cardLabel: { deleteMany: vi.fn(), createMany: vi.fn() },
-        orgMember: { findUnique: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-1" }) },
-      } as unknown as typeof mockPrisma)
+    mockPrisma.card.findUnique.mockResolvedValueOnce({
+      ...baseCard,
+      priority: 'high',
+      title: 'New Title',
     })
-    const { PATCH } = await import("../src/app/api/cards/[cardId]/route")
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
+        return fn({
+          card: { update: vi.fn().mockResolvedValue({}) },
+          cardLabel: { deleteMany: vi.fn(), createMany: vi.fn() },
+          orgMember: {
+            findUnique: vi.fn().mockResolvedValue({ userId: 'user-1', orgId: 'org-1' }),
+          },
+        } as unknown as typeof mockPrisma)
+      }
+    )
+    const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
     // Send only title, no priority field
-    const req = makeRequest("http://localhost/api/cards/card-1", "PATCH", { title: "New Title" })
-    const res = await PATCH(req, { params: { cardId: "card-1" } })
+    const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', { title: 'New Title' })
+    const res = await PATCH(req, { params: { cardId: 'card-1' } })
     expect(res.status).toBe(200)
     const body = await res.json()
     // Priority should remain "high" (not overwritten)
-    expect(body.card.priority).toBe("high")
+    expect(body.card.priority).toBe('high')
   })
 })
 
 // ─── Assignee IDOR protection ─────────────────────────────────────────────────
-describe("PATCH /api/cards/[cardId] - assignee IDOR protection", () => {
+describe('PATCH /api/cards/[cardId] - assignee IDOR protection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: "user-1", orgId: "org-1", role: "MEMBER" })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
-  it("rejects assigneeId from a different org", async () => {
+  it('rejects assigneeId from a different org', async () => {
     mockPrisma.card.findUnique.mockResolvedValueOnce({
-      id: "card-1", columnId: "col-1", boardId: "board-1", board: { orgId: "org-1" },
+      id: 'card-1',
+      columnId: 'col-1',
+      boardId: 'board-1',
+      board: { orgId: 'org-1' },
     })
     // requireOrgRole uses findUnique; roleMembershipCheck uses findMany
-    mockPrisma.orgMember.findUnique.mockResolvedValueOnce({ userId: "user-1", orgId: "org-1", role: "MEMBER" })
+    mockPrisma.orgMember.findUnique.mockResolvedValueOnce({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     // findMany returns empty — user-from-other-org is not in org
     mockPrisma.orgMember.findMany.mockResolvedValueOnce([])
 
-    const { PATCH } = await import("../src/app/api/cards/[cardId]/route")
-    const req = makeRequest("http://localhost/api/cards/card-1", "PATCH", { assigneeId: "user-from-other-org" })
-    const res = await PATCH(req, { params: { cardId: "card-1" } })
+    const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
+    const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', {
+      assigneeId: 'user-from-other-org',
+    })
+    const res = await PATCH(req, { params: { cardId: 'card-1' } })
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain("member of this organization")
+    expect(body.error).toContain('member of this organization')
   })
 })

@@ -24,10 +24,7 @@ async function resolveBoard(boardId: string, orgId: string) {
 
 // GET /api/boards/[boardId]/labels
 // Returns all labels for the given board.
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { boardId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { boardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveBoard(params.boardId, session.orgId)
@@ -48,10 +45,7 @@ export async function GET(
 
 // POST /api/boards/[boardId]/labels
 // Creates a new label for the given board.
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { boardId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { boardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveBoard(params.boardId, session.orgId)

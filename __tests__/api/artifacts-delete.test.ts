@@ -31,7 +31,9 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPrisma.artifact.findUnique.mockResolvedValue(baseArtifact)
-    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<void>) => fn(mockPrisma))
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<void>) => fn(mockPrisma)
+    )
     mockPrisma.aiReview.deleteMany.mockResolvedValue({ count: 0 })
     mockPrisma.artifact.delete.mockResolvedValue({})
     mockStorage.delete.mockResolvedValue(undefined)
@@ -39,7 +41,11 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
 
   it('allows uploader to delete — returns 204', async () => {
     // user-1 is the uploader; set MEMBER role (not admin)
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
 
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
@@ -47,10 +53,14 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
     expect(res.status).toBe(204)
   })
 
-  it('allows admin to delete another user\'s artifact', async () => {
+  it("allows admin to delete another user's artifact", async () => {
     const artifactByOther = { ...baseArtifact, uploaderId: 'user-2' }
     mockPrisma.artifact.findUnique.mockResolvedValue(artifactByOther)
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'ADMIN' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'ADMIN',
+    })
 
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
@@ -61,7 +71,11 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
   it('denies non-uploader non-admin member — returns 403', async () => {
     const artifactByOther = { ...baseArtifact, uploaderId: 'user-2' }
     mockPrisma.artifact.findUnique.mockResolvedValue(artifactByOther)
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
 
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1', { method: 'DELETE' })
@@ -72,7 +86,11 @@ describe('DELETE /api/artifacts/[artifactId]', () => {
   })
 
   it('storage delete failure does not prevent 204 response', async () => {
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'ADMIN' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'ADMIN',
+    })
     mockStorage.delete.mockRejectedValue(new Error('storage unavailable'))
 
     const { DELETE } = await import('../../src/app/api/artifacts/[artifactId]/route')

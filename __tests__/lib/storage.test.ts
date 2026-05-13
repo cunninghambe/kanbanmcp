@@ -50,15 +50,15 @@ describe('LocalStorageDriver', () => {
     await expect(fsp.access(path.join(tmpDir, 'delkey'))).rejects.toThrow()
   })
 
-  it.each([
-    ['key/with/slash'],
-    ['key\\with\\backslash'],
-    ['../traversal'],
-    ['key\0null'],
-  ])('rejects unsafe key: %s', async (key) => {
-    const driver = makeDriver()
-    await expect(driver.put(key, Buffer.from('x'), 'text/plain')).rejects.toThrow('Invalid storage key')
-    await expect(driver.getStream(key)).rejects.toThrow('Invalid storage key')
-    await expect(driver.delete(key)).rejects.toThrow('Invalid storage key')
-  })
+  it.each([['key/with/slash'], ['key\\with\\backslash'], ['../traversal'], ['key\0null']])(
+    'rejects unsafe key: %s',
+    async (key) => {
+      const driver = makeDriver()
+      await expect(driver.put(key, Buffer.from('x'), 'text/plain')).rejects.toThrow(
+        'Invalid storage key'
+      )
+      await expect(driver.getStream(key)).rejects.toThrow('Invalid storage key')
+      await expect(driver.delete(key)).rejects.toThrow('Invalid storage key')
+    }
+  )
 })

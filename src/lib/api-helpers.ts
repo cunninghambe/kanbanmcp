@@ -29,7 +29,7 @@ export async function requireSession(req: Request): Promise<SessionData> {
     // Will throw a 401 NextResponse if invalid
     const agentCtx = await requireApiKey(req as NextRequest)
     return {
-      userId: '',       // No real userId for API key auth
+      userId: '', // No real userId for API key auth
       orgId: agentCtx.orgId,
       isApiKeyAuth: true,
       agentName: agentCtx.agentName,
@@ -89,10 +89,7 @@ export async function requireOrgRole(
   const requiredRank = ROLE_RANK[minRole] ?? 999
 
   if (userRank < requiredRank) {
-    throw NextResponse.json(
-      { error: 'Forbidden: insufficient role' },
-      { status: 403 }
-    )
+    throw NextResponse.json({ error: 'Forbidden: insufficient role' }, { status: 403 })
   }
 
   return membership

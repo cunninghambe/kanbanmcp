@@ -27,10 +27,7 @@ async function resolveSprint(sprintId: string, orgId: string) {
 
 // GET /api/sprints/[sprintId]/cards
 // Returns all cards assigned to this sprint (across all columns).
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { sprintId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { sprintId: string } }) {
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, session.orgId, 'MEMBER')
@@ -63,10 +60,7 @@ export async function GET(
 // POST /api/sprints/[sprintId]/cards
 // Assigns a card to this sprint by setting card.sprintId = sprintId.
 // The card must belong to the same board as the sprint.
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { sprintId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { sprintId: string } }) {
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, session.orgId, 'MEMBER')

@@ -21,15 +21,18 @@ Extend the Prisma schema with the M1 review-workflow fields and models (sub-card
 ## Files to create / modify
 
 **Modify:**
+
 - `/root/kanbanmcp/prisma/schema.prisma` — add fields to `Card`, add `Artifact`, `AiReview`, `Signoff` models, add inverse relations to `User`
 - `/root/kanbanmcp/prisma/seed.ts` — invoke the new AI Reviewer seed helper at the end of `main()` so dev DBs always have the row (idempotent)
 - `/root/kanbanmcp/package.json` — add `"db:seed-ai-reviewer": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed-ai-reviewer.ts"`
 
 **Create:**
+
 - `/root/kanbanmcp/prisma/seed-ai-reviewer.ts` — idempotent upsert of the AI Reviewer User; exports a function `ensureAiReviewerUser(prisma): Promise<{ id: string }>` AND runs as a script when invoked directly
 - `/root/kanbanmcp/prisma/migrations/<timestamp>_m1_review_workflow/migration.sql` — generated via `prisma migrate dev --name m1_review_workflow --create-only`, then HAND-EDIT to append the backfill `UPDATE` (see Implementation notes)
 
 **Do NOT create:**
+
 - A `seed-ai-reviewer.test.ts` — covered by the seed script being idempotent (re-running must not throw and must not duplicate). A trivial assertion test under `__tests__/prisma/seed-ai-reviewer.test.ts` IS in scope — see "Tests to write".
 
 ## Interface contract

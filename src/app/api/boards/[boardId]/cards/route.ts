@@ -41,10 +41,7 @@ async function resolveBoard(boardId: string, orgId: string) {
 
 // POST /api/boards/[boardId]/cards
 // Creates a card in the specified column. Position = max existing + 1 (or 0 if empty column).
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { boardId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { boardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveBoard(params.boardId, session.orgId)
@@ -57,10 +54,7 @@ export async function POST(
       if (hasAssigneeIssue) {
         return apiError(400, 'assigneeId is required')
       }
-      return NextResponse.json(
-        { error: 'Validation failed' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Validation failed' }, { status: 400 })
     }
 
     const {

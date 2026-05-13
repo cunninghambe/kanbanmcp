@@ -30,10 +30,7 @@ async function resolveSprint(sprintId: string, orgId: string) {
 
 // GET /api/sprints/[sprintId]
 // Returns sprint details.
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { sprintId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { sprintId: string } }) {
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, session.orgId, 'MEMBER')
@@ -49,10 +46,7 @@ export async function GET(
 
 // PATCH /api/sprints/[sprintId]
 // Updates sprint name, dates, or status.
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { sprintId: string } }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: { sprintId: string } }) {
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, session.orgId, 'MEMBER')
@@ -93,10 +87,7 @@ export async function PATCH(
 
 // DELETE /api/sprints/[sprintId]
 // Deletes the sprint. Cards with this sprintId will have sprintId set to null (no cascade on Card.sprint).
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { sprintId: string } }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: { sprintId: string } }) {
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, session.orgId, 'MEMBER')

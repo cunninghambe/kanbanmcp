@@ -18,7 +18,10 @@ function buildSystemPrompt(params: AiReviewParams): string {
     : params.rubric
 }
 
-function buildUserMessage(content: ExtractedContent, filename: string): Anthropic.Messages.MessageParam {
+function buildUserMessage(
+  content: ExtractedContent,
+  filename: string
+): Anthropic.Messages.MessageParam {
   if (content.kind === 'image') {
     return {
       role: 'user',

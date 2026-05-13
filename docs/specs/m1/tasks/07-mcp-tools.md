@@ -128,6 +128,7 @@ Add six new tools to the existing MCP JSON-RPC dispatcher at `src/lib/mcp-server
 ### Handler signatures
 
 All handlers follow the existing pattern:
+
 ```ts
 async function toolCreateSubcard(
   params: Record<string, unknown>,

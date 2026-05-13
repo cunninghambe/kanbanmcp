@@ -213,13 +213,23 @@ describe('POST /api/auth/register', () => {
 
   it('returns 201 on successful registration', async () => {
     mockPrisma.user.findUnique.mockResolvedValue(null)
-    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
-      return fn({
-        user: { create: vi.fn().mockResolvedValue({ id: 'new-user', email: 'new@example.com', name: 'New User' }) },
-        organization: { create: vi.fn().mockResolvedValue({ id: 'new-org', name: 'New Org', slug: 'new-org-123' }) },
-        orgMember: { create: vi.fn().mockResolvedValue({}) },
-      } as unknown as typeof mockPrisma)
-    })
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
+        return fn({
+          user: {
+            create: vi
+              .fn()
+              .mockResolvedValue({ id: 'new-user', email: 'new@example.com', name: 'New User' }),
+          },
+          organization: {
+            create: vi
+              .fn()
+              .mockResolvedValue({ id: 'new-org', name: 'New Org', slug: 'new-org-123' }),
+          },
+          orgMember: { create: vi.fn().mockResolvedValue({}) },
+        } as unknown as typeof mockPrisma)
+      }
+    )
     const { POST } = await import('../src/app/api/auth/register/route')
     const req = makeRequest('http://localhost/api/auth/register', 'POST', {
       name: 'New User',

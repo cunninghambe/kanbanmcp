@@ -65,7 +65,10 @@ const baseArtifact = {
 function makeFormDataRequest(file: File): NextRequest {
   const fd = new FormData()
   fd.append('file', file)
-  return new NextRequest('http://localhost/api/cards/card-1/artifacts', { method: 'POST', body: fd })
+  return new NextRequest('http://localhost/api/cards/card-1/artifacts', {
+    method: 'POST',
+    body: fd,
+  })
 }
 
 function makeFile(name: string, type: string, sizeBytes: number): File {
@@ -84,8 +87,8 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
       return NextResponse.json({ error: msg }, { status })
     })
     mockPrisma.card.findUnique
-      .mockResolvedValueOnce(baseCard)        // resolveCard
-      .mockResolvedValueOnce(baseCard)        // aiAutoReview re-fetch
+      .mockResolvedValueOnce(baseCard) // resolveCard
+      .mockResolvedValueOnce(baseCard) // aiAutoReview re-fetch
     mockPrisma.artifact.create.mockResolvedValue({ ...baseArtifact, storageKey: 'pending' })
     mockPrisma.artifact.update.mockResolvedValue(baseArtifact)
     mockStorage.put.mockResolvedValue({ key: 'art-1' })
@@ -155,7 +158,10 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const fd = new FormData()
     fd.append('other', 'value')
-    const req = new NextRequest('http://localhost/api/cards/card-1/artifacts', { method: 'POST', body: fd })
+    const req = new NextRequest('http://localhost/api/cards/card-1/artifacts', {
+      method: 'POST',
+      body: fd,
+    })
     const res = await POST(req, { params: { cardId: 'card-1' } })
     expect(res.status).toBe(400)
     const body = await res.json()
@@ -204,7 +210,11 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
   it('API-key auth: attributes upload to first org ADMIN', async () => {
     mockRequireSession.mockResolvedValue({ userId: '', orgId: 'org-1', isApiKeyAuth: true })
     mockPrisma.orgMember.findFirst.mockResolvedValue({ userId: 'admin-1' })
-    const adminArtifact = { ...baseArtifact, uploaderId: 'admin-1', uploader: { id: 'admin-1', name: 'Admin', email: 'admin@example.com' } }
+    const adminArtifact = {
+      ...baseArtifact,
+      uploaderId: 'admin-1',
+      uploader: { id: 'admin-1', name: 'Admin', email: 'admin@example.com' },
+    }
     mockPrisma.artifact.create.mockResolvedValue({ ...adminArtifact, storageKey: 'pending' })
     mockPrisma.artifact.update.mockResolvedValue(adminArtifact)
 

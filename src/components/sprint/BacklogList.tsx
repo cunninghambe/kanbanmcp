@@ -62,9 +62,7 @@ export function BacklogList({ cards, sprintId, onAddToSprint }: BacklogListProps
                     {...dragProvided.draggableProps}
                     {...dragProvided.dragHandleProps}
                     className={`flex items-center justify-between bg-white rounded-md border px-4 py-3 transition-shadow ${
-                      dragSnapshot.isDragging
-                        ? 'border-blue-300 shadow-md'
-                        : 'border-slate-200'
+                      dragSnapshot.isDragging ? 'border-blue-300 shadow-md' : 'border-slate-200'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">

@@ -35,10 +35,7 @@ async function resolveBoard(boardId: string, orgId: string) {
 
 // POST /api/boards/[boardId]/columns
 // Creates a new column. If position is not supplied, appends after the last column.
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { boardId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { boardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveBoard(params.boardId, session.orgId)
@@ -83,10 +80,7 @@ export async function POST(
 // PATCH /api/boards/[boardId]/columns
 // Reorders columns by accepting an array of { id, position } pairs.
 // All supplied column ids must belong to the board.
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { boardId: string } }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: { boardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveBoard(params.boardId, session.orgId)

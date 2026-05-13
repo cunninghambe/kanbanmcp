@@ -21,10 +21,12 @@ Extend the existing card create (`POST /api/boards/[boardId]/cards`) and patch (
 ## Files to create / modify
 
 **Modify:**
+
 - `/root/kanbanmcp/src/app/api/cards/[cardId]/route.ts` — extend PATCH schema and validation; preserve all existing logic
 - `/root/kanbanmcp/src/app/api/boards/[boardId]/cards/route.ts` — make `assigneeId` required; accept new fields; compute `path` and `depth` from parent
 
 **Create:**
+
 - `/root/kanbanmcp/src/lib/cards.ts` — shared helpers used by this task and Task 03:
   - `computeChildPathAndDepth(parent: { id: string, path: string, depth: number }): { path: string, depth: number }`
   - `MAX_NESTING_DEPTH = 50`
@@ -49,11 +51,10 @@ export const aiReviewParamsSchema = z.object({
 
 export type AiReviewParams = z.infer<typeof aiReviewParamsSchema>
 
-export function computeChildPathAndDepth(parent: {
-  id: string
+export function computeChildPathAndDepth(parent: { id: string; path: string; depth: number }): {
   path: string
   depth: number
-}): { path: string; depth: number } {
+} {
   // Parent at root has path "" and depth 0 → child path "/parentId/", depth 1
   // Parent at depth 2 with path "/A/B/" → child path "/A/B/parentId/", depth 3
   return {
@@ -79,7 +80,7 @@ const createCardSchema = z.object({
   columnId: z.string().min(1),
   description: z.string().optional(),
   sprintId: z.string().optional(),
-  assigneeId: z.string().min(1),                   // NOW REQUIRED — AC-4
+  assigneeId: z.string().min(1), // NOW REQUIRED — AC-4
   reviewerId: z.string().min(1).optional(),
   approverId: z.string().min(1).optional(),
   parentCardId: z.string().min(1).optional(),
@@ -91,6 +92,7 @@ const createCardSchema = z.object({
 ```
 
 Validation order in the route:
+
 1. `requireSession`, `resolveBoard`, `requireOrgRole(MEMBER)` (unchanged)
 2. `safeParse`. On failure return existing 400 shape `{ error: 'Validation failed', issues }`. **Override message for missing `assigneeId`** to read `"assigneeId is required"` (AC-4 requires the exact string). Easiest: check `result.error.issues` for path `['assigneeId']` with code `'invalid_type'` and return `apiError(400, 'assigneeId is required')` early. Otherwise the default `Validation failed` envelope is fine.
 3. Column-belongs-to-board check (existing)
@@ -128,6 +130,7 @@ const updateCardSchema = z.object({
 **Explicit removals from PATCH:** `assigneeId` is no longer nullable. **Explicit additions:** `reviewerId`, `approverId`, `aiAutoReview`, `aiReviewParams`. **`parentCardId` is NOT handled here** — reparenting has its own endpoint (Task 03).
 
 After Zod validation:
+
 - Run `roleMembershipCheck` against the union of `assigneeId`, `reviewerId`, `approverId` (only the non-null, non-undefined ones).
 - Inside the existing `prisma.$transaction`, add to the scalar update payload:
   - `reviewerId` if defined (null or string)
@@ -182,10 +185,12 @@ Co-locate this helper in `src/lib/cards.ts` and export it. Apply in both the cre
 ## Tests to write
 
 Tests for this task go in:
+
 - `/root/kanbanmcp/__tests__/api/cards-create.test.ts` — new file, covers AC-4 plus the new fields. Use the mocking pattern from existing `__tests__/cards-api.test.ts`.
 - `/root/kanbanmcp/__tests__/lib/cards.test.ts` — unit tests for `computeChildPathAndDepth`, `aiReviewParamsSchema`, `roleMembershipCheck` (mock prisma), `decodeAiReviewParams`.
 
 `cards-create.test.ts` asserts:
+
 - Missing `assigneeId` → 400 with exact body `{ error: 'assigneeId is required' }`.
 - `reviewerId` not in org → 400 with the "must be a member" message.
 - `parentCardId` on different board → 400.
@@ -194,6 +199,7 @@ Tests for this task go in:
 - `aiReviewParams` round-trips: input object → stored as JSON string → response parses back.
 
 `cards.test.ts` asserts:
+
 - `computeChildPathAndDepth({ id: 'A', path: '', depth: 0 })` → `{ path: '/A/', depth: 1 }`
 - `computeChildPathAndDepth({ id: 'C', path: '/A/B/', depth: 2 })` → `{ path: '/A/B/C/', depth: 3 }`
 - `aiReviewParamsSchema` rejects missing `model`, accepts `customInstructions: undefined`.

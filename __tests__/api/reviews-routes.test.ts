@@ -52,13 +52,23 @@ vi.mock('../../src/lib/ai-review/queue', () => ({
 }))
 
 // ─── Mock storage (needed by worker module transitively) ─────────────────────
-vi.mock('../../src/lib/storage', () => ({ getStorageDriver: () => ({ put: vi.fn(), getStream: vi.fn(), delete: vi.fn() }) }))
+vi.mock('../../src/lib/storage', () => ({
+  getStorageDriver: () => ({ put: vi.fn(), getStream: vi.fn(), delete: vi.fn() }),
+}))
 
 // ─── Mock @anthropic-ai/sdk ───────────────────────────────────────────────────
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(),
-  RateLimitError: class extends Error { status = 429 },
-  APIError: class extends Error { status: number; constructor(s: number, m: string) { super(m); this.status = s } },
+  RateLimitError: class extends Error {
+    status = 429
+  },
+  APIError: class extends Error {
+    status: number
+    constructor(s: number, m: string) {
+      super(m)
+      this.status = s
+    }
+  },
 }))
 
 // ─── Mock seed-ai-reviewer ────────────────────────────────────────────────────

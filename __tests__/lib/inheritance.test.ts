@@ -3,7 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Mock the db module before importing the module under test
 vi.mock('../../src/lib/db', () => ({ prisma: {} }))
 
-import { resolveEffectiveAiReviewParams, envDefaultParams } from '../../src/lib/ai-review/inheritance'
+import {
+  resolveEffectiveAiReviewParams,
+  envDefaultParams,
+} from '../../src/lib/ai-review/inheritance'
 import type { PrismaClient } from '@prisma/client'
 
 // Build a mock prisma that returns a chain of cards.
@@ -29,7 +32,10 @@ describe('resolveEffectiveAiReviewParams', () => {
   it('returns params from the card itself when set (AC-11 direct case)', async () => {
     const prisma = makeMockPrisma({
       'card-a': {
-        aiReviewParams: JSON.stringify({ model: 'claude-sonnet-4-6', rubric: 'review code quality' }),
+        aiReviewParams: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          rubric: 'review code quality',
+        }),
         parentCardId: null,
       },
     })
@@ -45,7 +51,10 @@ describe('resolveEffectiveAiReviewParams', () => {
         parentCardId: null,
       },
     })
-    const result = await resolveEffectiveAiReviewParams(prisma as unknown as PrismaClient, 'card-child')
+    const result = await resolveEffectiveAiReviewParams(
+      prisma as unknown as PrismaClient,
+      'card-child'
+    )
     expect(result?.rubric).toBe('X')
     expect(result?.model).toBe('claude-sonnet-4-6')
   })
@@ -95,7 +104,9 @@ describe('resolveEffectiveAiReviewParams', () => {
 
     // Verify it called findUnique exactly MAX_NESTING_DEPTH times (50)
     const { MAX_NESTING_DEPTH } = await import('../../src/lib/cards')
-    expect((prisma.card.findUnique as ReturnType<typeof vi.fn>).mock.calls.length).toBe(MAX_NESTING_DEPTH)
+    expect((prisma.card.findUnique as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+      MAX_NESTING_DEPTH
+    )
   })
 })
 

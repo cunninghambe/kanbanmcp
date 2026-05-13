@@ -13,6 +13,7 @@ KanbanMCP cards today are flat and assignee-only. Teams coordinating real work n
 ## 2. Boundaries
 
 **In scope (M1):**
+
 - Required `assigneeId`, optional `reviewerId`, optional `approverId` on every card.
 - Unlimited nesting of sub-cards under a parent card. Schema unlimited; UI collapses past depth 3.
 - Per-card `aiAutoReview` toggle (default false). When on, any uploaded artifact is queued for Claude review.
@@ -22,6 +23,7 @@ KanbanMCP cards today are flat and assignee-only. Teams coordinating real work n
 - AiReview pipeline: artifact uploaded → job enqueued → Claude called → result stored → comment posted by AI Reviewer service user.
 
 **Out of scope (M1):**
+
 - Google Drive integration (Docs / Sheets / Slides) — full spec in `m2-google-artifacts.md`.
 - Hard gating of column transitions on signoff status.
 - Bulk re-review of historical artifacts.
@@ -30,6 +32,7 @@ KanbanMCP cards today are flat and assignee-only. Teams coordinating real work n
 - Webhook payload changes (deferred to M3).
 
 **External dependencies added:**
+
 - `@anthropic-ai/sdk` for Claude calls.
 - `pdf-parse` (or equivalent ~20 KB gzipped) for PDF text extraction.
 - Storage: local disk under `./uploads/` for dev; `S3_BUCKET` env-driven swap for prod (use `@aws-sdk/client-s3` only if `STORAGE_DRIVER=s3`).
@@ -117,6 +120,7 @@ model Signoff {
 ```
 
 **User model additions:**
+
 ```prisma
 model User {
   // existing
@@ -168,6 +172,7 @@ DELETE /api/artifacts/[artifactId]              only uploader or org admin
 ```
 
 Response shape:
+
 ```ts
 { artifact: { id, filename, mimeType, sizeBytes, source, createdAt,
               uploader: { id, name, email },
@@ -199,6 +204,7 @@ Auth: only the card's `reviewerId` may submit `role=REVIEWER`; only `approverId`
 ### 4.7 MCP tool additions
 
 Add to `/api/mcp` JSON-RPC manifest:
+
 - `create_subcard` — params `{ parentCardId, title, description?, assigneeId, ... }`
 - `set_card_reviewers` — params `{ cardId, reviewerId?, approverId? }`
 - `toggle_ai_review` — params `{ cardId, enabled, params? }`
@@ -239,33 +245,35 @@ On status=done, post a Comment on the card from the "AI Reviewer" service user
 
 ## 6. Edge Cases
 
-| # | Scenario | Behaviour |
-|---|---|---|
-| E1 | Parent card deleted while child exists | `onDelete: SetNull` on `parentCardId` — children become top-level. `path` and `depth` are recomputed lazily by a cleanup job; until then queries by path return the orphan with its old path. |
-| E2 | Card moved to a different parent | API endpoint `POST /api/cards/[cardId]/reparent` updates the card and recomputes `path` and `depth` for the whole subtree in one transaction. |
-| E3 | Cycle attempted (card becomes its own ancestor) | Reject with 400 in reparent endpoint: walk up new parent's chain, fail if `cardId` appears. |
-| E4 | Depth exceeds 50 | Hard cap. Reject card create / reparent with 400. Prevents runaway recursion. |
-| E5 | Assignee removed from org | Card retains `assigneeId` but `assignee` join returns null. UI shows "(former member)". No automatic reassignment. |
-| E6 | Reviewer attempts to signoff on a card where they are not the reviewer | 403. |
-| E7 | `aiAutoReview` toggled on after artifacts already uploaded | No auto-review of historical artifacts. User can `POST /api/artifacts/[id]/reviews` manually to trigger. |
-| E8 | `aiReviewParams` is null on card AND every ancestor | Use env default `AI_REVIEW_DEFAULT_RUBRIC`. If env unset, mark AiReview as `failed` with errorMessage "No review params configured". |
-| E9 | AI call fails (rate limit / network) | Up to 3 retries with exponential backoff (1s, 4s, 16s). After retries: status=failed. No automatic re-queue. |
-| E10 | Artifact MIME not in allowlist | 415 Unsupported Media Type at upload. |
-| E11 | Artifact > 25 MB | 413 Payload Too Large. |
-| E12 | PDF extraction yields empty text | Skip text-based review; if image-rich, send first page as image to Claude vision. If both fail: status=skipped, errorMessage="No extractable content". |
-| E13 | Multiple concurrent uploads on same card | Each gets its own AiReview row, queued in upload order. No deduplication. |
-| E14 | User deletes the artifact mid-review | Worker checks artifact still exists before posting comment. If deleted: AiReview row remains with status=done but no comment posted. |
-| E15 | Signoff submitted on a card with no reviewer/approver assigned | 400 — "No reviewer assigned" / "No approver assigned". |
-| E16 | Inheritance with intermediate null | Card C has null params, parent B has null params, grandparent A has params. C uses A's. |
+| #   | Scenario                                                               | Behaviour                                                                                                                                                                                     |
+| --- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1  | Parent card deleted while child exists                                 | `onDelete: SetNull` on `parentCardId` — children become top-level. `path` and `depth` are recomputed lazily by a cleanup job; until then queries by path return the orphan with its old path. |
+| E2  | Card moved to a different parent                                       | API endpoint `POST /api/cards/[cardId]/reparent` updates the card and recomputes `path` and `depth` for the whole subtree in one transaction.                                                 |
+| E3  | Cycle attempted (card becomes its own ancestor)                        | Reject with 400 in reparent endpoint: walk up new parent's chain, fail if `cardId` appears.                                                                                                   |
+| E4  | Depth exceeds 50                                                       | Hard cap. Reject card create / reparent with 400. Prevents runaway recursion.                                                                                                                 |
+| E5  | Assignee removed from org                                              | Card retains `assigneeId` but `assignee` join returns null. UI shows "(former member)". No automatic reassignment.                                                                            |
+| E6  | Reviewer attempts to signoff on a card where they are not the reviewer | 403.                                                                                                                                                                                          |
+| E7  | `aiAutoReview` toggled on after artifacts already uploaded             | No auto-review of historical artifacts. User can `POST /api/artifacts/[id]/reviews` manually to trigger.                                                                                      |
+| E8  | `aiReviewParams` is null on card AND every ancestor                    | Use env default `AI_REVIEW_DEFAULT_RUBRIC`. If env unset, mark AiReview as `failed` with errorMessage "No review params configured".                                                          |
+| E9  | AI call fails (rate limit / network)                                   | Up to 3 retries with exponential backoff (1s, 4s, 16s). After retries: status=failed. No automatic re-queue.                                                                                  |
+| E10 | Artifact MIME not in allowlist                                         | 415 Unsupported Media Type at upload.                                                                                                                                                         |
+| E11 | Artifact > 25 MB                                                       | 413 Payload Too Large.                                                                                                                                                                        |
+| E12 | PDF extraction yields empty text                                       | Skip text-based review; if image-rich, send first page as image to Claude vision. If both fail: status=skipped, errorMessage="No extractable content".                                        |
+| E13 | Multiple concurrent uploads on same card                               | Each gets its own AiReview row, queued in upload order. No deduplication.                                                                                                                     |
+| E14 | User deletes the artifact mid-review                                   | Worker checks artifact still exists before posting comment. If deleted: AiReview row remains with status=done but no comment posted.                                                          |
+| E15 | Signoff submitted on a card with no reviewer/approver assigned         | 400 — "No reviewer assigned" / "No approver assigned".                                                                                                                                        |
+| E16 | Inheritance with intermediate null                                     | Card C has null params, parent B has null params, grandparent A has params. C uses A's.                                                                                                       |
 
 ## 7. Acceptance Criteria
 
 **Schema and migrations:**
+
 - AC-1: `prisma migrate dev` succeeds against a fresh SQLite DB with all new tables and indices.
 - AC-2: Backfill migration script sets `Card.assigneeId = Card.createdById` for any row where `assigneeId IS NULL`. After backfill, **app-layer** Zod schema rejects `assigneeId: null` on update. DB column remains nullable for SQLite practicality. Documented in schema comment.
 - AC-3: Migration seeds the AI Reviewer service user idempotently. Its id is logged for the `.env`.
 
 **API behaviour:**
+
 - AC-4: `POST /api/boards/X/cards` without `assigneeId` returns 400 with message "assigneeId is required".
 - AC-5: `POST /api/cards/X/artifacts` with allowed MIME stores the file under `<STORAGE_DIR>/<artifactId>` (local) or S3, returns 201 with artifact body.
 - AC-6: When `aiAutoReview=true`, uploading an artifact creates an AiReview with status=pending within 100 ms of upload response. Worker picks it up within 500 ms. After Claude returns (mocked in tests), status=done and a comment is posted on the card from the AI Reviewer user.
@@ -275,26 +283,28 @@ On status=done, post a Comment on the card from the "AI Reviewer" service user
 - AC-10: Depth-50 limit: creating a card with a parent already at depth 49 returns 400 "Maximum nesting depth (50) reached".
 
 **Inheritance:**
+
 - AC-11: Card with null `aiReviewParams` and parent with `{ model: "claude-sonnet-4-6", rubric: "..." }` resolves to parent's params at upload time.
 - AC-12: Inheritance walks up to 50 levels max (matches depth cap).
 
 **MCP tools:**
+
 - AC-13: `POST /api/mcp` with `method: "create_subcard"` and a valid `parentCardId` creates a card with correct `parentCardId`, `path`, and `depth`.
 - AC-14: `list_card_tree` returns the same shape as `GET /api/cards/X/children`.
 
 ## 8. Architecture Decisions
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| Tree storage | Adjacency list (`parentCardId`) + materialised path | Recursive CTEs are slow on SQLite. Path is cheap to query (`LIKE path||'%'`) and updates only require a subtree-scoped recompute. |
-| Depth cap | 50 | Prevents runaway recursion without practically limiting users. |
-| `assigneeId` constraint location | App-layer (Zod) | SQLite `ALTER COLUMN` requires table rebuild via Prisma shadow migration. The app-layer enforcement is sufficient because no other code path can write to `Card.assigneeId`. Documented in schema comment. |
-| Queue | In-process worker, concurrency=1 | M1 load is low. Avoids the BullMQ+Redis dependency. Upgrade path is documented. |
-| AI Reviewer identity | Seeded User with `isAgent=true` | Reuses existing `Comment.user` join. No new "system commenter" concept needed. |
-| `aiReviewParams` as JSON string | Yes (SQLite limitation) | Parse and validate with Zod at API and at worker boundary. |
-| Storage | Local disk in dev; S3 swap in prod via env | Same approach as existing repo conventions (no S3 client unless configured). |
-| Artifact `source` enum value space | Includes M2 values as reserved strings now | Avoids a schema migration when M2 ships; M1 API rejects anything but `UPLOAD`. |
-| Migration of existing assigneeId-nullable cards | Backfill to `createdById` | Most defensible default — the creator is the only known principal. |
+| Decision                                        | Choice                                              | Rationale                                                                                                                                                                                                  |
+| ----------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ---------------------------------------------------------- |
+| Tree storage                                    | Adjacency list (`parentCardId`) + materialised path | Recursive CTEs are slow on SQLite. Path is cheap to query (`LIKE path                                                                                                                                      |     | '%'`) and updates only require a subtree-scoped recompute. |
+| Depth cap                                       | 50                                                  | Prevents runaway recursion without practically limiting users.                                                                                                                                             |
+| `assigneeId` constraint location                | App-layer (Zod)                                     | SQLite `ALTER COLUMN` requires table rebuild via Prisma shadow migration. The app-layer enforcement is sufficient because no other code path can write to `Card.assigneeId`. Documented in schema comment. |
+| Queue                                           | In-process worker, concurrency=1                    | M1 load is low. Avoids the BullMQ+Redis dependency. Upgrade path is documented.                                                                                                                            |
+| AI Reviewer identity                            | Seeded User with `isAgent=true`                     | Reuses existing `Comment.user` join. No new "system commenter" concept needed.                                                                                                                             |
+| `aiReviewParams` as JSON string                 | Yes (SQLite limitation)                             | Parse and validate with Zod at API and at worker boundary.                                                                                                                                                 |
+| Storage                                         | Local disk in dev; S3 swap in prod via env          | Same approach as existing repo conventions (no S3 client unless configured).                                                                                                                               |
+| Artifact `source` enum value space              | Includes M2 values as reserved strings now          | Avoids a schema migration when M2 ships; M1 API rejects anything but `UPLOAD`.                                                                                                                             |
+| Migration of existing assigneeId-nullable cards | Backfill to `createdById`                           | Most defensible default — the creator is the only known principal.                                                                                                                                         |
 
 ## 9. Test Plan Summary
 

@@ -38,7 +38,11 @@ function makeNodeStream(content: string): Readable {
 describe('GET /api/artifacts/[artifactId]/download', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     mockPrisma.artifact.findUnique.mockResolvedValue(baseArtifact)
     mockStorage.getStream.mockResolvedValue(makeNodeStream('pdf bytes'))
   })

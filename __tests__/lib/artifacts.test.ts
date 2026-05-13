@@ -105,7 +105,14 @@ describe('shapeArtifact', () => {
       storageKey: 'art-2',
       source: 'UPLOAD',
       createdAt: now,
-      uploader: { id: 'user-1', name: 'Bob', email: 'bob@example.com', passwordHash: 'h', isAgent: false, createdAt: now } as User,
+      uploader: {
+        id: 'user-1',
+        name: 'Bob',
+        email: 'bob@example.com',
+        passwordHash: 'h',
+        isAgent: false,
+        createdAt: now,
+      } as User,
       reviews: [] as AiReview[],
     } as Artifact & { uploader: User; reviews: AiReview[] }
 

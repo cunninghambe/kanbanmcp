@@ -8,11 +8,7 @@ export type ExtractedContent =
   | { kind: 'image'; imageBase64: string; imageMimeType: string; text?: undefined }
   | { kind: 'empty'; text?: undefined; imageBase64?: undefined; imageMimeType?: undefined }
 
-const TEXT_MIMES = new Set([
-  'application/json',
-  'application/x-yaml',
-  'text/markdown',
-])
+const TEXT_MIMES = new Set(['application/json', 'application/x-yaml', 'text/markdown'])
 
 function isTextMime(mimeType: string): boolean {
   return mimeType.startsWith('text/') || TEXT_MIMES.has(mimeType)

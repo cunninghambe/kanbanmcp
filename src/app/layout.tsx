@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import Script from 'next/script';
+import Script from 'next/script'
 
 export const metadata: Metadata = {
   title: 'KanbanMCP',
@@ -10,10 +10,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}        {/* <!-- AUTOGENY_NAV_START --> */}
+      <body>
+        {children} {/* <!-- AUTOGENY_NAV_START --> */}
         <Script src="/autogeny-nav.js" strategy="afterInteractive" />
         {/* <!-- AUTOGENY_NAV_END --> */}
-        </body>
+      </body>
     </html>
   )
 }

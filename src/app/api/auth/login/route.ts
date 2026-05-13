@@ -54,28 +54,19 @@ export async function POST(req: NextRequest) {
     const valid = await verifyPassword(password, hashToCheck)
 
     if (!user || !valid) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }
 
     // Block agent accounts from logging in via the human auth endpoint
     // (constant-time bcrypt check already done above to prevent timing oracles)
     if (user.isAgent) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }
 
     // Find the primary org (first org the user is a member of)
     const primaryMembership = user.orgMembers[0]
     if (!primaryMembership) {
-      return NextResponse.json(
-        { error: 'User has no organization membership' },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: 'User has no organization membership' }, { status: 403 })
     }
 
     // Write session cookie

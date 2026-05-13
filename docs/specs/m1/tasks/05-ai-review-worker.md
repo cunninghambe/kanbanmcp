@@ -8,7 +8,7 @@
 
 ## Goal
 
-Replace the no-op `enqueueAiReview` stub from Task 04 with a real in-process worker that: resolves effective `aiReviewParams` by walking the parent chain (with env fallback), creates an `AiReview` row, extracts artifact content (PDF text via `pdf-parse`, text/* via UTF-8, images via Claude vision base64), calls Claude via `@anthropic-ai/sdk`, retries up to 3 times on transient errors, persists output/tokens/status, and on success posts a `Comment` on the card from the AI Reviewer service user. Also expose a manual re-trigger endpoint and a list endpoint.
+Replace the no-op `enqueueAiReview` stub from Task 04 with a real in-process worker that: resolves effective `aiReviewParams` by walking the parent chain (with env fallback), creates an `AiReview` row, extracts artifact content (PDF text via `pdf-parse`, text/\* via UTF-8, images via Claude vision base64), calls Claude via `@anthropic-ai/sdk`, retries up to 3 times on transient errors, persists output/tokens/status, and on success posts a `Comment` on the card from the AI Reviewer service user. Also expose a manual re-trigger endpoint and a list endpoint.
 
 ## Inputs — files to read first
 
@@ -24,6 +24,7 @@ Replace the no-op `enqueueAiReview` stub from Task 04 with a real in-process wor
 ## Files to create / modify
 
 **Create:**
+
 - `/root/kanbanmcp/src/lib/ai-review/inheritance.ts` — resolves effective `aiReviewParams` by walking parent chain
 - `/root/kanbanmcp/src/lib/ai-review/extractors.ts` — content extractors per MIME class
 - `/root/kanbanmcp/src/lib/ai-review/claude-client.ts` — thin wrapper around `@anthropic-ai/sdk` with retry + token capture
@@ -33,6 +34,7 @@ Replace the no-op `enqueueAiReview` stub from Task 04 with a real in-process wor
 - `/root/kanbanmcp/src/app/api/reviews/[reviewId]/route.ts` — GET (single review)
 
 **Modify:**
+
 - `/root/kanbanmcp/src/lib/ai-review/queue.ts` (existing stub from Task 04) — re-export from `worker.ts` so external import paths stay stable
 - `/root/kanbanmcp/package.json` — add `@anthropic-ai/sdk` and `pdf-parse` as dependencies (do NOT run `npm install` in CI; the coder agent should add them and trust the lockfile update). Pin exact versions; record bundle impact in the PR description.
 
@@ -69,9 +71,9 @@ export function envDefaultParams(): AiReviewParams | null
 ```ts
 export interface ExtractedContent {
   kind: 'text' | 'image' | 'empty'
-  text?: string            // when kind === 'text'
-  imageBase64?: string     // when kind === 'image'
-  imageMimeType?: string   // when kind === 'image'
+  text?: string // when kind === 'text'
+  imageBase64?: string // when kind === 'image'
+  imageMimeType?: string // when kind === 'image'
 }
 
 export async function extractContent(
@@ -98,7 +100,7 @@ import type { ExtractedContent } from './extractors'
 import type { AiReviewParams } from '../cards'
 
 export interface ClaudeReviewResult {
-  output: string           // markdown
+  output: string // markdown
   inputTokens: number
   outputTokens: number
 }
@@ -121,6 +123,7 @@ export async function runClaudeReview(
 ```
 
 Prompt template (system):
+
 ```
 {rubric}
 
@@ -128,6 +131,7 @@ Prompt template (system):
 ```
 
 User message:
+
 - For `text`: a single text block: `"Review this artifact (filename: <filename>):\n\n<text>"`
 - For `image`: an image block (base64 + media type) followed by a text block: `"Review this artifact (filename: <filename>)."`
 
@@ -148,11 +152,18 @@ export async function bootstrapWorker(): Promise<void>
 
 /** For tests: swap the Claude client with a stub. */
 export function __setClaudeClientForTests(
-  fn: ((params: AiReviewParams, content: ExtractedContent, filename: string) => Promise<ClaudeReviewResult>) | null
+  fn:
+    | ((
+        params: AiReviewParams,
+        content: ExtractedContent,
+        filename: string
+      ) => Promise<ClaudeReviewResult>)
+    | null
 ): void
 ```
 
 Worker steps per job:
+
 1. `tx.aiReview.findFirst` for the latest pending row for `artifactId`. (Multiple uploads on same artifact reuse — but in the spec each upload makes its own row; this worker is keyed on `artifactId` AND needs the AiReview row ID. **Revise:** `enqueueAiReview` takes the `aiReviewId`, not `artifactId`, OR creates the row itself. Decision: create the row inside the upload handler in Task 04 — wait, Task 04 only calls `enqueueAiReview(artifactId)`. **Resolution:** `enqueueAiReview(artifactId)` creates a fresh `AiReview` row with status `pending` and the effective params snapshot, then queues the row ID. This keeps Task 04's interface stable.
 
    So `enqueueAiReview(artifactId)` internally:
@@ -160,6 +171,7 @@ Worker steps per job:
    - Resolves params via `resolveEffectiveAiReviewParams(card.id)`
    - If null → creates an AiReview with `status='failed'`, `errorMessage='No review params configured'` (per E8) and returns
    - Otherwise creates the AiReview row (`status='pending'`, `model=params.model`, `rubricSnapshot=params.rubric`, `instructions=params.customInstructions ?? null`) and pushes the row id onto the internal queue
+
 2. Worker draining loop pops one job at a time:
    - `update AiReview { status: 'running', startedAt: now }`
    - Fetch artifact again, check it still exists. If deleted → finish with `status='done'` per E14 wording? **Refine:** E14 says "Worker checks artifact still exists **before posting comment**". So the worker only short-circuits the comment step on missing artifact. But if the artifact is missing here at the start, we have nothing to review. → `status='skipped'`, `errorMessage='Artifact deleted before review'`. Document this divergence in a code comment.
@@ -173,15 +185,18 @@ Worker steps per job:
 ### Routes
 
 `GET /api/artifacts/[artifactId]/reviews`:
+
 - Auth: resolve artifact → its card → its board → orgId vs session.orgId.
 - Returns `{ reviews: AiReviewResponse[] }` ordered `createdAt DESC`.
 
 `POST /api/artifacts/[artifactId]/reviews`:
+
 - Auth same. Body empty.
 - Calls `enqueueAiReview(artifactId)` regardless of `card.aiAutoReview` (manual override per §4.5).
 - Returns 202 with `{ review: <newly created AiReview> }`.
 
 `GET /api/reviews/[reviewId]`:
+
 - Auth same path (via artifact → card → board → orgId).
 - Returns `{ review: AiReviewResponse }`.
 
@@ -212,7 +227,7 @@ interface AiReviewResponse {
 3. **`bootstrapWorker` invocation.** Where to call it? Next 14 has no built-in app-init hook. Two options:
    - Lazy: a module-load side effect inside `worker.ts` runs `bootstrapWorker()` once. Risk: it runs in every Next process (dev + prod build steps). Guard with `if (process.env.NEXT_PHASE !== 'phase-production-build')`.
    - Explicit: a small file `src/app/instrumentation.ts` (Next 14 supports `register()`) calls `bootstrapWorker()` once on server start.
-   **Choose: instrumentation.ts.** Cleaner, only runs on real server.
+     **Choose: instrumentation.ts.** Cleaner, only runs on real server.
 4. **Claude SDK.** Use `@anthropic-ai/sdk`'s `messages.create`. Read `ANTHROPIC_API_KEY` from env. If missing at the time of a real call (not at module load), throw a permanent error → row marked `failed` with `errorMessage='ANTHROPIC_API_KEY not configured'`. Do NOT throw at module load — the worker should boot even without the key, so tests don't need it.
 5. **Mocking in tests.** Vitest `vi.mock('@anthropic-ai/sdk', ...)` returning a deterministic shape. The `__setClaudeClientForTests` export is a belt-and-braces alternative for tests that want to override the function directly.
 6. **Token counts.** Captured from `response.usage.input_tokens` and `response.usage.output_tokens` (Anthropic SDK).
@@ -246,7 +261,7 @@ interface AiReviewResponse {
   - Mock prisma chain; assert correct param resolution
   - Walker terminates at 50 even with cycle in mocked data
 - `/root/kanbanmcp/__tests__/lib/extractors.test.ts`
-  - text/* → text
+  - text/\* → text
   - application/pdf with embedded text → text (mock pdf-parse)
   - application/pdf empty → empty
   - image/png ≤5 MB → image base64

@@ -30,10 +30,10 @@ export async function GET(req: NextRequest): Promise<Response> {
   const boardId = searchParams.get('boardId')
 
   if (!boardId) {
-    return new Response(
-      JSON.stringify({ error: 'boardId query parameter is required' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ error: 'boardId query parameter is required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
 
   // Validate that the board belongs to the user's org before creating the stream
@@ -114,7 +114,9 @@ export async function GET(req: NextRequest): Promise<Response> {
           }
         } catch (_e) {
           closed = true
-          try { controller.close() } catch {}
+          try {
+            controller.close()
+          } catch {}
           return
         }
         if (!closed) {

@@ -73,7 +73,7 @@ interface SignoffResponse {
   role: 'REVIEWER' | 'APPROVER'
   decision: 'APPROVED' | 'REJECTED' | 'REQUESTED_CHANGES'
   comment: string | null
-  createdAt: string  // ISO
+  createdAt: string // ISO
   user: { id: string; name: string; email: string }
 }
 ```

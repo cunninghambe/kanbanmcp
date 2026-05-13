@@ -22,48 +22,50 @@ This task is not a "spec drift" review — that is the architect's separate revi
 ## Files to create / modify
 
 **Modify:**
+
 - Any existing test file whose fixtures break due to `assigneeId` being required on create (Task 02). Add a default `assigneeId` to every create-card fixture in `cards-api.test.ts` etc.
 - The PR description for Task 10's commit — include the coverage matrix below
 
 **Create only if missing after prior tasks:**
+
 - `/root/kanbanmcp/__tests__/integration/m1-end-to-end.test.ts` — one happy-path test that walks: create parent → create child (subcard) → upload artifact with `aiAutoReview=true` (mocked Claude) → wait for review done → reviewer submits APPROVED signoff → verify comment exists, signoff visible, tree query returns the parent with the child
 
 ## Coverage matrix (deliverable in PR description)
 
 The PR description must include a markdown table mapping each AC and key edge case to the test file and test name. Template:
 
-| ID | File | Test name | Status |
-|----|------|-----------|--------|
-| AC-1 | manual / CI lint | `prisma migrate dev succeeds` | manual |
-| AC-2 | `__tests__/api/cards-api.test.ts` | `PATCH rejects assigneeId: null` | passing |
-| AC-3 | `__tests__/prisma/seed-ai-reviewer.test.ts` | `is idempotent` | passing |
-| AC-4 | `__tests__/api/cards-create.test.ts` | `400 when assigneeId missing` | passing |
-| AC-5 | `__tests__/api/artifacts-upload.test.ts` | `stores file and returns 201` | passing |
-| AC-6 | `__tests__/api/ai-review-pipeline.test.ts` | `upload → enqueue → done → comment` | passing |
-| AC-7 | `__tests__/api/signoffs.test.ts` | `non-reviewer non-approver → 403` | passing |
-| AC-8 | `__tests__/api/cards-children.test.ts` | `returns subtree with signoffs latest per role` | passing |
-| AC-9 | `__tests__/api/cards-reparent.test.ts` | `400 on cycle` | passing |
-| AC-10 | `__tests__/api/cards-reparent.test.ts` | `400 on depth > 50` | passing |
-| AC-11 | `__tests__/lib/inheritance.test.ts` | `inherits parent params when null` | passing |
-| AC-12 | `__tests__/lib/inheritance.test.ts` | `walker terminates at 50` | passing |
-| AC-13 | `__tests__/mcp/tools.test.ts` | `create_subcard sets parentCardId path depth` | passing |
-| AC-14 | `__tests__/mcp/tools.test.ts` | `list_card_tree shape matches /children` | passing |
-| E1   | `__tests__/api/cards-delete-with-children.test.ts` | `children become roots with recomputed paths` | passing |
-| E2   | covered by AC-9 cycle + AC-10 depth tests | — | passing |
-| E3   | covered by AC-9 | — | passing |
-| E4   | covered by AC-10 | — | passing |
-| E5   | not covered in M1 — manual QA only (former-member assignee) | — | manual |
-| E6   | `__tests__/api/signoffs.test.ts` | `reviewer attempting APPROVER → 403` | passing |
-| E7   | `__tests__/api/ai-review-pipeline.test.ts` | `aiAutoReview toggled after upload does not auto-review history` | passing |
-| E8   | `__tests__/api/ai-review-pipeline.test.ts` | `no params anywhere → failed` | passing |
-| E9   | `__tests__/lib/claude-client.test.ts` | `429 retry backoff and exhaustion` | passing |
-| E10  | `__tests__/api/artifacts-upload.test.ts` | `415 on disallowed MIME` | passing |
-| E11  | `__tests__/api/artifacts-upload.test.ts` | `413 on oversize` | passing |
-| E12  | `__tests__/lib/extractors.test.ts` | `empty PDF text → empty` + pipeline `skipped` | passing |
-| E13  | `__tests__/api/ai-review-pipeline.test.ts` | `concurrent uploads queue in order` | passing |
-| E14  | `__tests__/api/ai-review-pipeline.test.ts` | `artifact deleted mid-review → done, no comment` | passing |
-| E15  | `__tests__/api/signoffs.test.ts` | `400 No reviewer assigned` | passing |
-| E16  | `__tests__/lib/inheritance.test.ts` | `null chain falls through to grandparent` | passing |
+| ID    | File                                                        | Test name                                                        | Status  |
+| ----- | ----------------------------------------------------------- | ---------------------------------------------------------------- | ------- |
+| AC-1  | manual / CI lint                                            | `prisma migrate dev succeeds`                                    | manual  |
+| AC-2  | `__tests__/api/cards-api.test.ts`                           | `PATCH rejects assigneeId: null`                                 | passing |
+| AC-3  | `__tests__/prisma/seed-ai-reviewer.test.ts`                 | `is idempotent`                                                  | passing |
+| AC-4  | `__tests__/api/cards-create.test.ts`                        | `400 when assigneeId missing`                                    | passing |
+| AC-5  | `__tests__/api/artifacts-upload.test.ts`                    | `stores file and returns 201`                                    | passing |
+| AC-6  | `__tests__/api/ai-review-pipeline.test.ts`                  | `upload → enqueue → done → comment`                              | passing |
+| AC-7  | `__tests__/api/signoffs.test.ts`                            | `non-reviewer non-approver → 403`                                | passing |
+| AC-8  | `__tests__/api/cards-children.test.ts`                      | `returns subtree with signoffs latest per role`                  | passing |
+| AC-9  | `__tests__/api/cards-reparent.test.ts`                      | `400 on cycle`                                                   | passing |
+| AC-10 | `__tests__/api/cards-reparent.test.ts`                      | `400 on depth > 50`                                              | passing |
+| AC-11 | `__tests__/lib/inheritance.test.ts`                         | `inherits parent params when null`                               | passing |
+| AC-12 | `__tests__/lib/inheritance.test.ts`                         | `walker terminates at 50`                                        | passing |
+| AC-13 | `__tests__/mcp/tools.test.ts`                               | `create_subcard sets parentCardId path depth`                    | passing |
+| AC-14 | `__tests__/mcp/tools.test.ts`                               | `list_card_tree shape matches /children`                         | passing |
+| E1    | `__tests__/api/cards-delete-with-children.test.ts`          | `children become roots with recomputed paths`                    | passing |
+| E2    | covered by AC-9 cycle + AC-10 depth tests                   | —                                                                | passing |
+| E3    | covered by AC-9                                             | —                                                                | passing |
+| E4    | covered by AC-10                                            | —                                                                | passing |
+| E5    | not covered in M1 — manual QA only (former-member assignee) | —                                                                | manual  |
+| E6    | `__tests__/api/signoffs.test.ts`                            | `reviewer attempting APPROVER → 403`                             | passing |
+| E7    | `__tests__/api/ai-review-pipeline.test.ts`                  | `aiAutoReview toggled after upload does not auto-review history` | passing |
+| E8    | `__tests__/api/ai-review-pipeline.test.ts`                  | `no params anywhere → failed`                                    | passing |
+| E9    | `__tests__/lib/claude-client.test.ts`                       | `429 retry backoff and exhaustion`                               | passing |
+| E10   | `__tests__/api/artifacts-upload.test.ts`                    | `415 on disallowed MIME`                                         | passing |
+| E11   | `__tests__/api/artifacts-upload.test.ts`                    | `413 on oversize`                                                | passing |
+| E12   | `__tests__/lib/extractors.test.ts`                          | `empty PDF text → empty` + pipeline `skipped`                    | passing |
+| E13   | `__tests__/api/ai-review-pipeline.test.ts`                  | `concurrent uploads queue in order`                              | passing |
+| E14   | `__tests__/api/ai-review-pipeline.test.ts`                  | `artifact deleted mid-review → done, no comment`                 | passing |
+| E15   | `__tests__/api/signoffs.test.ts`                            | `400 No reviewer assigned`                                       | passing |
+| E16   | `__tests__/lib/inheritance.test.ts`                         | `null chain falls through to grandparent`                        | passing |
 
 If any cell says "missing" — add the test before merging.
 
@@ -87,6 +89,7 @@ If any cell says "missing" — add the test before merging.
 (All test files referenced in the coverage matrix above. Most are produced by prior tasks; this task is primarily a verification pass.)
 
 The only test file unique to this task:
+
 - `/root/kanbanmcp/__tests__/integration/m1-end-to-end.test.ts`
 
 ## Out of scope for this task

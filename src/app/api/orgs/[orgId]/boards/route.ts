@@ -16,10 +16,7 @@ const DEFAULT_COLUMNS = [
 
 // GET /api/orgs/[orgId]/boards
 // Returns all boards for the org with columnCount and cardCount.
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { orgId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { orgId: string } }) {
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, params.orgId, 'MEMBER')
@@ -50,10 +47,7 @@ export async function GET(
 
 // POST /api/orgs/[orgId]/boards
 // Creates a new board and auto-creates 4 default columns. Requires ADMIN role.
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { orgId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { orgId: string } }) {
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, params.orgId, 'ADMIN')

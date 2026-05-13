@@ -1,49 +1,43 @@
-"use client";
+'use client'
 
-import React, { useId, useState, useEffect } from "react";
-import { z } from "zod";
-import type { AiReviewParams } from "@/lib/cards";
-import { Button } from "@/components/ui/Button";
+import React, { useId, useState, useEffect } from 'react'
+import { z } from 'zod'
+import type { AiReviewParams } from '@/lib/cards'
+import { Button } from '@/components/ui/Button'
 
 export const AI_REVIEW_MODELS = [
-  "claude-opus-4-7",
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5",
-] as const;
+  'claude-opus-4-7',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+] as const
 
-export type AiReviewModel = (typeof AI_REVIEW_MODELS)[number];
+export type AiReviewModel = (typeof AI_REVIEW_MODELS)[number]
 
 const paramsFormSchema = z.object({
   model: z.enum(AI_REVIEW_MODELS, {
-    errorMap: () => ({ message: "Select a model" }),
+    errorMap: () => ({ message: 'Select a model' }),
   }),
-  rubric: z
-    .string()
-    .min(1, "Rubric is required")
-    .max(8000, "Rubric must be 8000 chars or fewer"),
+  rubric: z.string().min(1, 'Rubric is required').max(8000, 'Rubric must be 8000 chars or fewer'),
   customInstructions: z
     .string()
-    .max(4000, "Custom instructions must be 4000 chars or fewer")
+    .max(4000, 'Custom instructions must be 4000 chars or fewer')
     .optional(),
-});
+})
 
 type ParamsFormValues = {
-  model: string;
-  rubric: string;
-  customInstructions: string;
-};
+  model: string
+  rubric: string
+  customInstructions: string
+}
 
-type ParamsFormErrors = Partial<Record<keyof ParamsFormValues, string>>;
+type ParamsFormErrors = Partial<Record<keyof ParamsFormValues, string>>
 
 interface AiReviewToggleProps {
-  enabled: boolean;
-  params: AiReviewParams | null;
-  parentTitle?: string | null;
-  parentParams?: AiReviewParams | null;
-  onSave: (next: {
-    enabled: boolean;
-    params: AiReviewParams | null;
-  }) => Promise<void>;
+  enabled: boolean
+  params: AiReviewParams | null
+  parentTitle?: string | null
+  parentParams?: AiReviewParams | null
+  onSave: (next: { enabled: boolean; params: AiReviewParams | null }) => Promise<void>
 }
 
 export function AiReviewToggle({
@@ -53,83 +47,83 @@ export function AiReviewToggle({
   parentParams,
   onSave,
 }: AiReviewToggleProps) {
-  const toggleId = useId();
-  const modelId = useId();
-  const rubricId = useId();
-  const instructionsId = useId();
+  const toggleId = useId()
+  const modelId = useId()
+  const rubricId = useId()
+  const instructionsId = useId()
 
-  const [localEnabled, setLocalEnabled] = useState(enabled);
-  const [showParams, setShowParams] = useState(enabled && params !== null);
+  const [localEnabled, setLocalEnabled] = useState(enabled)
+  const [showParams, setShowParams] = useState(enabled && params !== null)
   const [form, setForm] = useState<ParamsFormValues>({
-    model: params?.model ?? "claude-sonnet-4-6",
-    rubric: params?.rubric ?? "",
-    customInstructions: params?.customInstructions ?? "",
-  });
-  const [errors, setErrors] = useState<ParamsFormErrors>({});
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+    model: params?.model ?? 'claude-sonnet-4-6',
+    rubric: params?.rubric ?? '',
+    customInstructions: params?.customInstructions ?? '',
+  })
+  const [errors, setErrors] = useState<ParamsFormErrors>({})
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Sync props when card refreshes
   useEffect(() => {
-    setLocalEnabled(enabled);
-    setShowParams(enabled);
+    setLocalEnabled(enabled)
+    setShowParams(enabled)
     setForm({
-      model: params?.model ?? "claude-sonnet-4-6",
-      rubric: params?.rubric ?? "",
-      customInstructions: params?.customInstructions ?? "",
-    });
-  }, [enabled, params]);
+      model: params?.model ?? 'claude-sonnet-4-6',
+      rubric: params?.rubric ?? '',
+      customInstructions: params?.customInstructions ?? '',
+    })
+  }, [enabled, params])
 
   async function handleToggle(e: React.ChangeEvent<HTMLInputElement>) {
-    const next = e.target.checked;
-    setLocalEnabled(next);
+    const next = e.target.checked
+    setLocalEnabled(next)
     if (next) {
-      setShowParams(true);
+      setShowParams(true)
     }
     // If toggling off, save immediately without params form
     if (!next) {
-      setSaving(true);
-      setSaveError(null);
+      setSaving(true)
+      setSaveError(null)
       try {
-        await onSave({ enabled: false, params: null });
-        setShowParams(false);
+        await onSave({ enabled: false, params: null })
+        setShowParams(false)
       } catch {
-        setSaveError("Failed to disable AI review. Please try again.");
-        setLocalEnabled(true);
+        setSaveError('Failed to disable AI review. Please try again.')
+        setLocalEnabled(true)
       } finally {
-        setSaving(false);
+        setSaving(false)
       }
     }
   }
 
   function handleFieldChange(field: keyof ParamsFormValues, value: string) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => ({ ...prev, [field]: value }))
     if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }));
+      setErrors((prev) => ({ ...prev, [field]: undefined }))
     }
   }
 
   async function handleSaveParams(e: React.FormEvent) {
-    e.preventDefault();
-    setSaveError(null);
+    e.preventDefault()
+    setSaveError(null)
 
     const result = paramsFormSchema.safeParse({
       model: form.model,
       rubric: form.rubric,
       customInstructions: form.customInstructions || undefined,
-    });
+    })
 
     if (!result.success) {
-      const fieldErrors: ParamsFormErrors = {};
+      const fieldErrors: ParamsFormErrors = {}
       for (const issue of result.error.issues) {
-        const field = issue.path[0] as keyof ParamsFormValues;
-        if (field) fieldErrors[field] = issue.message;
+        const field = issue.path[0] as keyof ParamsFormValues
+        if (field) fieldErrors[field] = issue.message
       }
-      setErrors(fieldErrors);
-      return;
+      setErrors(fieldErrors)
+      return
     }
 
-    setSaving(true);
+    setSaving(true)
     try {
       await onSave({
         enabled: localEnabled,
@@ -138,16 +132,15 @@ export function AiReviewToggle({
           rubric: result.data.rubric,
           customInstructions: result.data.customInstructions,
         },
-      });
+      })
     } catch {
-      setSaveError("Failed to save AI review settings. Please try again.");
+      setSaveError('Failed to save AI review settings. Please try again.')
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
-  const inheritingFromParent =
-    params === null && parentParams !== null && parentTitle;
+  const inheritingFromParent = params === null && parentParams !== null && parentTitle
 
   return (
     <div className="space-y-3">
@@ -162,10 +155,7 @@ export function AiReviewToggle({
           disabled={saving}
           className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 focus:ring-2 focus:ring-offset-0 disabled:opacity-50 cursor-pointer"
         />
-        <label
-          htmlFor={toggleId}
-          className="text-sm font-medium text-slate-700 cursor-pointer"
-        >
+        <label htmlFor={toggleId} className="text-sm font-medium text-slate-700 cursor-pointer">
           AI Auto-Review
         </label>
         {saving && (
@@ -200,7 +190,7 @@ export function AiReviewToggle({
               htmlFor={modelId}
               className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
             >
-              Model{" "}
+              Model{' '}
               <span className="text-red-500" aria-hidden="true">
                 *
               </span>
@@ -208,7 +198,7 @@ export function AiReviewToggle({
             <select
               id={modelId}
               value={form.model}
-              onChange={(e) => handleFieldChange("model", e.target.value)}
+              onChange={(e) => handleFieldChange('model', e.target.value)}
               disabled={saving}
               aria-invalid={!!errors.model}
               aria-describedby={errors.model ? `${modelId}-error` : undefined}
@@ -221,11 +211,7 @@ export function AiReviewToggle({
               ))}
             </select>
             {errors.model && (
-              <p
-                id={`${modelId}-error`}
-                className="text-xs text-red-600 mt-0.5"
-                role="alert"
-              >
+              <p id={`${modelId}-error`} className="text-xs text-red-600 mt-0.5" role="alert">
                 {errors.model}
               </p>
             )}
@@ -237,7 +223,7 @@ export function AiReviewToggle({
               htmlFor={rubricId}
               className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
             >
-              Rubric{" "}
+              Rubric{' '}
               <span className="text-red-500" aria-hidden="true">
                 *
               </span>
@@ -245,7 +231,7 @@ export function AiReviewToggle({
             <textarea
               id={rubricId}
               value={form.rubric}
-              onChange={(e) => handleFieldChange("rubric", e.target.value)}
+              onChange={(e) => handleFieldChange('rubric', e.target.value)}
               disabled={saving}
               maxLength={8000}
               rows={4}
@@ -255,11 +241,7 @@ export function AiReviewToggle({
               className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[80px] disabled:opacity-50 bg-white"
             />
             {errors.rubric && (
-              <p
-                id={`${rubricId}-error`}
-                className="text-xs text-red-600 mt-0.5"
-                role="alert"
-              >
+              <p id={`${rubricId}-error`} className="text-xs text-red-600 mt-0.5" role="alert">
                 {errors.rubric}
               </p>
             )}
@@ -279,19 +261,13 @@ export function AiReviewToggle({
             <textarea
               id={instructionsId}
               value={form.customInstructions}
-              onChange={(e) =>
-                handleFieldChange("customInstructions", e.target.value)
-              }
+              onChange={(e) => handleFieldChange('customInstructions', e.target.value)}
               disabled={saving}
               maxLength={4000}
               rows={2}
               placeholder="Additional reviewer behaviour…"
               aria-invalid={!!errors.customInstructions}
-              aria-describedby={
-                errors.customInstructions
-                  ? `${instructionsId}-error`
-                  : undefined
-              }
+              aria-describedby={errors.customInstructions ? `${instructionsId}-error` : undefined}
               className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y disabled:opacity-50 bg-white"
             />
             {errors.customInstructions && (
@@ -306,10 +282,10 @@ export function AiReviewToggle({
           </div>
 
           <Button type="submit" size="sm" disabled={saving}>
-            {saving ? "Saving…" : "Save params"}
+            {saving ? 'Saving…' : 'Save params'}
           </Button>
         </form>
       )}
     </div>
-  );
+  )
 }

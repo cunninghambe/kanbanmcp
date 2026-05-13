@@ -64,7 +64,10 @@ describe('extractContent', () => {
       const getText = vi.fn().mockResolvedValue({ text: 'PDF content here' })
       const destroy = vi.fn().mockResolvedValue(undefined)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(PDFParse).mockImplementationOnce(function (this: any) { this.getText = getText; this.destroy = destroy })
+      vi.mocked(PDFParse).mockImplementationOnce(function (this: any) {
+        this.getText = getText
+        this.destroy = destroy
+      })
 
       const buf = Buffer.from('%PDF-fake')
       const result = await extractContent(buf, 'application/pdf', 'doc.pdf')
@@ -75,7 +78,10 @@ describe('extractContent', () => {
       const getText = vi.fn().mockResolvedValue({ text: '   ' })
       const destroy = vi.fn().mockResolvedValue(undefined)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(PDFParse).mockImplementationOnce(function (this: any) { this.getText = getText; this.destroy = destroy })
+      vi.mocked(PDFParse).mockImplementationOnce(function (this: any) {
+        this.getText = getText
+        this.destroy = destroy
+      })
 
       const buf = Buffer.from('%PDF-fake')
       const result = await extractContent(buf, 'application/pdf', 'empty.pdf')
@@ -86,7 +92,10 @@ describe('extractContent', () => {
       const getText = vi.fn().mockRejectedValue(new Error('encrypted PDF'))
       const destroy = vi.fn().mockResolvedValue(undefined)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(PDFParse).mockImplementationOnce(function (this: any) { this.getText = getText; this.destroy = destroy })
+      vi.mocked(PDFParse).mockImplementationOnce(function (this: any) {
+        this.getText = getText
+        this.destroy = destroy
+      })
 
       const buf = Buffer.from('%PDF-fake')
       const result = await extractContent(buf, 'application/pdf', 'locked.pdf')
@@ -105,7 +114,10 @@ describe('extractContent', () => {
       const getText = vi.fn().mockResolvedValue({ text: 'boundary content' })
       const destroy = vi.fn().mockResolvedValue(undefined)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(PDFParse).mockImplementationOnce(function (this: any) { this.getText = getText; this.destroy = destroy })
+      vi.mocked(PDFParse).mockImplementationOnce(function (this: any) {
+        this.getText = getText
+        this.destroy = destroy
+      })
 
       const buf = Buffer.alloc(PDF_SIZE_CAP)
       const result = await extractContent(buf, 'application/pdf', 'boundary.pdf')

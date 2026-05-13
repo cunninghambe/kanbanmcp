@@ -28,10 +28,7 @@ async function resolveTicket(ticketId: string, orgId: string) {
 }
 
 // GET /api/tickets/[ticketId]/comments
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { ticketId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { ticketId: string } }) {
   try {
     const auth = await resolveAuth(req)
     await resolveTicket(params.ticketId, auth.orgId)
@@ -53,10 +50,7 @@ export async function GET(
 }
 
 // POST /api/tickets/[ticketId]/comments
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { ticketId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { ticketId: string } }) {
   try {
     const auth = await resolveAuth(req)
     await resolveTicket(params.ticketId, auth.orgId)

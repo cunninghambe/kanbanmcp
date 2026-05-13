@@ -52,10 +52,11 @@ export async function POST(req: NextRequest) {
     const passwordHash = await hashPassword(password)
 
     // Generate a unique slug from org name
-    const baseSlug = orgName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '') || 'org'
+    const baseSlug =
+      orgName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'org'
     const slug = `${baseSlug}-${Date.now()}`
 
     // Create user, org, and membership in a single transaction
