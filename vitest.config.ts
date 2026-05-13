@@ -9,6 +9,7 @@ export default defineConfig({
     globals: true,
     setupFiles: [],
     testTimeout: 10000,
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**', 'e2e/**'],
     env: {
       SESSION_SECRET: 'test-session-secret-for-vitest-only',
       DATABASE_URL: 'file:./kanban-test.db',
