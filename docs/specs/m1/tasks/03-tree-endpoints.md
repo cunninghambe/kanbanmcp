@@ -21,12 +21,14 @@ Implement the three card-tree endpoints — `GET /api/cards/[cardId]/children`, 
 ## Files to create / modify
 
 **Create:**
+
 - `/root/kanbanmcp/src/lib/tree.ts` — pure functions for subtree recompute (no Prisma client construction inside; receives `tx` as a parameter)
 - `/root/kanbanmcp/src/app/api/cards/[cardId]/children/route.ts` — GET handler
 - `/root/kanbanmcp/src/app/api/cards/[cardId]/promote/route.ts` — POST handler
 - `/root/kanbanmcp/src/app/api/cards/[cardId]/reparent/route.ts` — POST handler
 
 **Modify:**
+
 - `/root/kanbanmcp/src/app/api/cards/[cardId]/route.ts` — extend DELETE to recompute subtree paths for orphaned children inside a transaction
 
 ## Interface contract
@@ -113,7 +115,7 @@ export interface SubtreeNode {
 
 interface SignoffSummary {
   id: string
-  decision: string  // APPROVED|REJECTED|REQUESTED_CHANGES
+  decision: string // APPROVED|REJECTED|REQUESTED_CHANGES
   createdAt: Date
   user: { id: string; name: string; email: string }
 }
@@ -141,7 +143,7 @@ interface SignoffSummary {
 - Body Zod schema:
   ```ts
   const reparentSchema = z.object({
-    parentCardId: z.string().nullable(),  // null = promote to root (equivalent to /promote)
+    parentCardId: z.string().nullable(), // null = promote to root (equivalent to /promote)
   })
   ```
 - Validation (all inside a `prisma.$transaction` to make checks consistent):
@@ -183,11 +185,10 @@ This makes deletion eager (audit assumption 3).
 
 1. **Subtree query.** Use `path LIKE ?` with parameter `${root.path}${root.id}/%` to fetch all descendants. SQLite `LIKE` uses `%` and `_`. Card IDs are cuids (lowercased base36) — they never contain `%` or `_`, so escaping is unnecessary. Add a comment noting this assumption.
 2. **String-replace for subtree recompute.**
+
    ```ts
    const oldSubtreePrefix = `${card.path}${card.id}/`
-   const newCardPath = newParentId === null
-     ? ''
-     : `${newParent.path}${newParent.id}/`
+   const newCardPath = newParentId === null ? '' : `${newParent.path}${newParent.id}/`
    const newSubtreePrefix = `${newCardPath}${card.id}/`
    const depthDelta = (newParent ? newParent.depth + 1 : 0) - card.depth
 
@@ -205,7 +206,9 @@ This makes deletion eager (audit assumption 3).
      WHERE path LIKE ${oldSubtreePrefix + '%'}
    `
    ```
+
    SQLite's `REPLACE(haystack, needle, repl)` is safe; since `oldSubtreePrefix` always ends in `/` and the paths it appears in always start with the prefix, there is no risk of mid-string replacement. **Test this assumption** with the cards.test fixture before merge.
+
 3. **`wouldFormCycle` algorithm.**
    ```ts
    let cursor: string | null = candidateAncestorId
@@ -219,7 +222,7 @@ This makes deletion eager (audit assumption 3).
      if (!row) return false
      cursor = row.parentCardId
    }
-   return true  // safety stop: assume cycle if we exceed depth cap
+   return true // safety stop: assume cycle if we exceed depth cap
    ```
 4. **Reparent inside a single transaction.** All reads and writes go through `tx`, not `prisma`. SQLite uses `BEGIN IMMEDIATE` under Prisma's transaction wrapper, serialising writes.
 5. **`fetchSubtree` shape — signoffs latest-per-role.** Two strategies; pick (B):

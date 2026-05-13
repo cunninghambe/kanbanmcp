@@ -8,10 +8,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ─── Mock @anthropic-ai/sdk ───────────────────────────────────────────────────
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class MockAnthropic {},
-  RateLimitError: class extends Error { status = 429 },
+  RateLimitError: class extends Error {
+    status = 429
+  },
   APIError: class extends Error {
     status: number
-    constructor(status: number, message: string) { super(message); this.status = status }
+    constructor(status: number, message: string) {
+      super(message)
+      this.status = status
+    }
   },
 }))
 
@@ -38,7 +43,9 @@ vi.mock('../../src/lib/storage', () => {
 vi.mock('../../prisma/seed-ai-reviewer', () => ({
   AI_REVIEWER_EMAIL: 'ai-reviewer@kanbanmcp.local',
   AI_REVIEWER_NAME: 'AI Reviewer',
-  ensureAiReviewerUser: vi.fn().mockResolvedValue({ id: 'reviewer-1', email: 'ai-reviewer@kanbanmcp.local' }),
+  ensureAiReviewerUser: vi
+    .fn()
+    .mockResolvedValue({ id: 'reviewer-1', email: 'ai-reviewer@kanbanmcp.local' }),
 }))
 
 // ─── Mock prisma ──────────────────────────────────────────────────────────────
@@ -65,7 +72,12 @@ vi.mock('../../src/lib/db', () => {
 // ─── Import after mocks ───────────────────────────────────────────────────────
 import { prisma } from '../../src/lib/db'
 import { getStorageDriver } from '../../src/lib/storage'
-import { enqueueAiReview, flushForTests, __setClaudeClientForTests, resetQueueForTests } from '../../src/lib/ai-review/worker'
+import {
+  enqueueAiReview,
+  flushForTests,
+  __setClaudeClientForTests,
+  resetQueueForTests,
+} from '../../src/lib/ai-review/worker'
 
 // The mock always returns the same driver object.
 const mockStorage = getStorageDriver() as unknown as {
@@ -137,7 +149,10 @@ describe('AI Review Pipeline', () => {
     reviewIdCounter = 1
 
     // Default: reviewer user exists
-    mockPrisma.user.findUnique.mockResolvedValue({ id: REVIEWER_ID, email: 'ai-reviewer@kanbanmcp.local' })
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: REVIEWER_ID,
+      email: 'ai-reviewer@kanbanmcp.local',
+    })
 
     // Default: artifact exists
     mockPrisma.artifact.findUnique.mockResolvedValue({
@@ -219,7 +234,10 @@ describe('AI Review Pipeline', () => {
       // No env fallback
       delete process.env.AI_REVIEW_DEFAULT_RUBRIC
 
-      const failedRow = makeReviewRow({ status: 'failed', errorMessage: 'No review params configured' })
+      const failedRow = makeReviewRow({
+        status: 'failed',
+        errorMessage: 'No review params configured',
+      })
       mockPrisma.aiReview.create.mockResolvedValue(failedRow)
 
       const claudeSpy = vi.fn()
@@ -245,22 +263,18 @@ describe('AI Review Pipeline', () => {
       const row1 = makeReviewRow({ id: 'review-1', artifactId: 'art-1' })
       const row2 = makeReviewRow({ id: 'review-2', artifactId: 'art-2' })
 
-      mockPrisma.aiReview.create
-        .mockResolvedValueOnce(row1)
-        .mockResolvedValueOnce(row2)
+      mockPrisma.aiReview.create.mockResolvedValueOnce(row1).mockResolvedValueOnce(row2)
 
-      mockPrisma.aiReview.findUnique
-        .mockResolvedValueOnce(row1)
-        .mockResolvedValueOnce(row2)
+      mockPrisma.aiReview.findUnique.mockResolvedValueOnce(row1).mockResolvedValueOnce(row2)
 
       mockPrisma.aiReview.update.mockResolvedValue({ status: 'done' })
 
       // artifact.findUnique calls: enqueue-art-1, enqueue-art-2, post-done-art-1, post-done-art-2
       mockPrisma.artifact.findUnique
-        .mockResolvedValueOnce({ id: 'art-1', cardId: CARD_ID })  // enqueue art-1
-        .mockResolvedValueOnce({ id: 'art-2', cardId: CARD_ID })  // enqueue art-2
-        .mockResolvedValueOnce({ id: 'art-1', cardId: CARD_ID })  // post-done check art-1
-        .mockResolvedValueOnce({ id: 'art-2', cardId: CARD_ID })  // post-done check art-2
+        .mockResolvedValueOnce({ id: 'art-1', cardId: CARD_ID }) // enqueue art-1
+        .mockResolvedValueOnce({ id: 'art-2', cardId: CARD_ID }) // enqueue art-2
+        .mockResolvedValueOnce({ id: 'art-1', cardId: CARD_ID }) // post-done check art-1
+        .mockResolvedValueOnce({ id: 'art-2', cardId: CARD_ID }) // post-done check art-2
 
       __setClaudeClientForTests(async () => ({
         output: 'Done',
@@ -286,7 +300,7 @@ describe('AI Review Pipeline', () => {
       // Artifact exists for enqueue check only; all subsequent calls return null (deleted).
       mockPrisma.artifact.findUnique
         .mockResolvedValueOnce({ id: ARTIFACT_ID, cardId: CARD_ID }) // enqueue check
-        .mockResolvedValue(null)                                       // all subsequent → deleted
+        .mockResolvedValue(null) // all subsequent → deleted
 
       __setClaudeClientForTests(async () => ({
         output: 'Output',
@@ -356,7 +370,8 @@ describe('AI Review Pipeline', () => {
       await flushForTests()
 
       const failedCall = mockPrisma.aiReview.update.mock.calls.find(
-        (c: Array<{ data: { status?: string; errorMessage?: string } }>) => c[0].data.status === 'failed'
+        (c: Array<{ data: { status?: string; errorMessage?: string } }>) =>
+          c[0].data.status === 'failed'
       )
       expect(failedCall).toBeDefined()
       expect(failedCall![0].data.errorMessage).toContain('Claude exploded')
@@ -369,7 +384,9 @@ describe('AI Review Pipeline', () => {
       mockPrisma.aiReview.update.mockResolvedValue({})
 
       // Storage throws
-      mockStorage.getStream.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+      mockStorage.getStream.mockRejectedValue(
+        Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+      )
 
       await enqueueAiReview(ARTIFACT_ID)
       await flushForTests()

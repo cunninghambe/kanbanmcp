@@ -4,20 +4,24 @@
 import { describe, it, expect, vi } from 'vitest'
 import { recomputeSubtreePathAndDepth, wouldFormCycle } from '../../src/lib/tree'
 
-function makeTx(cards: Record<string, { path: string; depth: number; parentCardId?: string | null }>) {
+function makeTx(
+  cards: Record<string, { path: string; depth: number; parentCardId?: string | null }>
+) {
   const updateCalls: Array<{ id: string; data: Record<string, unknown> }> = []
 
   const tx = {
     card: {
-      findUnique: vi.fn(({ where, select }: { where: { id: string }; select: Record<string, boolean> }) => {
-        const c = cards[where.id]
-        if (!c) return Promise.resolve(null)
-        const result: Record<string, unknown> = {}
-        if ('path' in select) result.path = c.path
-        if ('depth' in select) result.depth = c.depth
-        if ('parentCardId' in select) result.parentCardId = c.parentCardId ?? null
-        return Promise.resolve(result)
-      }),
+      findUnique: vi.fn(
+        ({ where, select }: { where: { id: string }; select: Record<string, boolean> }) => {
+          const c = cards[where.id]
+          if (!c) return Promise.resolve(null)
+          const result: Record<string, unknown> = {}
+          if ('path' in select) result.path = c.path
+          if ('depth' in select) result.depth = c.depth
+          if ('parentCardId' in select) result.parentCardId = c.parentCardId ?? null
+          return Promise.resolve(result)
+        }
+      ),
       update: vi.fn(({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         updateCalls.push({ id: where.id, data })
         return Promise.resolve({})

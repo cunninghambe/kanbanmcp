@@ -56,12 +56,20 @@ function makeRequest(url: string, method: string, body?: unknown): NextRequest {
 describe('GET /api/boards/[boardId]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'ADMIN' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'ADMIN',
+    })
   })
 
   it('returns 401 when not authenticated', async () => {
     const { getIronSession } = await import('iron-session')
-    vi.mocked(getIronSession).mockResolvedValueOnce({ userId: '', orgId: '', save: vi.fn() } as never)
+    vi.mocked(getIronSession).mockResolvedValueOnce({
+      userId: '',
+      orgId: '',
+      save: vi.fn(),
+    } as never)
     const { GET } = await import('../src/app/api/boards/[boardId]/route')
     const req = makeRequest('http://localhost/api/boards/board-1', 'GET')
     const res = await GET(req, { params: { boardId: 'board-1' } })
@@ -77,7 +85,11 @@ describe('GET /api/boards/[boardId]', () => {
   })
 
   it('returns 403 when board belongs to different org', async () => {
-    mockPrisma.board.findUnique.mockResolvedValue({ id: 'board-1', orgId: 'other-org', name: 'Other Board' })
+    mockPrisma.board.findUnique.mockResolvedValue({
+      id: 'board-1',
+      orgId: 'other-org',
+      name: 'Other Board',
+    })
     const { GET } = await import('../src/app/api/boards/[boardId]/route')
     const req = makeRequest('http://localhost/api/boards/board-1', 'GET')
     const res = await GET(req, { params: { boardId: 'board-1' } })
@@ -89,9 +101,7 @@ describe('GET /api/boards/[boardId]', () => {
       id: 'board-1',
       orgId: 'org-1',
       name: 'My Board',
-      columns: [
-        { id: 'col-1', name: 'Backlog', position: 0, cards: [] },
-      ],
+      columns: [{ id: 'col-1', name: 'Backlog', position: 0, cards: [] }],
     }
     // First call: resolveBoard check
     mockPrisma.board.findUnique.mockResolvedValueOnce({ id: 'board-1', orgId: 'org-1' })
@@ -112,7 +122,11 @@ describe('GET /api/boards/[boardId]', () => {
 describe('PATCH /api/boards/[boardId]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'ADMIN' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'ADMIN',
+    })
   })
 
   it('returns 400 for empty board name', async () => {
@@ -139,7 +153,11 @@ describe('PATCH /api/boards/[boardId]', () => {
 describe('GET /api/orgs/[orgId]/boards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('returns list of boards with counts', async () => {
@@ -166,7 +184,11 @@ describe('GET /api/orgs/[orgId]/boards', () => {
 describe('POST /api/orgs/[orgId]/boards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'ADMIN' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'ADMIN',
+    })
   })
 
   it('returns 400 for empty board name', async () => {
@@ -193,14 +215,20 @@ describe('POST /api/orgs/[orgId]/boards', () => {
       { id: 'col-3', name: 'Review', position: 2, boardId: 'board-2' },
       { id: 'col-4', name: 'Done', position: 3, boardId: 'board-2' },
     ]
-    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
-      return fn({
-        board: { create: vi.fn().mockResolvedValue(newBoard) },
-        column: { create: vi.fn().mockImplementation(({ data }: { data: { name: string; position: number } }) =>
-          Promise.resolve({ id: `col-${data.position}`, ...data, boardId: 'board-2' })
-        )},
-      } as unknown as typeof mockPrisma)
-    })
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) => {
+        return fn({
+          board: { create: vi.fn().mockResolvedValue(newBoard) },
+          column: {
+            create: vi
+              .fn()
+              .mockImplementation(({ data }: { data: { name: string; position: number } }) =>
+                Promise.resolve({ id: `col-${data.position}`, ...data, boardId: 'board-2' })
+              ),
+          },
+        } as unknown as typeof mockPrisma)
+      }
+    )
     const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
     const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', { name: 'New Board' })
     const res = await POST(req, { params: { orgId: 'org-1' } })
@@ -211,7 +239,11 @@ describe('POST /api/orgs/[orgId]/boards', () => {
   })
 
   it('returns 403 when user lacks ADMIN role', async () => {
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
     const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', { name: 'New Board' })
     const res = await POST(req, { params: { orgId: 'org-1' } })

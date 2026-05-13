@@ -1,62 +1,59 @@
-"use client";
+'use client'
 
-import { RoleSelector } from "./RoleSelector";
-import type { OrgMember } from "./RoleSelector";
-import { AiReviewToggle } from "./AiReviewToggle";
-import { ArtifactList } from "./ArtifactList";
-import { SignoffPanel } from "./SignoffPanel";
-import type { ExistingSignoff } from "./SignoffPanel";
-import type { AiReviewParams } from "@/lib/cards";
-import { SubcardTree } from "./SubcardTree";
+import { RoleSelector } from './RoleSelector'
+import type { OrgMember } from './RoleSelector'
+import { AiReviewToggle } from './AiReviewToggle'
+import { ArtifactList } from './ArtifactList'
+import { SignoffPanel } from './SignoffPanel'
+import type { ExistingSignoff } from './SignoffPanel'
+import type { AiReviewParams } from '@/lib/cards'
+import { SubcardTree } from './SubcardTree'
 
 interface CardDetailSectionsCard {
-  id: string;
-  columnId: string;
-  assigneeId: string | null;
-  reviewerId: string | null;
-  approverId: string | null;
-  aiAutoReview: boolean;
-  aiReviewParams: AiReviewParams | null;
+  id: string
+  columnId: string
+  assigneeId: string | null
+  reviewerId: string | null
+  approverId: string | null
+  aiAutoReview: boolean
+  aiReviewParams: AiReviewParams | null
   parent?: {
-    id: string;
-    title: string;
-    aiReviewParams: AiReviewParams | null;
-  } | null;
+    id: string
+    title: string
+    aiReviewParams: AiReviewParams | null
+  } | null
 }
 
 interface LatestSignoffs {
-  reviewer: ExistingSignoff | null;
-  approver: ExistingSignoff | null;
+  reviewer: ExistingSignoff | null
+  approver: ExistingSignoff | null
 }
 
 interface CardDetailSectionsProps {
-  card: CardDetailSectionsCard;
-  boardId: string;
-  orgMembers: OrgMember[];
-  currentUserId: string | null;
-  isReviewer: boolean;
-  isApprover: boolean;
-  isOrgAdmin: boolean;
-  latestSignoffs: LatestSignoffs;
+  card: CardDetailSectionsCard
+  boardId: string
+  orgMembers: OrgMember[]
+  currentUserId: string | null
+  isReviewer: boolean
+  isApprover: boolean
+  isOrgAdmin: boolean
+  latestSignoffs: LatestSignoffs
   handleRoleChange: (
-    field: "assigneeId" | "reviewerId" | "approverId",
-    userId: string | null,
-  ) => Promise<void>;
-  handleAiReviewSave: (next: {
-    enabled: boolean;
-    params: AiReviewParams | null;
-  }) => Promise<void>;
-  onSignoffSubmitted: () => void;
-  onOpenCard: (cardId: string) => void;
+    field: 'assigneeId' | 'reviewerId' | 'approverId',
+    userId: string | null
+  ) => Promise<void>
+  handleAiReviewSave: (next: { enabled: boolean; params: AiReviewParams | null }) => Promise<void>
+  onSignoffSubmitted: () => void
+  onOpenCard: (cardId: string) => void
 }
 
 function canDeleteArtifact(
   artifact: { uploader: { id: string } },
   currentUserId: string | null,
-  isOrgAdmin: boolean,
+  isOrgAdmin: boolean
 ): boolean {
-  if (isOrgAdmin) return true;
-  return artifact.uploader.id === currentUserId;
+  if (isOrgAdmin) return true
+  return artifact.uploader.id === currentUserId
 }
 
 export function CardDetailSections({
@@ -89,19 +86,19 @@ export function CardDetailSections({
             selectedUserId={card.assigneeId}
             orgMembers={orgMembers}
             required
-            onChange={(id) => handleRoleChange("assigneeId", id)}
+            onChange={(id) => handleRoleChange('assigneeId', id)}
           />
           <RoleSelector
             label="Reviewer"
             selectedUserId={card.reviewerId}
             orgMembers={orgMembers}
-            onChange={(id) => handleRoleChange("reviewerId", id)}
+            onChange={(id) => handleRoleChange('reviewerId', id)}
           />
           <RoleSelector
             label="Approver"
             selectedUserId={card.approverId}
             orgMembers={orgMembers}
-            onChange={(id) => handleRoleChange("approverId", id)}
+            onChange={(id) => handleRoleChange('approverId', id)}
           />
         </div>
       </section>
@@ -133,9 +130,7 @@ export function CardDetailSections({
         </h3>
         <ArtifactList
           cardId={card.id}
-          canDelete={(artifact) =>
-            canDeleteArtifact(artifact, currentUserId, isOrgAdmin)
-          }
+          canDelete={(artifact) => canDeleteArtifact(artifact, currentUserId, isOrgAdmin)}
         />
       </section>
 
@@ -156,8 +151,8 @@ export function CardDetailSections({
                   Reviewer
                 </span>
                 <div className="mt-1 text-xs text-slate-600">
-                  {latestSignoffs.reviewer.user.name} &middot;{" "}
-                  {latestSignoffs.reviewer.decision.replace("_", " ")} &middot;{" "}
+                  {latestSignoffs.reviewer.user.name} &middot;{' '}
+                  {latestSignoffs.reviewer.decision.replace('_', ' ')} &middot;{' '}
                   {new Date(latestSignoffs.reviewer.createdAt).toLocaleString()}
                 </div>
               </div>
@@ -168,8 +163,8 @@ export function CardDetailSections({
                   Approver
                 </span>
                 <div className="mt-1 text-xs text-slate-600">
-                  {latestSignoffs.approver.user.name} &middot;{" "}
-                  {latestSignoffs.approver.decision.replace("_", " ")} &middot;{" "}
+                  {latestSignoffs.approver.user.name} &middot;{' '}
+                  {latestSignoffs.approver.decision.replace('_', ' ')} &middot;{' '}
                   {new Date(latestSignoffs.approver.createdAt).toLocaleString()}
                 </div>
               </div>
@@ -211,5 +206,5 @@ export function CardDetailSections({
         onOpenCard={onOpenCard}
       />
     </>
-  );
+  )
 }

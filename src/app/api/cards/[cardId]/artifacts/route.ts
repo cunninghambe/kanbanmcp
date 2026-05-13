@@ -17,10 +17,7 @@ async function resolveCard(cardId: string, orgId: string) {
 
 // POST /api/cards/[cardId]/artifacts
 // Uploads a file as an artifact attached to the card.
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { cardId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { cardId: string } }) {
   try {
     const session = await requireSession(req)
 
@@ -91,7 +88,10 @@ export async function POST(
     })
 
     // Re-fetch the card to check aiAutoReview (card may not include this field from the initial resolve).
-    const freshCard = await prisma.card.findUnique({ where: { id: params.cardId }, select: { aiAutoReview: true } })
+    const freshCard = await prisma.card.findUnique({
+      where: { id: params.cardId },
+      select: { aiAutoReview: true },
+    })
     if (freshCard?.aiAutoReview) {
       await enqueueAiReview(artifact.id)
     }
@@ -106,10 +106,7 @@ export async function POST(
 
 // GET /api/cards/[cardId]/artifacts
 // Lists all artifacts for the card, ordered by creation time descending.
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { cardId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { cardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveCard(params.cardId, session.orgId)

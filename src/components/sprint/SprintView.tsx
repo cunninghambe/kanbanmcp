@@ -24,15 +24,12 @@ export function SprintView({ boardId }: SprintViewProps) {
     `/api/sprints?boardId=${boardId}`,
     fetcher
   )
-  const { data: boardData, mutate: mutateBoard } = useSWR(
-    `/api/boards/${boardId}`,
-    fetcher
-  )
+  const { data: boardData, mutate: mutateBoard } = useSWR(`/api/boards/${boardId}`, fetcher)
 
   const sprints: Sprint[] = sprintsData?.sprints ?? []
   const activeSprint = sprints.find((s) => s.status === 'ACTIVE') ?? sprints[0] ?? null
   const currentSprint = selectedSprintId
-    ? sprints.find((s) => s.id === selectedSprintId) ?? activeSprint
+    ? (sprints.find((s) => s.id === selectedSprintId) ?? activeSprint)
     : activeSprint
 
   const { data: sprintCardsData, mutate: mutateSprintCards } = useSWR(
@@ -42,9 +39,7 @@ export function SprintView({ boardId }: SprintViewProps) {
 
   const sprintCards: Card[] = sprintCardsData?.cards ?? []
   const columns: Column[] = boardData?.columns ?? []
-  const allCards: Card[] = (boardData?.columns ?? []).flatMap(
-    (c: { cards: Card[] }) => c.cards
-  )
+  const allCards: Card[] = (boardData?.columns ?? []).flatMap((c: { cards: Card[] }) => c.cards)
   const backlogCards = allCards.filter((c: Card) => !c.sprintId)
 
   async function handleCompleteSprint() {

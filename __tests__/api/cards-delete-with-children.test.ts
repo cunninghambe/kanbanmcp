@@ -81,9 +81,7 @@ describe('DELETE /api/cards/[cardId] with children', () => {
 
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
-    txMock.card.findUnique
-      .mockResolvedValueOnce(childA)
-      .mockResolvedValueOnce(childB)
+    txMock.card.findUnique.mockResolvedValueOnce(childA).mockResolvedValueOnce(childB)
 
     const { DELETE } = await import('../../src/app/api/cards/[cardId]/route')
     const req = makeDeleteRequest('http://localhost/api/cards/parent-1')

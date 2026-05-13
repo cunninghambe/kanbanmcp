@@ -16,11 +16,10 @@ export type AiReviewParams = z.infer<typeof aiReviewParamsSchema>
  * Root card has path "". Child of root has path "/rootId/". Grandchild has "/rootId/childId/".
  * Rejection at parent.depth + 1 >= MAX_NESTING_DEPTH (i.e. parent at depth 49 -> 400).
  */
-export function computeChildPathAndDepth(parent: {
-  id: string
+export function computeChildPathAndDepth(parent: { id: string; path: string; depth: number }): {
   path: string
   depth: number
-}): { path: string; depth: number } {
+} {
   const prefix = parent.path === '' ? '/' : parent.path
   return {
     path: `${prefix}${parent.id}/`,

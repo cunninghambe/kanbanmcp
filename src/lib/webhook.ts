@@ -55,9 +55,7 @@ export async function dispatchWebhook(
       })
 
       if (!response.ok) {
-        throw new Error(
-          `Webhook delivery to ${wh.url} failed with status ${response.status}`
-        )
+        throw new Error(`Webhook delivery to ${wh.url} failed with status ${response.status}`)
       }
     } finally {
       clearTimeout(timeoutId)

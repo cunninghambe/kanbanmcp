@@ -12,10 +12,7 @@ const reparentSchema = z.object({
 
 // POST /api/cards/[cardId]/reparent
 // Body: { parentCardId: string | null }
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { cardId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { cardId: string } }) {
   try {
     const session = await requireSession(req)
     const existingCard = await resolveCard(params.cardId, session.orgId)
@@ -55,9 +52,7 @@ export async function POST(
         }
 
         const subtreePrefix =
-          existingCard.path === ''
-            ? `/${params.cardId}/`
-            : `${existingCard.path}${params.cardId}/`
+          existingCard.path === '' ? `/${params.cardId}/` : `${existingCard.path}${params.cardId}/`
         const maxDepthResult = await tx.$queryRaw<Array<{ maxDepth: number | null }>>`
           SELECT MAX(depth) as maxDepth FROM "cards" WHERE path LIKE ${subtreePrefix + '%'}
         `

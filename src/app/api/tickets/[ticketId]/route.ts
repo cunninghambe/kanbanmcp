@@ -44,10 +44,7 @@ async function resolveTicket(ticketId: string, orgId: string) {
 }
 
 // GET /api/tickets/[ticketId]
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { ticketId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { ticketId: string } }) {
   try {
     const auth = await resolveAuth(req)
     await resolveTicket(params.ticketId, auth.orgId)
@@ -82,10 +79,7 @@ export async function GET(
 
 // PATCH /api/tickets/[ticketId]
 // Updates ticket fields. Logs activity entries for status/priority/assignee changes.
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { ticketId: string } }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: { ticketId: string } }) {
   try {
     const auth = await resolveAuth(req)
     const existing = await resolveTicket(params.ticketId, auth.orgId)
@@ -126,7 +120,11 @@ export async function PATCH(
       updateData.description = description
     }
     if (status !== undefined && status !== existing.status) {
-      activityEntries.push({ action: 'status_changed', fromValue: existing.status, toValue: status })
+      activityEntries.push({
+        action: 'status_changed',
+        fromValue: existing.status,
+        toValue: status,
+      })
       updateData.status = status
       if (status === 'resolved' && !existing.resolvedAt) updateData.resolvedAt = new Date()
       if (status === 'closed' && !existing.closedAt) updateData.closedAt = new Date()
@@ -137,11 +135,19 @@ export async function PATCH(
       }
     }
     if (priority !== undefined && priority !== existing.priority) {
-      activityEntries.push({ action: 'priority_changed', fromValue: existing.priority, toValue: priority })
+      activityEntries.push({
+        action: 'priority_changed',
+        fromValue: existing.priority,
+        toValue: priority,
+      })
       updateData.priority = priority
     }
     if (assigneeId !== undefined && assigneeId !== existing.assigneeId) {
-      activityEntries.push({ action: 'assigned', fromValue: existing.assigneeId ?? undefined, toValue: assigneeId ?? undefined })
+      activityEntries.push({
+        action: 'assigned',
+        fromValue: existing.assigneeId ?? undefined,
+        toValue: assigneeId ?? undefined,
+      })
       updateData.assigneeId = assigneeId
     }
 
@@ -189,10 +195,7 @@ export async function PATCH(
 
 // DELETE /api/tickets/[ticketId]
 // Hard-deletes the ticket. Cascades handle comments and activity.
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { ticketId: string } }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: { ticketId: string } }) {
   try {
     const auth = await resolveAuth(req)
     await resolveTicket(params.ticketId, auth.orgId)

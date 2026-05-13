@@ -130,17 +130,10 @@ describe('roleMembershipCheck', () => {
   it('returns ok:true when all users are members', async () => {
     const mockPrisma = {
       orgMember: {
-        findMany: vi.fn().mockResolvedValue([
-          { userId: 'user-1' },
-          { userId: 'user-2' },
-        ]),
+        findMany: vi.fn().mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]),
       },
     }
-    const result = await roleMembershipCheck(
-      mockPrisma as never,
-      ['user-1', 'user-2'],
-      'org-1'
-    )
+    const result = await roleMembershipCheck(mockPrisma as never, ['user-1', 'user-2'], 'org-1')
     expect(result).toEqual({ ok: true })
   })
 

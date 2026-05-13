@@ -64,7 +64,7 @@ const rootCard = {
   board: { orgId: 'org-1' },
 }
 
-function setupHappyPath(descendants: typeof rootCard[]) {
+function setupHappyPath(descendants: (typeof rootCard)[]) {
   mockPrisma.card.findUnique.mockResolvedValue(rootCard)
   mockPrisma.card.findMany.mockResolvedValue(descendants)
   mockPrisma.signoff.findMany.mockResolvedValue([])
@@ -91,7 +91,13 @@ describe('GET /api/cards/[cardId]/children', () => {
   })
 
   it('returns root and descendants', async () => {
-    const child = { ...rootCard, id: 'child-1', parentCardId: 'card-root' as unknown as null, path: '/card-root/', depth: 1 }
+    const child = {
+      ...rootCard,
+      id: 'child-1',
+      parentCardId: 'card-root' as unknown as null,
+      path: '/card-root/',
+      depth: 1,
+    }
     setupHappyPath([child])
     const { GET } = await import('../../src/app/api/cards/[cardId]/children/route')
     const req = makeRequest('http://localhost/api/cards/card-root/children?depth=1')

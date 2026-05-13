@@ -28,7 +28,10 @@ export function Header({ title, breadcrumbs }: HeaderProps) {
             <span key={i} className="flex items-center gap-1">
               {i > 0 && <span className="text-slate-400">/</span>}
               {crumb.href ? (
-                <Link href={crumb.href} className="text-slate-500 hover:text-slate-900 transition-colors">
+                <Link
+                  href={crumb.href}
+                  className="text-slate-500 hover:text-slate-900 transition-colors"
+                >
                   {crumb.label}
                 </Link>
               ) : (

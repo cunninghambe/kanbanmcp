@@ -12,12 +12,12 @@ function isPrivateIP(ip: string): boolean {
     const nums = parts.map(Number)
     if (nums.every((n) => !isNaN(n) && n >= 0 && n <= 255)) {
       const [a, b] = nums
-      if (a === 127) return true                          // loopback 127.0.0.0/8
-      if (a === 10) return true                           // RFC-1918 10.0.0.0/8
-      if (a === 172 && b >= 16 && b <= 31) return true   // RFC-1918 172.16.0.0/12
-      if (a === 192 && b === 168) return true             // RFC-1918 192.168.0.0/16
-      if (a === 169 && b === 254) return true             // link-local 169.254.0.0/16
-      if (a === 0) return true                            // 0.0.0.0/8
+      if (a === 127) return true // loopback 127.0.0.0/8
+      if (a === 10) return true // RFC-1918 10.0.0.0/8
+      if (a === 172 && b >= 16 && b <= 31) return true // RFC-1918 172.16.0.0/12
+      if (a === 192 && b === 168) return true // RFC-1918 192.168.0.0/16
+      if (a === 169 && b === 254) return true // link-local 169.254.0.0/16
+      if (a === 0) return true // 0.0.0.0/8
     }
   }
 

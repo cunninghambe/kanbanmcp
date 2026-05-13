@@ -89,7 +89,11 @@ const createdCard = {
 
 function setupHappyPath() {
   mockPrisma.board.findUnique.mockResolvedValue({ id: 'board-1', orgId: 'org-1' })
-  mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+  mockPrisma.orgMember.findUnique.mockResolvedValue({
+    userId: 'user-1',
+    orgId: 'org-1',
+    role: 'MEMBER',
+  })
   mockPrisma.column.findUnique.mockResolvedValue({ id: 'col-1', boardId: 'board-1' })
   mockPrisma.orgMember.findMany.mockResolvedValue([{ userId: 'user-1' }])
   mockPrisma.card.findFirst.mockResolvedValue(null)
@@ -101,7 +105,11 @@ describe('POST /api/boards/[boardId]/cards — assigneeId required (AC-4)', () =
   beforeEach(() => {
     vi.clearAllMocks()
     mockPrisma.board.findUnique.mockResolvedValue({ id: 'board-1', orgId: 'org-1' })
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('returns 400 with exact message when assigneeId is missing', async () => {
@@ -141,7 +149,11 @@ describe('POST /api/boards/[boardId]/cards — role membership checks', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPrisma.board.findUnique.mockResolvedValue({ id: 'board-1', orgId: 'org-1' })
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     mockPrisma.column.findUnique.mockResolvedValue({ id: 'col-1', boardId: 'board-1' })
     mockPrisma.card.findFirst.mockResolvedValue(null)
   })
@@ -191,7 +203,11 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPrisma.board.findUnique.mockResolvedValue({ id: 'board-1', orgId: 'org-1' })
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     mockPrisma.column.findUnique.mockResolvedValue({ id: 'col-1', boardId: 'board-1' })
     mockPrisma.orgMember.findMany.mockResolvedValue([{ userId: 'user-1' }])
     mockPrisma.card.findFirst.mockResolvedValue(null)
@@ -322,7 +338,11 @@ describe('POST /api/boards/[boardId]/cards — aiReviewParams', () => {
   })
 
   it('stores as JSON string and returns parsed object', async () => {
-    const params = { model: 'claude-sonnet-4-6', rubric: 'Check quality', customInstructions: 'Be brief' }
+    const params = {
+      model: 'claude-sonnet-4-6',
+      rubric: 'Check quality',
+      customInstructions: 'Be brief',
+    }
     mockPrisma.card.create.mockResolvedValue({
       ...createdCard,
       aiReviewParams: JSON.stringify(params),

@@ -22,6 +22,7 @@ Build the artifact upload, list, download, and delete endpoints, plus a storage 
 ## Files to create / modify
 
 **Create:**
+
 - `/root/kanbanmcp/src/lib/storage.ts` — storage driver abstraction + local driver. S3 stub returns "not implemented" in M1 unless `STORAGE_DRIVER=s3` is set and `@aws-sdk/client-s3` is installed (do NOT install the package in this task; emit a clear runtime error if requested without it).
 - `/root/kanbanmcp/src/app/api/cards/[cardId]/artifacts/route.ts` — POST (upload), GET (list)
 - `/root/kanbanmcp/src/app/api/artifacts/[artifactId]/route.ts` — DELETE
@@ -49,6 +50,7 @@ export function getStorageDriver(): StorageDriver
 ```
 
 Local driver:
+
 - Base directory: `process.env.STORAGE_DIR || './uploads'` (resolved to absolute via `path.resolve`)
 - `put(key, bytes)` writes to `<baseDir>/<key>` with permissions 0640, creating the directory if needed.
 - `getStream(key)` returns `fs.createReadStream(<baseDir>/<key>)`.
@@ -56,6 +58,7 @@ Local driver:
 - Reject any `key` containing `/`, `\`, `..`, or null bytes — throw `Error('Invalid storage key')`. The Artifact route is responsible for using the artifact's cuid as the key; the driver enforces it defensively.
 
 S3 driver (in M1 — stub):
+
 - If `STORAGE_DRIVER === 's3'`, attempt `require('@aws-sdk/client-s3')`. If module missing, throw `Error('S3 driver requires @aws-sdk/client-s3 (not installed in M1)')`. **Do not install the package in this task.**
 - Implementation can be a thin pass-through if the import works, but the test path is local-only.
 
@@ -97,6 +100,7 @@ export function shapeArtifact(
 - Generate the artifact ID first (use `cuid` via `@paralleldrive/cuid2` — wait, we don't have it; use Prisma's default by computing once via the schema. Actually: use the same approach as the existing code — let Prisma generate during `create`. **Workflow:** `create` the row to get the id; THEN write the bytes using the id as the storage key; THEN if the write fails, `delete` the row to roll back. This avoids needing a separate cuid generator.
 
   Cleaner alternative: import `cuid` library. The project does not yet have it as a direct dependency, but `@prisma/client` ships with one. Avoid using internal Prisma exports. Use the create-then-write-then-rollback pattern.
+
 - Persist as `Artifact { cardId, uploaderId, filename: file.name, mimeType: file.type, sizeBytes: file.size, storageKey: <id>, source: 'UPLOAD' }`.
 - Call `storage.put(artifact.id, Buffer.from(await file.arrayBuffer()), file.type)`. If it throws, `prisma.artifact.delete` the row and return 500.
 - **Emit auto-review trigger.** Re-fetch the parent card and check `card.aiAutoReview`. If true, call `enqueueAiReview(artifact.id)` from `src/lib/ai-review/queue.ts` — **but Task 05 owns that module.** For now in Task 04, define a stub interface and import lazily:
@@ -147,7 +151,7 @@ interface ArtifactResponse {
   mimeType: string
   sizeBytes: number
   source: string
-  createdAt: string  // ISO
+  createdAt: string // ISO
   uploader: { id: string; name: string; email: string }
   reviews: AiReviewSummary[]
 }

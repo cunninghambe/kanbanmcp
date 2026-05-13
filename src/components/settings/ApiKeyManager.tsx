@@ -117,9 +117,11 @@ export function ApiKeyManager() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-slate-500">
-                    {key.lastUsedAt
-                      ? new Date(key.lastUsedAt).toLocaleDateString()
-                      : <span className="text-slate-300">Never</span>}
+                    {key.lastUsedAt ? (
+                      new Date(key.lastUsedAt).toLocaleDateString()
+                    ) : (
+                      <span className="text-slate-300">Never</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-500">
                     {new Date(key.createdAt).toLocaleDateString()}
@@ -144,7 +146,11 @@ export function ApiKeyManager() {
       {/* Create modal */}
       <Modal
         open={showCreate}
-        onClose={() => { setShowCreate(false); setAgentName(''); setSelectedPerms(['read']) }}
+        onClose={() => {
+          setShowCreate(false)
+          setAgentName('')
+          setSelectedPerms(['read'])
+        }}
         title="New API Key"
         size="sm"
       >
@@ -181,7 +187,11 @@ export function ApiKeyManager() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => { setShowCreate(false); setAgentName(''); setSelectedPerms(['read']) }}
+              onClick={() => {
+                setShowCreate(false)
+                setAgentName('')
+                setSelectedPerms(['read'])
+              }}
             >
               Cancel
             </Button>
@@ -195,7 +205,10 @@ export function ApiKeyManager() {
       {/* Key reveal modal */}
       <Modal
         open={!!newKeyResult}
-        onClose={() => { setNewKeyResult(null); setCopied(false) }}
+        onClose={() => {
+          setNewKeyResult(null)
+          setCopied(false)
+        }}
         title="API Key Created"
         size="md"
       >
@@ -220,7 +233,12 @@ export function ApiKeyManager() {
               </div>
             </div>
             <div className="flex justify-end">
-              <Button onClick={() => { setNewKeyResult(null); setCopied(false) }}>
+              <Button
+                onClick={() => {
+                  setNewKeyResult(null)
+                  setCopied(false)
+                }}
+              >
                 Done
               </Button>
             </div>

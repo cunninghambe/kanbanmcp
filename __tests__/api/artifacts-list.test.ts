@@ -28,7 +28,14 @@ function makeArtifact(id: string, createdAt: Date) {
     storageKey: id,
     source: 'UPLOAD',
     createdAt,
-    uploader: { id: 'user-1', name: 'Alice', email: 'alice@example.com', passwordHash: 'h', isAgent: false, createdAt: new Date() },
+    uploader: {
+      id: 'user-1',
+      name: 'Alice',
+      email: 'alice@example.com',
+      passwordHash: 'h',
+      isAgent: false,
+      createdAt: new Date(),
+    },
     reviews: [],
   }
 }
@@ -36,7 +43,11 @@ function makeArtifact(id: string, createdAt: Date) {
 describe('GET /api/cards/[cardId]/artifacts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     mockPrisma.card.findUnique.mockResolvedValue(baseCard)
   })
 

@@ -109,10 +109,7 @@ export function WebhookManager() {
       ) : (
         <div className="space-y-3">
           {(Array.isArray(webhooks) ? webhooks : []).map((wh) => (
-            <div
-              key={wh.id}
-              className="border border-slate-200 rounded-lg p-4 bg-white"
-            >
+            <div key={wh.id} className="border border-slate-200 rounded-lg p-4 bg-white">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{wh.url}</p>
@@ -123,11 +120,15 @@ export function WebhookManager() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`text-xs font-medium ${wh.active ? 'text-green-600' : 'text-slate-400'}`}>
+                  <span
+                    className={`text-xs font-medium ${wh.active ? 'text-green-600' : 'text-slate-400'}`}
+                  >
                     {wh.active ? 'Active' : 'Inactive'}
                   </span>
                   {pingResult?.id === wh.id && (
-                    <span className={`text-xs font-medium ${pingResult.ok ? 'text-green-600' : 'text-red-600'}`}>
+                    <span
+                      className={`text-xs font-medium ${pingResult.ok ? 'text-green-600' : 'text-red-600'}`}
+                    >
                       {pingResult.ok ? 'Ping OK' : 'Ping failed'}
                     </span>
                   )}
@@ -157,7 +158,13 @@ export function WebhookManager() {
       {/* Create modal */}
       <Modal
         open={showCreate}
-        onClose={() => { setShowCreate(false); setUrl(''); setSecret(''); setSelectedEvents(['card.created']); setCreateError(null) }}
+        onClose={() => {
+          setShowCreate(false)
+          setUrl('')
+          setSecret('')
+          setSelectedEvents(['card.created'])
+          setCreateError(null)
+        }}
         title="Add Webhook"
         size="md"
       >
@@ -213,7 +220,13 @@ export function WebhookManager() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => { setShowCreate(false); setUrl(''); setSecret(''); setSelectedEvents(['card.created']); setCreateError(null) }}
+              onClick={() => {
+                setShowCreate(false)
+                setUrl('')
+                setSecret('')
+                setSelectedEvents(['card.created'])
+                setCreateError(null)
+              }}
             >
               Cancel
             </Button>

@@ -66,7 +66,11 @@ const baseSprint = {
 describe('GET /api/sprints', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('returns 400 when boardId is missing', async () => {
@@ -111,7 +115,11 @@ describe('GET /api/sprints', () => {
 describe('POST /api/sprints', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('returns 400 for missing name', async () => {
@@ -165,7 +173,11 @@ describe('POST /api/sprints', () => {
 describe('GET /api/sprints/[sprintId]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('returns 404 when sprint not found', async () => {
@@ -191,7 +203,11 @@ describe('GET /api/sprints/[sprintId]', () => {
 describe('PATCH /api/sprints/[sprintId]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('returns 400 when no fields provided', async () => {
@@ -243,7 +259,11 @@ describe('PATCH /api/sprints/[sprintId]', () => {
 describe('DELETE /api/sprints/[sprintId]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
   })
 
   it('deletes sprint and unlinks cards', async () => {

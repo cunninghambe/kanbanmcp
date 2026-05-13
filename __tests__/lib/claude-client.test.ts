@@ -15,11 +15,16 @@ vi.mock('@anthropic-ai/sdk', () => {
 
   class MockRateLimitError extends Error {
     status = 429
-    constructor() { super('Rate limit exceeded') }
+    constructor() {
+      super('Rate limit exceeded')
+    }
   }
   class MockAPIError extends Error {
     status: number
-    constructor(status: number, message: string) { super(message); this.status = status }
+    constructor(status: number, message: string) {
+      super(message)
+      this.status = status
+    }
   }
 
   return {
@@ -138,10 +143,7 @@ describe('runClaudeReview', () => {
   it('throws after 3 attempts when rate-limited each time (E9 exhausted)', async () => {
     // @ts-expect-error mock has simplified constructor
     const err = new RateLimitError()
-    mockCreate
-      .mockRejectedValueOnce(err)
-      .mockRejectedValueOnce(err)
-      .mockRejectedValueOnce(err)
+    mockCreate.mockRejectedValueOnce(err).mockRejectedValueOnce(err).mockRejectedValueOnce(err)
 
     const promise = runClaudeReview(baseParams, textContent, 'test.txt')
     const assertion = expect(promise).rejects.toThrow()
