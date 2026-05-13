@@ -184,7 +184,7 @@ describe('GET /api/sprints/[sprintId]', () => {
     mockPrisma.sprint.findUnique.mockResolvedValue(null)
     const { GET } = await import('../src/app/api/sprints/[sprintId]/route')
     const req = makeRequest('http://localhost/api/sprints/nonexistent', 'GET')
-    const res = await GET(req, { params: { sprintId: 'nonexistent' } })
+    const res = await GET(req, { params: Promise.resolve({ sprintId: 'nonexistent' }) })
     expect(res.status).toBe(404)
   })
 
@@ -192,7 +192,7 @@ describe('GET /api/sprints/[sprintId]', () => {
     mockPrisma.sprint.findUnique.mockResolvedValue(baseSprint)
     const { GET } = await import('../src/app/api/sprints/[sprintId]/route')
     const req = makeRequest('http://localhost/api/sprints/sprint-1', 'GET')
-    const res = await GET(req, { params: { sprintId: 'sprint-1' } })
+    const res = await GET(req, { params: Promise.resolve({ sprintId: 'sprint-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.sprint.id).toBe('sprint-1')
@@ -214,7 +214,7 @@ describe('PATCH /api/sprints/[sprintId]', () => {
     mockPrisma.sprint.findUnique.mockResolvedValue(baseSprint)
     const { PATCH } = await import('../src/app/api/sprints/[sprintId]/route')
     const req = makeRequest('http://localhost/api/sprints/sprint-1', 'PATCH', {})
-    const res = await PATCH(req, { params: { sprintId: 'sprint-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ sprintId: 'sprint-1' }) })
     expect(res.status).toBe(400)
   })
 
@@ -224,7 +224,7 @@ describe('PATCH /api/sprints/[sprintId]', () => {
     const req = makeRequest('http://localhost/api/sprints/sprint-1', 'PATCH', {
       status: 'INVALID_STATUS',
     })
-    const res = await PATCH(req, { params: { sprintId: 'sprint-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ sprintId: 'sprint-1' }) })
     expect(res.status).toBe(400)
   })
 
@@ -235,7 +235,7 @@ describe('PATCH /api/sprints/[sprintId]', () => {
     const req = makeRequest('http://localhost/api/sprints/sprint-1', 'PATCH', {
       status: 'ACTIVE',
     })
-    const res = await PATCH(req, { params: { sprintId: 'sprint-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ sprintId: 'sprint-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.sprint.status).toBe('ACTIVE')
@@ -248,7 +248,7 @@ describe('PATCH /api/sprints/[sprintId]', () => {
     const req = makeRequest('http://localhost/api/sprints/sprint-1', 'PATCH', {
       name: 'Sprint One Renamed',
     })
-    const res = await PATCH(req, { params: { sprintId: 'sprint-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ sprintId: 'sprint-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.sprint.name).toBe('Sprint One Renamed')
@@ -272,7 +272,7 @@ describe('DELETE /api/sprints/[sprintId]', () => {
     mockPrisma.sprint.delete.mockResolvedValue({})
     const { DELETE } = await import('../src/app/api/sprints/[sprintId]/route')
     const req = makeRequest('http://localhost/api/sprints/sprint-1', 'DELETE')
-    const res = await DELETE(req, { params: { sprintId: 'sprint-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ sprintId: 'sprint-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.success).toBe(true)
@@ -286,7 +286,7 @@ describe('DELETE /api/sprints/[sprintId]', () => {
     mockPrisma.sprint.findUnique.mockResolvedValue(null)
     const { DELETE } = await import('../src/app/api/sprints/[sprintId]/route')
     const req = makeRequest('http://localhost/api/sprints/nonexistent', 'DELETE')
-    const res = await DELETE(req, { params: { sprintId: 'nonexistent' } })
+    const res = await DELETE(req, { params: Promise.resolve({ sprintId: 'nonexistent' }) })
     expect(res.status).toBe(404)
   })
 })

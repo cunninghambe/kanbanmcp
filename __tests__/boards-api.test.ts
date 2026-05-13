@@ -72,7 +72,7 @@ describe('GET /api/boards/[boardId]', () => {
     } as never)
     const { GET } = await import('../src/app/api/boards/[boardId]/route')
     const req = makeRequest('http://localhost/api/boards/board-1', 'GET')
-    const res = await GET(req, { params: { boardId: 'board-1' } })
+    const res = await GET(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(401)
   })
 
@@ -80,7 +80,7 @@ describe('GET /api/boards/[boardId]', () => {
     mockPrisma.board.findUnique.mockResolvedValue(null)
     const { GET } = await import('../src/app/api/boards/[boardId]/route')
     const req = makeRequest('http://localhost/api/boards/nonexistent', 'GET')
-    const res = await GET(req, { params: { boardId: 'nonexistent' } })
+    const res = await GET(req, { params: Promise.resolve({ boardId: 'nonexistent' }) })
     expect(res.status).toBe(404)
   })
 
@@ -92,7 +92,7 @@ describe('GET /api/boards/[boardId]', () => {
     })
     const { GET } = await import('../src/app/api/boards/[boardId]/route')
     const req = makeRequest('http://localhost/api/boards/board-1', 'GET')
-    const res = await GET(req, { params: { boardId: 'board-1' } })
+    const res = await GET(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -110,7 +110,7 @@ describe('GET /api/boards/[boardId]', () => {
 
     const { GET } = await import('../src/app/api/boards/[boardId]/route')
     const req = makeRequest('http://localhost/api/boards/board-1', 'GET')
-    const res = await GET(req, { params: { boardId: 'board-1' } })
+    const res = await GET(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.board.id).toBe('board-1')
@@ -133,7 +133,7 @@ describe('PATCH /api/boards/[boardId]', () => {
     mockPrisma.board.findUnique.mockResolvedValue({ id: 'board-1', orgId: 'org-1' })
     const { PATCH } = await import('../src/app/api/boards/[boardId]/route')
     const req = makeRequest('http://localhost/api/boards/board-1', 'PATCH', { name: '' })
-    const res = await PATCH(req, { params: { boardId: 'board-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
   })
 
@@ -142,7 +142,7 @@ describe('PATCH /api/boards/[boardId]', () => {
     mockPrisma.board.update.mockResolvedValue({ id: 'board-1', orgId: 'org-1', name: 'New Name' })
     const { PATCH } = await import('../src/app/api/boards/[boardId]/route')
     const req = makeRequest('http://localhost/api/boards/board-1', 'PATCH', { name: 'New Name' })
-    const res = await PATCH(req, { params: { boardId: 'board-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.board.name).toBe('New Name')
@@ -172,7 +172,7 @@ describe('GET /api/orgs/[orgId]/boards', () => {
     ])
     const { GET } = await import('../src/app/api/orgs/[orgId]/boards/route')
     const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'GET')
-    const res = await GET(req, { params: { orgId: 'org-1' } })
+    const res = await GET(req, { params: Promise.resolve({ orgId: 'org-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.boards[0].columnCount).toBe(4)
@@ -194,7 +194,7 @@ describe('POST /api/orgs/[orgId]/boards', () => {
   it('returns 400 for empty board name', async () => {
     const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
     const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', { name: '' })
-    const res = await POST(req, { params: { orgId: 'org-1' } })
+    const res = await POST(req, { params: Promise.resolve({ orgId: 'org-1' }) })
     expect(res.status).toBe(400)
   })
 
@@ -202,7 +202,7 @@ describe('POST /api/orgs/[orgId]/boards', () => {
     mockPrisma.organization.findUnique.mockResolvedValue(null)
     const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
     const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', { name: 'New Board' })
-    const res = await POST(req, { params: { orgId: 'org-1' } })
+    const res = await POST(req, { params: Promise.resolve({ orgId: 'org-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -231,7 +231,7 @@ describe('POST /api/orgs/[orgId]/boards', () => {
     )
     const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
     const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', { name: 'New Board' })
-    const res = await POST(req, { params: { orgId: 'org-1' } })
+    const res = await POST(req, { params: Promise.resolve({ orgId: 'org-1' }) })
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.board.name).toBe('New Board')
@@ -246,7 +246,7 @@ describe('POST /api/orgs/[orgId]/boards', () => {
     })
     const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
     const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', { name: 'New Board' })
-    const res = await POST(req, { params: { orgId: 'org-1' } })
+    const res = await POST(req, { params: Promise.resolve({ orgId: 'org-1' }) })
     expect(res.status).toBe(403)
   })
 })

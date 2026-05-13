@@ -10,8 +10,9 @@ export const dynamic = 'force-dynamic'
  */
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { keyId: string } }
+  ctx: { params: Promise<{ keyId: string }> }
 ): Promise<NextResponse> {
+  const params = await ctx.params
   let session
   try {
     session = await requireSession(req)

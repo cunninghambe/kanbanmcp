@@ -93,7 +93,7 @@ describe('GET /api/cards/[cardId]', () => {
     mockPrisma.card.findUnique.mockResolvedValue(null)
     const { GET } = await import('../src/app/api/cards/[cardId]/route')
     const req = makeRequest('http://localhost/api/cards/nonexistent', 'GET')
-    const res = await GET(req, { params: { cardId: 'nonexistent' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'nonexistent' }) })
     expect(res.status).toBe(404)
   })
 
@@ -104,7 +104,7 @@ describe('GET /api/cards/[cardId]', () => {
     })
     const { GET } = await import('../src/app/api/cards/[cardId]/route')
     const req = makeRequest('http://localhost/api/cards/card-1', 'GET')
-    const res = await GET(req, { params: { cardId: 'card-1' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -115,7 +115,7 @@ describe('GET /api/cards/[cardId]', () => {
     mockPrisma.card.findUnique.mockResolvedValueOnce(baseCard)
     const { GET } = await import('../src/app/api/cards/[cardId]/route')
     const req = makeRequest('http://localhost/api/cards/card-1', 'GET')
-    const res = await GET(req, { params: { cardId: 'card-1' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.card.id).toBe('card-1')
@@ -138,7 +138,7 @@ describe('PATCH /api/cards/[cardId]', () => {
     mockPrisma.card.findUnique.mockResolvedValue({ ...baseCard })
     const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
     const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', { title: '' })
-    const res = await PATCH(req, { params: { cardId: 'card-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(400)
   })
 
@@ -164,7 +164,7 @@ describe('PATCH /api/cards/[cardId]', () => {
     const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', {
       title: 'Updated Title',
     })
-    const res = await PATCH(req, { params: { cardId: 'card-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.card.title).toBe('Updated Title')
@@ -191,7 +191,7 @@ describe('PATCH /api/cards/[cardId]', () => {
 
     const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
     const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', { columnId: 'col-2' })
-    const res = await PATCH(req, { params: { cardId: 'card-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(200)
   })
 
@@ -214,7 +214,7 @@ describe('PATCH /api/cards/[cardId]', () => {
         { id: 'nonexistent-card', position: 1 },
       ],
     })
-    const res = await PATCH(req, { params: { cardId: 'card-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('sibling card IDs')
@@ -237,7 +237,7 @@ describe('DELETE /api/cards/[cardId]', () => {
     mockPrisma.card.delete.mockResolvedValue({})
     const { DELETE } = await import('../src/app/api/cards/[cardId]/route')
     const req = makeRequest('http://localhost/api/cards/card-1', 'DELETE')
-    const res = await DELETE(req, { params: { cardId: 'card-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.success).toBe(true)
@@ -247,7 +247,7 @@ describe('DELETE /api/cards/[cardId]', () => {
     mockPrisma.card.findUnique.mockResolvedValue(null)
     const { DELETE } = await import('../src/app/api/cards/[cardId]/route')
     const req = makeRequest('http://localhost/api/cards/card-1', 'DELETE')
-    const res = await DELETE(req, { params: { cardId: 'card-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(404)
   })
 })
@@ -289,7 +289,7 @@ describe('PATCH /api/cards/[cardId] - priority field', () => {
       )
       const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
       const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', { priority })
-      const res = await PATCH(req, { params: { cardId: 'card-1' } })
+      const res = await PATCH(req, { params: Promise.resolve({ cardId: 'card-1' }) })
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body.card.priority).toBe(priority)
@@ -305,7 +305,7 @@ describe('PATCH /api/cards/[cardId] - priority field', () => {
     })
     const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
     const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', { priority: 'urgent' })
-    const res = await PATCH(req, { params: { cardId: 'card-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(400)
   })
 
@@ -335,7 +335,7 @@ describe('PATCH /api/cards/[cardId] - priority field', () => {
     const { PATCH } = await import('../src/app/api/cards/[cardId]/route')
     // Send only title, no priority field
     const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', { title: 'New Title' })
-    const res = await PATCH(req, { params: { cardId: 'card-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     // Priority should remain "high" (not overwritten)
@@ -374,7 +374,7 @@ describe('PATCH /api/cards/[cardId] - assignee IDOR protection', () => {
     const req = makeRequest('http://localhost/api/cards/card-1', 'PATCH', {
       assigneeId: 'user-from-other-org',
     })
-    const res = await PATCH(req, { params: { cardId: 'card-1' } })
+    const res = await PATCH(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('member of this organization')

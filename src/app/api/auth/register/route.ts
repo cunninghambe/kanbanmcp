@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Write session cookie
-    const session = await getIronSession<SessionData>(cookies(), sessionOptions)
+    const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
     session.userId = user.id
     session.orgId = org.id
     await session.save()

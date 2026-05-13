@@ -32,7 +32,8 @@ async function resolveCard(cardId: string, orgId: string) {
 // Only the card's assigned reviewer may submit role=REVIEWER;
 // only the assigned approver may submit role=APPROVER.
 // API-key sessions (userId='') always receive 403 — signoffs are human decisions.
-export async function POST(req: NextRequest, { params }: { params: { cardId: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ cardId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     const card = await resolveCard(params.cardId, session.orgId)
@@ -90,7 +91,8 @@ export async function POST(req: NextRequest, { params }: { params: { cardId: str
 // Returns all signoffs for the card, ordered by createdAt desc (newest first).
 // With ?latestPerRole=true, returns { signoffs, latest: { reviewer, approver } }
 // where each latest entry is the most recent signoff for that role.
-export async function GET(req: NextRequest, { params }: { params: { cardId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ cardId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     await resolveCard(params.cardId, session.orgId)

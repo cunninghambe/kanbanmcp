@@ -136,7 +136,7 @@ describe('POST /api/boards/[boardId]/cards — assigneeId required (AC-4)', () =
       title: 'A card',
       columnId: 'col-1',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('assigneeId is required')
@@ -149,7 +149,7 @@ describe('POST /api/boards/[boardId]/cards — assigneeId required (AC-4)', () =
       columnId: 'col-1',
       assigneeId: '',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
   })
 
@@ -157,7 +157,7 @@ describe('POST /api/boards/[boardId]/cards — assigneeId required (AC-4)', () =
     setupHappyPath()
     const { POST } = await import('../../src/app/api/boards/[boardId]/cards/route')
     const req = makeRequest('http://localhost/api/boards/board-1/cards', baseCreateBody)
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(201)
   })
 })
@@ -183,7 +183,7 @@ describe('POST /api/boards/[boardId]/cards — role membership checks', () => {
       ...baseCreateBody,
       reviewerId: 'outsider-user',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('must be a member of this organization')
@@ -196,7 +196,7 @@ describe('POST /api/boards/[boardId]/cards — role membership checks', () => {
       ...baseCreateBody,
       approverId: 'outsider-approver',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('must be a member of this organization')
@@ -209,7 +209,7 @@ describe('POST /api/boards/[boardId]/cards — role membership checks', () => {
       ...baseCreateBody,
       assigneeId: 'outsider-assignee',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toContain('must be a member of this organization')
@@ -239,7 +239,7 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
       ...baseCreateBody,
       parentCardId: 'nonexistent',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Parent card not found')
@@ -257,7 +257,7 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
       ...baseCreateBody,
       parentCardId: 'parent-1',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Parent card must be on the same board')
@@ -275,7 +275,7 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
       ...baseCreateBody,
       parentCardId: 'parent-deep',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Maximum nesting depth (50) reached')
@@ -293,7 +293,7 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
       ...baseCreateBody,
       parentCardId: 'parent-49',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Maximum nesting depth (50) reached')
@@ -317,7 +317,7 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
       ...baseCreateBody,
       parentCardId: 'parent-48',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.card.depth).toBe(49)
@@ -341,7 +341,7 @@ describe('POST /api/boards/[boardId]/cards — parentCardId validation', () => {
       ...baseCreateBody,
       parentCardId: 'parent-root',
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.card.depth).toBe(1)
@@ -371,7 +371,7 @@ describe('POST /api/boards/[boardId]/cards — aiReviewParams', () => {
       ...baseCreateBody,
       aiReviewParams: params,
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.card.aiReviewParams).toEqual(params)
@@ -381,7 +381,7 @@ describe('POST /api/boards/[boardId]/cards — aiReviewParams', () => {
     mockPrisma.card.create.mockResolvedValue({ ...createdCard, aiReviewParams: null })
     const { POST } = await import('../../src/app/api/boards/[boardId]/cards/route')
     const req = makeRequest('http://localhost/api/boards/board-1/cards', baseCreateBody)
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.card.aiReviewParams).toBeNull()
@@ -393,7 +393,7 @@ describe('POST /api/boards/[boardId]/cards — aiReviewParams', () => {
       ...baseCreateBody,
       aiReviewParams: { model: 'claude-sonnet-4-6' },
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
   })
 
@@ -403,7 +403,7 @@ describe('POST /api/boards/[boardId]/cards — aiReviewParams', () => {
       ...baseCreateBody,
       aiReviewParams: { model: 'x'.repeat(201), rubric: 'Check quality' },
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Validation failed')
@@ -415,7 +415,7 @@ describe('POST /api/boards/[boardId]/cards — aiReviewParams', () => {
       ...baseCreateBody,
       aiReviewParams: { model: 'claude-sonnet-4-6', rubric: 'x'.repeat(10001) },
     })
-    const res = await POST(req, { params: { boardId: 'board-1' } })
+    const res = await POST(req, { params: Promise.resolve({ boardId: 'board-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Validation failed')

@@ -37,7 +37,7 @@ export async function requireSession(req: Request): Promise<SessionData> {
   }
 
   // Fall back to cookie-based session auth
-  const session = await getIronSession<SessionData>(cookies(), sessionOptions)
+  const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
   if (!session.userId) {
     throw NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

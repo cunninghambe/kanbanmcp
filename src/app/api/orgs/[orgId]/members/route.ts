@@ -13,7 +13,8 @@ const inviteMemberSchema = z.object({
 
 // GET /api/orgs/[orgId]/members
 // Returns all members with user details. Requires org membership.
-export async function GET(req: NextRequest, { params }: { params: { orgId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ orgId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, params.orgId, 'MEMBER')
@@ -46,7 +47,8 @@ export async function GET(req: NextRequest, { params }: { params: { orgId: strin
 // Invite a user to the org. Requires ADMIN role.
 // If user with email exists: create OrgMember if not already a member.
 // If user doesn't exist: create User with random passwordHash + OrgMember.
-export async function POST(req: NextRequest, { params }: { params: { orgId: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ orgId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, params.orgId, 'ADMIN')
