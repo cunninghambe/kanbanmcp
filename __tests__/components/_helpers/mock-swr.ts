@@ -1,12 +1,12 @@
-import { vi } from "vitest";
-import type { SWRResponse } from "swr";
+import { vi } from 'vitest'
+import type { SWRResponse } from 'swr'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnySWRResponse = SWRResponse<any, any>;
+type AnySWRResponse = SWRResponse<any, any>
 
 export function mockSWR<T>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  partial: Partial<SWRResponse<T, any>>,
+  partial: Partial<SWRResponse<T, any>>
 ): AnySWRResponse {
   return {
     mutate: vi.fn(),
@@ -14,5 +14,5 @@ export function mockSWR<T>(
     error: undefined,
     isValidating: false,
     ...partial,
-  } as unknown as AnySWRResponse;
+  } as unknown as AnySWRResponse
 }

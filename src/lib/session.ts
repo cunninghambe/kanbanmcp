@@ -8,7 +8,7 @@ export const sessionOptions: SessionOptions = {
   cookieName: 'kanban-session',
   password: process.env.SESSION_SECRET,
   cookieOptions: {
-    secure: process.env.COOKIE_SECURE === "true",
+    secure: process.env.COOKIE_SECURE === 'true',
     httpOnly: true,
     sameSite: 'strict' as const,
   },

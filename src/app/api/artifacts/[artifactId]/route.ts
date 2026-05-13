@@ -5,10 +5,7 @@ import { getStorageDriver } from '@/lib/storage'
 
 // DELETE /api/artifacts/[artifactId]
 // Deletes an artifact. Only the uploader or an org admin may do this.
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { artifactId: string } }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: { artifactId: string } }) {
   try {
     const session = await requireSession(req)
 
@@ -45,7 +42,11 @@ export async function DELETE(
     const storage = getStorageDriver()
     await storage.delete(artifact.storageKey).catch((err: unknown) => {
       // DB is the source of truth. Log the storage failure but return 204 anyway.
-      console.error('Storage delete failed after artifact DB row removed:', artifact.storageKey, err)
+      console.error(
+        'Storage delete failed after artifact DB row removed:',
+        artifact.storageKey,
+        err
+      )
     })
 
     return new NextResponse(null, { status: 204 })

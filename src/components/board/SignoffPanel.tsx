@@ -1,127 +1,116 @@
-"use client";
+'use client'
 
-import React, { useId, useState } from "react";
-import { z } from "zod";
-import { Button } from "@/components/ui/Button";
+import React, { useId, useState } from 'react'
+import { z } from 'zod'
+import { Button } from '@/components/ui/Button'
 
-export type SignoffRole = "REVIEWER" | "APPROVER";
-export type SignoffDecision = "APPROVED" | "REJECTED" | "REQUESTED_CHANGES";
+export type SignoffRole = 'REVIEWER' | 'APPROVER'
+export type SignoffDecision = 'APPROVED' | 'REJECTED' | 'REQUESTED_CHANGES'
 
 export type ExistingSignoff = {
-  id: string;
-  role: SignoffRole;
-  decision: SignoffDecision;
-  comment: string | null;
-  createdAt: string;
-  user: { id: string; name: string; email: string };
-};
+  id: string
+  role: SignoffRole
+  decision: SignoffDecision
+  comment: string | null
+  createdAt: string
+  user: { id: string; name: string; email: string }
+}
 
 const submitSchema = z.object({
-  comment: z
-    .string()
-    .max(2000, "Comment must be 2000 chars or fewer")
-    .optional(),
-});
+  comment: z.string().max(2000, 'Comment must be 2000 chars or fewer').optional(),
+})
 
 const DECISION_CONFIG: Record<
   SignoffDecision,
   { label: string; ariaLabel: string; className: string }
 > = {
   APPROVED: {
-    label: "Approve",
-    ariaLabel: "Approve this card",
+    label: 'Approve',
+    ariaLabel: 'Approve this card',
     className:
-      "bg-green-600 text-white hover:bg-green-700 focus:ring-green-500 focus:ring-2 focus:ring-offset-2",
+      'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500 focus:ring-2 focus:ring-offset-2',
   },
   REQUESTED_CHANGES: {
-    label: "Request changes",
-    ariaLabel: "Request changes to this card",
+    label: 'Request changes',
+    ariaLabel: 'Request changes to this card',
     className:
-      "bg-yellow-500 text-white hover:bg-yellow-600 focus:ring-yellow-500 focus:ring-2 focus:ring-offset-2",
+      'bg-yellow-500 text-white hover:bg-yellow-600 focus:ring-yellow-500 focus:ring-2 focus:ring-offset-2',
   },
   REJECTED: {
-    label: "Reject",
-    ariaLabel: "Reject this card",
+    label: 'Reject',
+    ariaLabel: 'Reject this card',
     className:
-      "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 focus:ring-2 focus:ring-offset-2",
+      'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 focus:ring-2 focus:ring-offset-2',
   },
-};
-
-const DECISION_BADGE: Record<SignoffDecision, string> = {
-  APPROVED: "bg-green-100 text-green-700",
-  REJECTED: "bg-red-100 text-red-600",
-  REQUESTED_CHANGES: "bg-yellow-100 text-yellow-700",
-};
-
-const DECISION_LABEL: Record<SignoffDecision, string> = {
-  APPROVED: "Approved",
-  REJECTED: "Rejected",
-  REQUESTED_CHANGES: "Changes requested",
-};
-
-interface SignoffPanelProps {
-  cardId: string;
-  role: SignoffRole;
-  latestSignoff?: ExistingSignoff | null;
-  onSubmitted: () => void;
 }
 
-export function SignoffPanel({
-  cardId,
-  role,
-  latestSignoff,
-  onSubmitted,
-}: SignoffPanelProps) {
-  const commentId = useId();
-  const [comment, setComment] = useState("");
-  const [commentError, setCommentError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+const DECISION_BADGE: Record<SignoffDecision, string> = {
+  APPROVED: 'bg-green-100 text-green-700',
+  REJECTED: 'bg-red-100 text-red-600',
+  REQUESTED_CHANGES: 'bg-yellow-100 text-yellow-700',
+}
 
-  const roleLabel = role === "REVIEWER" ? "Reviewer" : "Approver";
+const DECISION_LABEL: Record<SignoffDecision, string> = {
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+  REQUESTED_CHANGES: 'Changes requested',
+}
+
+interface SignoffPanelProps {
+  cardId: string
+  role: SignoffRole
+  latestSignoff?: ExistingSignoff | null
+  onSubmitted: () => void
+}
+
+export function SignoffPanel({ cardId, role, latestSignoff, onSubmitted }: SignoffPanelProps) {
+  const commentId = useId()
+  const [comment, setComment] = useState('')
+  const [commentError, setCommentError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  const roleLabel = role === 'REVIEWER' ? 'Reviewer' : 'Approver'
 
   async function handleDecision(decision: SignoffDecision) {
-    setSubmitError(null);
-    setCommentError(null);
-    setSuccessMessage(null);
+    setSubmitError(null)
+    setCommentError(null)
+    setSuccessMessage(null)
 
     const validation = submitSchema.safeParse({
       comment: comment || undefined,
-    });
+    })
     if (!validation.success) {
-      setCommentError(validation.error.issues[0]?.message ?? "Invalid comment");
-      return;
+      setCommentError(validation.error.issues[0]?.message ?? 'Invalid comment')
+      return
     }
 
-    setSubmitting(true);
+    setSubmitting(true)
     try {
       const res = await fetch(`/api/cards/${cardId}/signoffs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           role,
           decision,
           comment: comment.trim() || undefined,
         }),
-      });
+      })
 
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setSubmitError(
-          (body as { error?: string }).error ??
-            "Submission failed. Please try again.",
-        );
-        return;
+        const body = await res.json().catch(() => ({}))
+        setSubmitError((body as { error?: string }).error ?? 'Submission failed. Please try again.')
+        return
       }
 
-      setComment("");
-      setSuccessMessage(`${DECISION_LABEL[decision]} successfully recorded.`);
-      onSubmitted();
+      setComment('')
+      setSuccessMessage(`${DECISION_LABEL[decision]} successfully recorded.`)
+      onSubmitted()
     } catch {
-      setSubmitError("Submission failed. Check your connection and try again.");
+      setSubmitError('Submission failed. Check your connection and try again.')
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
   }
 
@@ -140,7 +129,7 @@ export function SignoffPanel({
               {DECISION_LABEL[latestSignoff.decision]}
             </span>
             <span className="text-xs text-slate-500">
-              by {latestSignoff.user.name} &middot;{" "}
+              by {latestSignoff.user.name} &middot;{' '}
               {new Date(latestSignoff.createdAt).toLocaleString()}
             </span>
           </div>
@@ -159,18 +148,15 @@ export function SignoffPanel({
         </legend>
 
         <div>
-          <label
-            htmlFor={commentId}
-            className="text-xs text-slate-500 mb-1 block"
-          >
+          <label htmlFor={commentId} className="text-xs text-slate-500 mb-1 block">
             Comment <span className="text-slate-400">(optional)</span>
           </label>
           <textarea
             id={commentId}
             value={comment}
             onChange={(e) => {
-              setComment(e.target.value);
-              if (commentError) setCommentError(null);
+              setComment(e.target.value)
+              if (commentError) setCommentError(null)
             }}
             maxLength={2000}
             rows={2}
@@ -180,34 +166,28 @@ export function SignoffPanel({
             className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-white disabled:opacity-50"
           />
           {commentError && (
-            <p
-              id={`${commentId}-error`}
-              className="text-xs text-red-600 mt-0.5"
-              role="alert"
-            >
+            <p id={`${commentId}-error`} className="text-xs text-red-600 mt-0.5" role="alert">
               {commentError}
             </p>
           )}
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          {(["APPROVED", "REQUESTED_CHANGES", "REJECTED"] as const).map(
-            (decision) => {
-              const cfg = DECISION_CONFIG[decision];
-              return (
-                <button
-                  key={decision}
-                  type="button"
-                  onClick={() => handleDecision(decision)}
-                  disabled={submitting}
-                  aria-label={cfg.ariaLabel}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${cfg.className}`}
-                >
-                  {submitting ? "Submitting…" : cfg.label}
-                </button>
-              );
-            },
-          )}
+          {(['APPROVED', 'REQUESTED_CHANGES', 'REJECTED'] as const).map((decision) => {
+            const cfg = DECISION_CONFIG[decision]
+            return (
+              <button
+                key={decision}
+                type="button"
+                onClick={() => handleDecision(decision)}
+                disabled={submitting}
+                aria-label={cfg.ariaLabel}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${cfg.className}`}
+              >
+                {submitting ? 'Submitting…' : cfg.label}
+              </button>
+            )
+          })}
         </div>
       </fieldset>
 
@@ -223,5 +203,5 @@ export function SignoffPanel({
         </p>
       )}
     </div>
-  );
+  )
 }

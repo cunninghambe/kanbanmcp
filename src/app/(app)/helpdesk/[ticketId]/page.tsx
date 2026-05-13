@@ -181,14 +181,20 @@ export default function TicketDetailPage() {
         <main className="flex-1 p-6">
           <div className="max-w-4xl mx-auto text-center py-16 text-slate-500">
             <p className="text-lg">Ticket not found.</p>
-            <Button className="mt-4" onClick={() => router.push('/helpdesk')}>Back to Helpdesk</Button>
+            <Button className="mt-4" onClick={() => router.push('/helpdesk')}>
+              Back to Helpdesk
+            </Button>
           </div>
         </main>
       </>
     )
   }
 
-  const allEvents: Array<{ type: 'comment' | 'activity'; createdAt: string; data: TicketComment | TicketActivityEntry }> = [
+  const allEvents: Array<{
+    type: 'comment' | 'activity'
+    createdAt: string
+    data: TicketComment | TicketActivityEntry
+  }> = [
     ...ticket.comments.map((c) => ({ type: 'comment' as const, createdAt: c.createdAt, data: c })),
     ...ticket.activity.map((a) => ({ type: 'activity' as const, createdAt: a.createdAt, data: a })),
   ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
@@ -214,16 +220,26 @@ export default function TicketDetailPage() {
                       autoFocus
                       value={titleDraft}
                       onChange={(e) => setTitleDraft(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') setEditingTitle(false) }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveTitle()
+                        if (e.key === 'Escape') setEditingTitle(false)
+                      }}
                       className="flex-1 text-2xl font-bold text-slate-900 border-b-2 border-blue-500 focus:outline-none bg-transparent"
                     />
-                    <Button size="sm" onClick={saveTitle} disabled={saving}>Save</Button>
-                    <Button size="sm" variant="secondary" onClick={() => setEditingTitle(false)}>Cancel</Button>
+                    <Button size="sm" onClick={saveTitle} disabled={saving}>
+                      Save
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setEditingTitle(false)}>
+                      Cancel
+                    </Button>
                   </div>
                 ) : (
                   <h1
                     className="text-2xl font-bold text-slate-900 cursor-pointer hover:text-blue-700 transition-colors"
-                    onClick={() => { setTitleDraft(ticket.title); setEditingTitle(true) }}
+                    onClick={() => {
+                      setTitleDraft(ticket.title)
+                      setEditingTitle(true)
+                    }}
                     title="Click to edit"
                   >
                     #{ticket.number} {ticket.title}
@@ -231,7 +247,11 @@ export default function TicketDetailPage() {
                 )}
                 <p className="text-sm text-slate-500 mt-1">
                   Opened {new Date(ticket.createdAt).toLocaleString()} by{' '}
-                  {ticket.reporter ? ticket.reporter.name : ticket.agentName ? `${ticket.agentName} (agent)` : 'Unknown'}
+                  {ticket.reporter
+                    ? ticket.reporter.name
+                    : ticket.agentName
+                      ? `${ticket.agentName} (agent)`
+                      : 'Unknown'}
                 </p>
               </div>
 
@@ -241,7 +261,10 @@ export default function TicketDetailPage() {
                   <h2 className="text-sm font-semibold text-slate-700">Description</h2>
                   {!editingDesc && (
                     <button
-                      onClick={() => { setDescDraft(ticket.description ?? ''); setEditingDesc(true) }}
+                      onClick={() => {
+                        setDescDraft(ticket.description ?? '')
+                        setEditingDesc(true)
+                      }}
                       className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
                     >
                       Edit
@@ -258,8 +281,12 @@ export default function TicketDetailPage() {
                       className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y text-sm"
                     />
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={saveDesc} disabled={saving}>Save</Button>
-                      <Button size="sm" variant="secondary" onClick={() => setEditingDesc(false)}>Cancel</Button>
+                      <Button size="sm" onClick={saveDesc} disabled={saving}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => setEditingDesc(false)}>
+                        Cancel
+                      </Button>
                     </div>
                   </div>
                 ) : ticket.description ? (
@@ -282,16 +309,23 @@ export default function TicketDetailPage() {
                       if (event.type === 'comment') {
                         const c = event.data as TicketComment
                         return (
-                          <div key={`c-${c.id}`} className={`px-5 py-4 ${c.internal ? 'bg-amber-50' : ''}`}>
+                          <div
+                            key={`c-${c.id}`}
+                            className={`px-5 py-4 ${c.internal ? 'bg-amber-50' : ''}`}
+                          >
                             <div className="flex items-center gap-2 mb-1.5 text-xs text-slate-500">
                               <AuthorLabel user={c.user} agentName={c.agentName} />
                               <span>commented</span>
                               {c.internal && (
-                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">internal</span>
+                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">
+                                  internal
+                                </span>
                               )}
                               <span>{new Date(c.createdAt).toLocaleString()}</span>
                             </div>
-                            <p className="text-sm text-slate-800 whitespace-pre-wrap">{c.content}</p>
+                            <p className="text-sm text-slate-800 whitespace-pre-wrap">
+                              {c.content}
+                            </p>
                           </div>
                         )
                       }
@@ -299,7 +333,10 @@ export default function TicketDetailPage() {
                       const a = event.data as TicketActivityEntry
                       if (a.action === 'created') return null // Skip — shown in title area
                       return (
-                        <div key={`a-${a.id}`} className="px-5 py-2 flex items-center gap-1.5 text-xs text-slate-500">
+                        <div
+                          key={`a-${a.id}`}
+                          className="px-5 py-2 flex items-center gap-1.5 text-xs text-slate-500"
+                        >
                           <AuthorLabel user={a.user} agentName={a.agentName} />
                           <span>{ACTION_LABELS[a.action] ?? a.action}</span>
                           {a.fromValue && (
@@ -309,7 +346,10 @@ export default function TicketDetailPage() {
                           )}
                           {a.toValue && (
                             <span>
-                              to <span className="font-medium text-slate-700">{a.toValue ?? 'unassigned'}</span>
+                              to{' '}
+                              <span className="font-medium text-slate-700">
+                                {a.toValue ?? 'unassigned'}
+                              </span>
                             </span>
                           )}
                           <span className="ml-auto">{new Date(a.createdAt).toLocaleString()}</span>
@@ -339,7 +379,11 @@ export default function TicketDetailPage() {
                         />
                         Internal note
                       </label>
-                      <Button type="submit" size="sm" disabled={submittingComment || !commentText.trim()}>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={submittingComment || !commentText.trim()}
+                      >
                         {submittingComment ? 'Posting…' : 'Post Comment'}
                       </Button>
                     </div>
@@ -352,7 +396,9 @@ export default function TicketDetailPage() {
             <div className="w-64 shrink-0 space-y-4">
               {/* Status */}
               <div className="bg-white rounded-lg border border-slate-200 p-4">
-                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Details</h3>
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Details
+                </h3>
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs text-slate-500 mb-1">Status</label>
@@ -363,7 +409,9 @@ export default function TicketDetailPage() {
                       className={`w-full px-2 py-1.5 text-sm rounded-md border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${STATUS_COLORS[ticket.status] ?? 'bg-white text-slate-700 border-slate-300'}`}
                     >
                       {STATUS_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -376,7 +424,9 @@ export default function TicketDetailPage() {
                       className={`w-full px-2 py-1.5 text-sm rounded-md border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${PRIORITY_COLORS[ticket.priority] ?? 'bg-white text-slate-700'} border-slate-300`}
                     >
                       {PRIORITY_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -389,19 +439,25 @@ export default function TicketDetailPage() {
                   <div>
                     <label className="block text-xs text-slate-500 mb-1">Assignee</label>
                     <p className="text-sm text-slate-700">
-                      {ticket.assignee?.name ?? <span className="text-slate-400 italic">Unassigned</span>}
+                      {ticket.assignee?.name ?? (
+                        <span className="text-slate-400 italic">Unassigned</span>
+                      )}
                     </p>
                   </div>
                   {ticket.resolvedAt && (
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Resolved</label>
-                      <p className="text-sm text-slate-700">{new Date(ticket.resolvedAt).toLocaleString()}</p>
+                      <p className="text-sm text-slate-700">
+                        {new Date(ticket.resolvedAt).toLocaleString()}
+                      </p>
                     </div>
                   )}
                   {ticket.closedAt && (
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Closed</label>
-                      <p className="text-sm text-slate-700">{new Date(ticket.closedAt).toLocaleString()}</p>
+                      <p className="text-sm text-slate-700">
+                        {new Date(ticket.closedAt).toLocaleString()}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -409,7 +465,9 @@ export default function TicketDetailPage() {
 
               {/* Quick actions */}
               <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-2">
-                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Quick Actions</h3>
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                  Quick Actions
+                </h3>
                 {ticket.status !== 'in_progress' && (
                   <Button
                     variant="secondary"
@@ -458,19 +516,31 @@ export default function TicketDetailPage() {
 
               {/* Danger zone */}
               <div className="bg-white rounded-lg border border-red-100 p-4">
-                <h3 className="text-xs font-semibold text-red-500 uppercase tracking-wider mb-3">Danger Zone</h3>
+                <h3 className="text-xs font-semibold text-red-500 uppercase tracking-wider mb-3">
+                  Danger Zone
+                </h3>
                 {deleteConfirm ? (
                   <div className="space-y-2">
                     <p className="text-xs text-red-600">This cannot be undone.</p>
                     <Button variant="danger" size="sm" className="w-full" onClick={handleDelete}>
                       Confirm Delete
                     </Button>
-                    <Button variant="secondary" size="sm" className="w-full" onClick={() => setDeleteConfirm(false)}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setDeleteConfirm(false)}
+                    >
                       Cancel
                     </Button>
                   </div>
                 ) : (
-                  <Button variant="danger" size="sm" className="w-full" onClick={() => setDeleteConfirm(true)}>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setDeleteConfirm(true)}
+                  >
                     Delete Ticket
                   </Button>
                 )}

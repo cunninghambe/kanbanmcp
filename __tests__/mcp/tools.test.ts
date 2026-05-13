@@ -30,9 +30,13 @@ const mockPrisma = {
 }
 
 vi.mock('../../src/lib/db', () => ({ prisma: mockPrisma, default: mockPrisma }))
-vi.mock('../../src/lib/agent-activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../src/lib/agent-activity', () => ({
+  logActivity: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../../src/lib/webhook', () => ({ dispatchWebhook: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../src/lib/ai-review/queue', () => ({ enqueueAiReview: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../src/lib/ai-review/queue', () => ({
+  enqueueAiReview: vi.fn().mockResolvedValue(undefined),
+}))
 
 const agentCtx = { orgId: 'org-1', agentName: 'test-agent', keyId: 'key-1', permissions: ['*'] }
 
@@ -80,7 +84,14 @@ function makeArtifact(id: string) {
     storageKey: id,
     source: 'UPLOAD',
     createdAt: new Date('2026-01-01'),
-    uploader: { id: 'user-1', name: 'Alice', email: 'alice@example.com', passwordHash: 'h', isAgent: false, createdAt: new Date() },
+    uploader: {
+      id: 'user-1',
+      name: 'Alice',
+      email: 'alice@example.com',
+      passwordHash: 'h',
+      isAgent: false,
+      createdAt: new Date(),
+    },
     reviews: [],
   }
 }
@@ -90,10 +101,7 @@ describe('create_subcard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPrisma.card.findFirst.mockResolvedValue(parentCard)
-    mockPrisma.orgMember.findMany.mockResolvedValue([
-      { userId: 'user-1' },
-      { userId: 'user-2' },
-    ])
+    mockPrisma.orgMember.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }])
     mockPrisma.orgMember.findFirst.mockResolvedValue({ userId: 'user-1' })
     mockPrisma.card.aggregate.mockResolvedValue({ _max: { position: 2 } })
   })
@@ -110,10 +118,10 @@ describe('create_subcard', () => {
     })
 
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('create_subcard', { parentCardId: 'parent-1', title: 'Child', assigneeId: 'user-1' }),
       agentCtx
-    ) as { result: { parentCardId: string; path: string; depth: number } }
+    )) as { result: { parentCardId: string; path: string; depth: number } }
 
     expect(result.result.parentCardId).toBe('parent-1')
     expect(result.result.path).toBe('/parent-1/')
@@ -133,7 +141,11 @@ describe('create_subcard', () => {
 
   it('inherits parent columnId when columnId not provided', async () => {
     mockPrisma.card.create.mockResolvedValue({
-      id: 'child-1', title: 'Child', parentCardId: 'parent-1', path: '/parent-1/', depth: 1,
+      id: 'child-1',
+      title: 'Child',
+      parentCardId: 'parent-1',
+      path: '/parent-1/',
+      depth: 1,
     })
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
     await handleMcpRequest(
@@ -147,20 +159,20 @@ describe('create_subcard', () => {
 
   it('rejects when parentCardId is missing', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('create_subcard', { title: 'Child', assigneeId: 'user-1' }),
       agentCtx
-    ) as { error: { code: number; message: string } }
+    )) as { error: { code: number; message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('parentCardId')
   })
 
   it('rejects when assigneeId is missing', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('create_subcard', { parentCardId: 'parent-1', title: 'Child' }),
       agentCtx
-    ) as { error: { code: number; message: string } }
+    )) as { error: { code: number; message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('assigneeId')
   })
@@ -168,10 +180,14 @@ describe('create_subcard', () => {
   it('rejects when parent card is in a different org (cross-org IDOR)', async () => {
     mockPrisma.card.findFirst.mockResolvedValue(null)
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
-      makeRpc('create_subcard', { parentCardId: 'parent-other-org', title: 'Child', assigneeId: 'user-1' }),
+    const result = (await handleMcpRequest(
+      makeRpc('create_subcard', {
+        parentCardId: 'parent-other-org',
+        title: 'Child',
+        assigneeId: 'user-1',
+      }),
       agentCtx
-    ) as { error: { code: number; message: string } }
+    )) as { error: { code: number; message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('not found')
   })
@@ -179,10 +195,10 @@ describe('create_subcard', () => {
   it('rejects when depth would exceed MAX_NESTING_DEPTH', async () => {
     mockPrisma.card.findFirst.mockResolvedValue({ ...parentCard, depth: 49 })
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('create_subcard', { parentCardId: 'parent-1', title: 'Child', assigneeId: 'user-1' }),
       agentCtx
-    ) as { error: { code: number; message: string } }
+    )) as { error: { code: number; message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('Maximum nesting depth')
   })
@@ -190,10 +206,14 @@ describe('create_subcard', () => {
   it('rejects when assignee is not an org member', async () => {
     mockPrisma.orgMember.findMany.mockResolvedValue([])
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
-      makeRpc('create_subcard', { parentCardId: 'parent-1', title: 'Child', assigneeId: 'outsider' }),
+    const result = (await handleMcpRequest(
+      makeRpc('create_subcard', {
+        parentCardId: 'parent-1',
+        title: 'Child',
+        assigneeId: 'outsider',
+      }),
       agentCtx
-    ) as { error: { code: number; message: string } }
+    )) as { error: { code: number; message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('not a member')
   })
@@ -210,10 +230,10 @@ describe('set_card_reviewers', () => {
   it('sets reviewerId on a card', async () => {
     mockPrisma.card.update.mockResolvedValue({ ...baseCard, reviewerId: 'user-2' })
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('set_card_reviewers', { cardId: 'card-1', reviewerId: 'user-2' }),
       agentCtx
-    ) as { result: { reviewerId: string } }
+    )) as { result: { reviewerId: string } }
     expect(result.result.reviewerId).toBe('user-2')
     expect(mockPrisma.card.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ reviewerId: 'user-2' }) })
@@ -223,10 +243,10 @@ describe('set_card_reviewers', () => {
   it('clears reviewerId when set to null', async () => {
     mockPrisma.card.update.mockResolvedValue({ ...baseCard, reviewerId: null })
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('set_card_reviewers', { cardId: 'card-1', reviewerId: null }),
       agentCtx
-    ) as { result: { reviewerId: null } }
+    )) as { result: { reviewerId: null } }
     expect(result.result.reviewerId).toBeNull()
     expect(mockPrisma.card.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ reviewerId: null }) })
@@ -235,10 +255,10 @@ describe('set_card_reviewers', () => {
 
   it('rejects when cardId is missing', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('set_card_reviewers', { reviewerId: 'user-2' }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('cardId')
   })
@@ -246,10 +266,10 @@ describe('set_card_reviewers', () => {
   it('rejects when reviewer is not an org member (IDOR check)', async () => {
     mockPrisma.orgMember.findMany.mockResolvedValue([])
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('set_card_reviewers', { cardId: 'card-1', reviewerId: 'outsider' }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('not a member')
   })
@@ -257,10 +277,10 @@ describe('set_card_reviewers', () => {
   it('rejects cross-org card access', async () => {
     mockPrisma.card.findFirst.mockResolvedValue(null)
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('set_card_reviewers', { cardId: 'card-other-org', reviewerId: 'user-2' }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('not found')
   })
@@ -274,12 +294,16 @@ describe('toggle_ai_review', () => {
   })
 
   it('enables aiAutoReview without params', async () => {
-    mockPrisma.card.update.mockResolvedValue({ ...baseCard, aiAutoReview: true, aiReviewParams: null })
+    mockPrisma.card.update.mockResolvedValue({
+      ...baseCard,
+      aiAutoReview: true,
+      aiReviewParams: null,
+    })
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('toggle_ai_review', { cardId: 'card-1', enabled: true }),
       agentCtx
-    ) as { result: { aiAutoReview: boolean } }
+    )) as { result: { aiAutoReview: boolean } }
     expect(result.result.aiAutoReview).toBe(true)
     expect(mockPrisma.card.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ aiAutoReview: true }) })
@@ -294,44 +318,48 @@ describe('toggle_ai_review', () => {
       aiReviewParams: JSON.stringify(reviewParams),
     })
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('toggle_ai_review', { cardId: 'card-1', enabled: true, params: reviewParams }),
       agentCtx
-    ) as { result: { aiAutoReview: boolean; aiReviewParams: unknown } }
+    )) as { result: { aiAutoReview: boolean; aiReviewParams: unknown } }
     expect(result.result.aiAutoReview).toBe(true)
     expect(result.result.aiReviewParams).toMatchObject(reviewParams)
   })
 
   it('returns -32602 when params is missing rubric', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
-      makeRpc('toggle_ai_review', { cardId: 'card-1', enabled: true, params: { model: 'claude-sonnet-4-6' } }),
+    const result = (await handleMcpRequest(
+      makeRpc('toggle_ai_review', {
+        cardId: 'card-1',
+        enabled: true,
+        params: { model: 'claude-sonnet-4-6' },
+      }),
       agentCtx
-    ) as { error: { code: number; message: string } }
+    )) as { error: { code: number; message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.code).toBe(-32602)
   })
 
   it('returns -32602 when params has rubric exceeding max length', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('toggle_ai_review', {
         cardId: 'card-1',
         enabled: true,
         params: { model: 'claude-sonnet-4-6', rubric: 'x'.repeat(10001) },
       }),
       agentCtx
-    ) as { error: { code: number; message: string } }
+    )) as { error: { code: number; message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.code).toBe(-32602)
   })
 
   it('rejects when cardId is missing', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('toggle_ai_review', { enabled: true }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('cardId')
   })
@@ -359,7 +387,11 @@ describe('list_card_tree', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockPrisma.card.findFirst.mockResolvedValue({ id: 'card-root', boardId: 'board-1', board: { orgId: 'org-1' } })
+    mockPrisma.card.findFirst.mockResolvedValue({
+      id: 'card-root',
+      boardId: 'board-1',
+      board: { orgId: 'org-1' },
+    })
     mockPrisma.card.findUnique.mockResolvedValue(rootNode)
     mockPrisma.card.findMany.mockResolvedValue([])
     mockPrisma.signoff.findMany.mockResolvedValue([])
@@ -367,23 +399,29 @@ describe('list_card_tree', () => {
 
   it('returns root and empty descendants (AC-14: matches children endpoint shape)', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('list_card_tree', { cardId: 'card-root' }),
       agentCtx
-    ) as { result: { root: { id: string }; descendants: unknown[]; truncated: boolean } }
+    )) as { result: { root: { id: string }; descendants: unknown[]; truncated: boolean } }
     expect(result.result.root.id).toBe('card-root')
     expect(result.result.descendants).toEqual([])
     expect(result.result).toHaveProperty('truncated')
   })
 
   it('returns subtree with descendants', async () => {
-    const child = { ...rootNode, id: 'child-1', parentCardId: 'card-root', path: '/card-root/', depth: 1 }
+    const child = {
+      ...rootNode,
+      id: 'child-1',
+      parentCardId: 'card-root',
+      path: '/card-root/',
+      depth: 1,
+    }
     mockPrisma.card.findMany.mockResolvedValue([child])
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('list_card_tree', { cardId: 'card-root', depth: 1 }),
       agentCtx
-    ) as { result: { root: { id: string }; descendants: Array<{ id: string }> } }
+    )) as { result: { root: { id: string }; descendants: Array<{ id: string }> } }
     expect(result.result.root.id).toBe('card-root')
     expect(result.result.descendants).toHaveLength(1)
     expect(result.result.descendants[0].id).toBe('child-1')
@@ -391,10 +429,7 @@ describe('list_card_tree', () => {
 
   it('clamps depth to max 5', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    await handleMcpRequest(
-      makeRpc('list_card_tree', { cardId: 'card-root', depth: 999 }),
-      agentCtx
-    )
+    await handleMcpRequest(makeRpc('list_card_tree', { cardId: 'card-root', depth: 999 }), agentCtx)
     // fetchSubtree is called with clamped depth — card.findMany gets depth lte root.depth+5
     expect(mockPrisma.card.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ depth: { lte: 5 } }) })
@@ -403,10 +438,7 @@ describe('list_card_tree', () => {
 
   it('defaults depth to 1 when not provided', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    await handleMcpRequest(
-      makeRpc('list_card_tree', { cardId: 'card-root' }),
-      agentCtx
-    )
+    await handleMcpRequest(makeRpc('list_card_tree', { cardId: 'card-root' }), agentCtx)
     expect(mockPrisma.card.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ depth: { lte: 1 } }) })
     )
@@ -415,20 +447,20 @@ describe('list_card_tree', () => {
   it('rejects cross-org card (IDOR check)', async () => {
     mockPrisma.card.findFirst.mockResolvedValue(null)
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('list_card_tree', { cardId: 'card-other-org' }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('not found')
   })
 
   it('result shape matches GET /api/cards/[cardId]/children (AC-14)', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('list_card_tree', { cardId: 'card-root' }),
       agentCtx
-    ) as { result: Record<string, unknown> }
+    )) as { result: Record<string, unknown> }
     // Must have root, descendants, truncated — same keys as the HTTP endpoint
     expect(Object.keys(result.result).sort()).toEqual(['descendants', 'root', 'truncated'].sort())
   })
@@ -438,10 +470,10 @@ describe('list_card_tree', () => {
 describe('record_signoff', () => {
   it('always returns error code -32602 (M1: API key cannot record signoffs)', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('record_signoff', { cardId: 'card-1', role: 'REVIEWER', decision: 'APPROVED' }),
       agentCtx
-    ) as { error: { code: number; message: string } }
+    )) as { error: { code: number; message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.code).toBe(-32602)
     expect(result.error.message).toContain('human user session')
@@ -449,7 +481,7 @@ describe('record_signoff', () => {
 
   it('returns the same error even with valid-looking params', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('record_signoff', {
         cardId: 'card-1',
         role: 'APPROVER',
@@ -457,7 +489,7 @@ describe('record_signoff', () => {
         comment: 'Not good enough',
       }),
       agentCtx
-    ) as { error: { code: number } }
+    )) as { error: { code: number } }
     expect(result.error.code).toBe(-32602)
   })
 
@@ -485,10 +517,10 @@ describe('list_artifacts', () => {
     const art = makeArtifact('art-1')
     mockPrisma.artifact.findMany.mockResolvedValue([art])
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('list_artifacts', { cardId: 'card-1' }),
       agentCtx
-    ) as { result: { artifacts: Array<{ id: string; uploader: unknown; reviews: unknown[] }> } }
+    )) as { result: { artifacts: Array<{ id: string; uploader: unknown; reviews: unknown[] }> } }
     expect(result.result.artifacts).toHaveLength(1)
     expect(result.result.artifacts[0].id).toBe('art-1')
     expect(result.result.artifacts[0]).toHaveProperty('uploader')
@@ -498,30 +530,29 @@ describe('list_artifacts', () => {
   it('returns empty list when card has no artifacts', async () => {
     mockPrisma.artifact.findMany.mockResolvedValue([])
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('list_artifacts', { cardId: 'card-1' }),
       agentCtx
-    ) as { result: { artifacts: unknown[] } }
+    )) as { result: { artifacts: unknown[] } }
     expect(result.result.artifacts).toEqual([])
   })
 
   it('rejects cross-org card access (IDOR)', async () => {
     mockPrisma.card.findFirst.mockResolvedValue(null)
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('list_artifacts', { cardId: 'card-other-org' }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('not found')
   })
 
   it('rejects when cardId is missing', async () => {
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const result = await handleMcpRequest(
-      makeRpc('list_artifacts', {}),
-      agentCtx
-    ) as { error: { message: string } }
+    const result = (await handleMcpRequest(makeRpc('list_artifacts', {}), agentCtx)) as {
+      error: { message: string }
+    }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('cardId')
   })

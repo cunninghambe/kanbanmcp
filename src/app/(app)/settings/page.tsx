@@ -56,17 +56,20 @@ export default function SettingsPage() {
       <Header title="Settings" />
       <main className="flex-1 p-6 overflow-y-auto">
         <div className="max-w-3xl mx-auto space-y-10">
-
           {/* Org info */}
           <section>
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Organization</h2>
             <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
               <div>
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Name</span>
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                  Name
+                </span>
                 <p className="text-slate-900 mt-0.5">{org?.name ?? '—'}</p>
               </div>
               <div>
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Slug</span>
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                  Slug
+                </span>
                 <p className="text-slate-900 font-mono text-sm mt-0.5">{org?.slug ?? '—'}</p>
               </div>
             </div>
@@ -117,7 +120,9 @@ export default function SettingsPage() {
                                 className="px-2 py-1 border border-slate-300 rounded text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                               >
                                 {ROLE_OPTIONS.map((r) => (
-                                  <option key={r} value={r}>{r}</option>
+                                  <option key={r} value={r}>
+                                    {r}
+                                  </option>
                                 ))}
                               </select>
                             ) : (

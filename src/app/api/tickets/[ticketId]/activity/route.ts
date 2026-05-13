@@ -16,10 +16,7 @@ async function resolveAuth(req: NextRequest) {
 
 // GET /api/tickets/[ticketId]/activity
 // Returns the full activity log for a ticket.
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { ticketId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { ticketId: string } }) {
   try {
     const auth = await resolveAuth(req)
 

@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
-import {
-  aiReviewParamsSchema,
-  roleMembershipCheck,
-  decodeAiReviewParams,
-} from '@/lib/cards'
+import { aiReviewParamsSchema, roleMembershipCheck, decodeAiReviewParams } from '@/lib/cards'
 import { recomputeSubtreePathAndDepth } from '@/lib/tree'
 
 const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
@@ -56,10 +52,7 @@ async function resolveCard(cardId: string, orgId: string) {
 
 // GET /api/cards/[cardId]
 // Returns card with labels, comments, assignee, reviewer, and approver details.
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { cardId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { cardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveCard(params.cardId, session.orgId)
@@ -103,10 +96,7 @@ export async function GET(
 
 // PATCH /api/cards/[cardId]
 // Updates card fields. Handles column moves, bulk position updates, and new M1 fields.
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { cardId: string } }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: { cardId: string } }) {
   try {
     const session = await requireSession(req)
     const existingCard = await resolveCard(params.cardId, session.orgId)
@@ -140,8 +130,7 @@ export async function PATCH(
 
     // Determine new position when moving to a different column
     let resolvedPosition: number | undefined = position
-    const isChangingColumn =
-      columnId !== undefined && columnId !== existingCard.columnId
+    const isChangingColumn = columnId !== undefined && columnId !== existingCard.columnId
 
     if (isChangingColumn && siblingPositions === undefined) {
       // Append to end of target column
@@ -182,8 +171,10 @@ export async function PATCH(
     // Validate role user IDs are org members (IDOR protection)
     const roleIdEntries: Array<[string, string]> = []
     if (assigneeId !== undefined) roleIdEntries.push(['assigneeId', assigneeId])
-    if (reviewerId !== undefined && reviewerId !== null) roleIdEntries.push(['reviewerId', reviewerId])
-    if (approverId !== undefined && approverId !== null) roleIdEntries.push(['approverId', approverId])
+    if (reviewerId !== undefined && reviewerId !== null)
+      roleIdEntries.push(['reviewerId', reviewerId])
+    if (approverId !== undefined && approverId !== null)
+      roleIdEntries.push(['approverId', approverId])
 
     if (roleIdEntries.length > 0) {
       const memberCheck = await roleMembershipCheck(
@@ -231,11 +222,9 @@ export async function PATCH(
       if (approverId !== undefined) updateData.approverId = approverId
       if (aiAutoReview !== undefined) updateData.aiAutoReview = aiAutoReview
       if (aiReviewParams !== undefined) {
-        updateData.aiReviewParams =
-          aiReviewParams === null ? null : JSON.stringify(aiReviewParams)
+        updateData.aiReviewParams = aiReviewParams === null ? null : JSON.stringify(aiReviewParams)
       }
-      if (dueDate !== undefined)
-        updateData.dueDate = dueDate ? new Date(dueDate) : null
+      if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null
       if (priority !== undefined) updateData.priority = priority
 
       if (Object.keys(updateData).length > 0) {
@@ -280,10 +269,7 @@ export async function PATCH(
 
 // DELETE /api/cards/[cardId]
 // Deletes the card. Cascades handle comments and label associations.
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { cardId: string } }
-) {
+export async function DELETE(req: NextRequest, { params }: { params: { cardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveCard(params.cardId, session.orgId)

@@ -62,9 +62,11 @@ async function processJob(reviewId: string): Promise<void> {
   }
 }
 
-async function fetchAndExtract(
-  artifact: { storageKey: string; mimeType: string; filename: string }
-): Promise<{ content: ExtractedContent } | { skipped: string }> {
+async function fetchAndExtract(artifact: {
+  storageKey: string
+  mimeType: string
+  filename: string
+}): Promise<{ content: ExtractedContent } | { skipped: string }> {
   let bytes: Buffer
   try {
     const storage = getStorageDriver()

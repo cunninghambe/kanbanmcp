@@ -59,7 +59,9 @@ describe('POST /api/cards/[cardId]/promote', () => {
     mockSession.userId = 'user-1'
     mockSession.orgId = 'org-1'
     Object.assign(mockSession, { isApiKeyAuth: undefined })
-    mockPrisma.$transaction.mockImplementation(async (fn: (tx: typeof txMock) => Promise<unknown>) => fn(txMock))
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof txMock) => Promise<unknown>) => fn(txMock)
+    )
     txMock.card.update.mockResolvedValue({})
     txMock.$executeRaw.mockResolvedValue(0)
   })
@@ -74,9 +76,7 @@ describe('POST /api/cards/[cardId]/promote', () => {
       board: { orgId: 'org-1' },
     }
     const promotedCard = { ...nestedCard, parentCardId: null, path: '', depth: 0 }
-    mockPrisma.card.findUnique
-      .mockResolvedValueOnce(nestedCard)
-      .mockResolvedValueOnce(promotedCard)
+    mockPrisma.card.findUnique.mockResolvedValueOnce(nestedCard).mockResolvedValueOnce(promotedCard)
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
     txMock.card.findUnique.mockResolvedValue(nestedCard)
 
@@ -143,9 +143,7 @@ describe('POST /api/cards/[cardId]/promote', () => {
       board: { orgId: 'org-1' },
     }
     const promotedCard = { ...nestedCard, parentCardId: null, path: '', depth: 0 }
-    mockPrisma.card.findUnique
-      .mockResolvedValueOnce(nestedCard)
-      .mockResolvedValueOnce(promotedCard)
+    mockPrisma.card.findUnique.mockResolvedValueOnce(nestedCard).mockResolvedValueOnce(promotedCard)
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
     txMock.card.findUnique.mockResolvedValue(nestedCard)
 

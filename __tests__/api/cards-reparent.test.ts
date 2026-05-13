@@ -92,7 +92,9 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
-    const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: 'card-A' })
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-A',
+    })
     const res = await POST(req, { params: { cardId: 'card-A' } })
     expect(res.status).toBe(400)
     const body = await res.json()
@@ -105,7 +107,9 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     txMock.card.findUnique.mockResolvedValueOnce({ boardId: 'other-board', depth: 0, path: '' })
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
-    const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: 'card-B' })
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-B',
+    })
     const res = await POST(req, { params: { cardId: 'card-A' } })
     expect(res.status).toBe(400)
     const body = await res.json()
@@ -114,7 +118,10 @@ describe('POST /api/cards/[cardId]/reparent', () => {
 
   it('returns 400 when cycle detected (AC-9)', async () => {
     const cardA = { ...baseCard, id: 'card-A' }
-    mockPrisma.card.findUnique.mockResolvedValue({ ...cardA, board: { orgId: 'org-1', id: 'board-1' } })
+    mockPrisma.card.findUnique.mockResolvedValue({
+      ...cardA,
+      board: { orgId: 'org-1', id: 'board-1' },
+    })
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     txMock.card.findUnique
@@ -123,7 +130,9 @@ describe('POST /api/cards/[cardId]/reparent', () => {
       .mockResolvedValueOnce({ parentCardId: null })
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
-    const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: 'card-B' })
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-B',
+    })
     const res = await POST(req, { params: { cardId: 'card-A' } })
     expect(res.status).toBe(400)
     const body = await res.json()
@@ -132,7 +141,10 @@ describe('POST /api/cards/[cardId]/reparent', () => {
 
   it('returns 400 when depth overflow would occur (AC-10)', async () => {
     const cardA = { ...baseCard, id: 'card-A', depth: 0 }
-    mockPrisma.card.findUnique.mockResolvedValue({ ...cardA, board: { orgId: 'org-1', id: 'board-1' } })
+    mockPrisma.card.findUnique.mockResolvedValue({
+      ...cardA,
+      board: { orgId: 'org-1', id: 'board-1' },
+    })
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     txMock.card.findUnique
@@ -141,7 +153,9 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     txMock.$queryRaw.mockResolvedValue([{ maxDepth: 10 }])
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
-    const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: 'card-B' })
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-B',
+    })
     const res = await POST(req, { params: { cardId: 'card-A' } })
     expect(res.status).toBe(400)
     const body = await res.json()
@@ -149,7 +163,13 @@ describe('POST /api/cards/[cardId]/reparent', () => {
   })
 
   it('reparent to null behaves like promote', async () => {
-    const nestedCard = { ...baseCard, id: 'card-A', parentCardId: 'parent-1', path: '/parent-1/', depth: 1 }
+    const nestedCard = {
+      ...baseCard,
+      id: 'card-A',
+      parentCardId: 'parent-1',
+      path: '/parent-1/',
+      depth: 1,
+    }
     const updatedCard = { ...nestedCard, parentCardId: null, path: '', depth: 0 }
     mockPrisma.card.findUnique
       .mockResolvedValueOnce({ ...nestedCard, board: { orgId: 'org-1', id: 'board-1' } })
@@ -182,7 +202,9 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     txMock.$queryRaw.mockResolvedValue([{ maxDepth: null }])
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
-    const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: 'card-B' })
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-B',
+    })
     const res = await POST(req, { params: { cardId: 'card-A' } })
     expect(res.status).toBe(200)
     expect(mockPrisma.$transaction).toHaveBeenCalled()
@@ -193,7 +215,9 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
-    const req = makeRequest('http://localhost/api/cards/nonexistent/reparent', { parentCardId: null })
+    const req = makeRequest('http://localhost/api/cards/nonexistent/reparent', {
+      parentCardId: null,
+    })
     const res = await POST(req, { params: { cardId: 'nonexistent' } })
     expect(res.status).toBe(404)
   })
@@ -237,14 +261,19 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     txMock.$queryRaw.mockResolvedValue([{ maxDepth: null }])
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
-    const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: 'card-B' })
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-B',
+    })
     const res = await POST(req, { params: { cardId: 'card-A' } })
     expect(res.status).toBe(200)
   })
 
   it('rejects reparent when new parent is at depth 49 (would reach depth 50, AC-10)', async () => {
     const cardA = { ...baseCard, id: 'card-A', depth: 0 }
-    mockPrisma.card.findUnique.mockResolvedValue({ ...cardA, board: { orgId: 'org-1', id: 'board-1' } })
+    mockPrisma.card.findUnique.mockResolvedValue({
+      ...cardA,
+      board: { orgId: 'org-1', id: 'board-1' },
+    })
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     txMock.card.findUnique
@@ -254,7 +283,9 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     txMock.$queryRaw.mockResolvedValue([{ maxDepth: null }])
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
-    const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: 'card-B' })
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-B',
+    })
     const res = await POST(req, { params: { cardId: 'card-A' } })
     expect(res.status).toBe(400)
     const body = await res.json()

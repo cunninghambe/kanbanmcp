@@ -28,28 +28,19 @@ export default function BoardPage() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center text-slate-500">
-        Loading board…
-      </div>
+      <div className="flex-1 flex items-center justify-center text-slate-500">Loading board…</div>
     )
   }
 
   if (!board) {
     return (
-      <div className="flex-1 flex items-center justify-center text-slate-500">
-        Board not found
-      </div>
+      <div className="flex-1 flex items-center justify-center text-slate-500">Board not found</div>
     )
   }
 
   return (
     <>
-      <Header
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: board.name },
-        ]}
-      />
+      <Header breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: board.name }]} />
       <main className="flex-1 p-4 overflow-hidden flex flex-col">
         <KanbanBoard
           columns={columns as Parameters<typeof KanbanBoard>[0]['columns']}
@@ -65,7 +56,10 @@ export default function BoardPage() {
         boardId={boardId}
         onClose={() => setSelectedCardId(null)}
         onUpdate={() => mutate()}
-        onDelete={() => { mutate(); setSelectedCardId(null) }}
+        onDelete={() => {
+          mutate()
+          setSelectedCardId(null)
+        }}
       />
     </>
   )
