@@ -1,34 +1,34 @@
-"use client";
+'use client'
 
-import React, { useId, useRef, useState } from "react";
-import useSWR from "swr";
-import { Button } from "@/components/ui/Button";
-import type { ArtifactResponse, AiReviewSummary } from "@/lib/artifacts";
+import React, { useId, useRef, useState } from 'react'
+import useSWR from 'swr'
+import { Button } from '@/components/ui/Button'
+import type { ArtifactResponse, AiReviewSummary } from '@/lib/artifacts'
 
-type ArtifactStatus = AiReviewSummary["status"];
+type ArtifactStatus = AiReviewSummary['status']
 
 const ALLOWED_ACCEPT =
-  "application/pdf,text/*,image/png,image/jpeg,image/webp,application/json,application/x-yaml,text/markdown";
+  'application/pdf,text/*,image/png,image/jpeg,image/webp,application/json,application/x-yaml,text/markdown'
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "Pending",
-  running: "Running",
-  done: "Done",
-  failed: "Failed",
-  skipped: "Skipped",
-};
+  pending: 'Pending',
+  running: 'Running',
+  done: 'Done',
+  failed: 'Failed',
+  skipped: 'Skipped',
+}
 
 const STATUS_CLASS: Record<string, string> = {
-  pending: "bg-slate-100 text-slate-600",
-  running: "bg-yellow-100 text-yellow-700",
-  done: "bg-green-100 text-green-700",
-  failed: "bg-red-100 text-red-600",
-  skipped: "bg-slate-100 text-slate-500 line-through",
-};
+  pending: 'bg-slate-100 text-slate-600',
+  running: 'bg-yellow-100 text-yellow-700',
+  done: 'bg-green-100 text-green-700',
+  failed: 'bg-red-100 text-red-600',
+  skipped: 'bg-slate-100 text-slate-500 line-through',
+}
 
 function AiStatusBadge({ review }: { review: AiReviewSummary }) {
-  const label = STATUS_LABEL[review.status] ?? review.status;
-  const cls = STATUS_CLASS[review.status] ?? "bg-slate-100 text-slate-600";
+  const label = STATUS_LABEL[review.status] ?? review.status
+  const cls = STATUS_CLASS[review.status] ?? 'bg-slate-100 text-slate-600'
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}`}
@@ -36,126 +36,115 @@ function AiStatusBadge({ review }: { review: AiReviewSummary }) {
     >
       {label}
     </span>
-  );
+  )
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function hasActiveReview(artifacts: ArtifactResponse[]): boolean {
   return artifacts.some((a) =>
-    a.reviews.some((r) => r.status === "pending" || r.status === "running"),
-  );
+    a.reviews.some((r) => r.status === 'pending' || r.status === 'running')
+  )
 }
 
 interface ArtifactListProps {
-  cardId: string;
-  canDelete: (artifact: Pick<ArtifactResponse, "uploader">) => boolean;
+  cardId: string
+  canDelete: (artifact: Pick<ArtifactResponse, 'uploader'>) => boolean
 }
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
-    if (!r.ok) throw new Error(String(r.status));
-    return r.json();
-  });
+    if (!r.ok) throw new Error(String(r.status))
+    return r.json()
+  })
 
 export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
-  const fileInputId = useId();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const fileInputId = useId()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const { data, error, isLoading, mutate } = useSWR<{
-    artifacts: ArtifactResponse[];
-  }>(
-    ["artifacts", cardId],
-    ([, id]: [string, string]) => fetcher(`/api/cards/${id}/artifacts`),
-    {
-      refreshInterval: (data) => {
-        if (data && hasActiveReview(data.artifacts)) return 5000;
-        return 0;
-      },
-      revalidateOnFocus: true,
+    artifacts: ArtifactResponse[]
+  }>(['artifacts', cardId], ([, id]: [string, string]) => fetcher(`/api/cards/${id}/artifacts`), {
+    refreshInterval: (data) => {
+      if (data && hasActiveReview(data.artifacts)) return 5000
+      return 0
     },
-  );
+    revalidateOnFocus: true,
+  })
 
-  const artifacts = data?.artifacts ?? [];
+  const artifacts = data?.artifacts ?? []
 
   async function handleUpload(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) return;
+    e.preventDefault()
+    const file = fileInputRef.current?.files?.[0]
+    if (!file) return
 
-    setUploading(true);
-    setUploadError(null);
+    setUploading(true)
+    setUploadError(null)
 
-    const formData = new FormData();
-    formData.append("file", file);
+    const formData = new FormData()
+    formData.append('file', file)
 
     try {
       const res = await fetch(`/api/cards/${cardId}/artifacts`, {
-        method: "POST",
+        method: 'POST',
         body: formData,
-      });
+      })
 
       if (res.status === 415) {
         setUploadError(
-          "File type not supported. Allowed: PDF, text, images (PNG/JPEG/WebP), JSON, YAML, Markdown.",
-        );
-        return;
+          'File type not supported. Allowed: PDF, text, images (PNG/JPEG/WebP), JSON, YAML, Markdown.'
+        )
+        return
       }
       if (res.status === 413) {
-        setUploadError("File too large. Maximum size is 25 MB.");
-        return;
+        setUploadError('File too large. Maximum size is 25 MB.')
+        return
       }
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setUploadError(
-          (body as { error?: string }).error ??
-            "Upload failed. Please try again.",
-        );
-        return;
+        const body = await res.json().catch(() => ({}))
+        setUploadError((body as { error?: string }).error ?? 'Upload failed. Please try again.')
+        return
       }
 
       // Reset file input
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      await mutate();
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      await mutate()
     } catch {
-      setUploadError("Upload failed. Check your connection and try again.");
+      setUploadError('Upload failed. Check your connection and try again.')
     } finally {
-      setUploading(false);
+      setUploading(false)
     }
   }
 
   async function handleDelete(artifactId: string) {
-    if (!confirm("Delete this artifact?")) return;
-    setDeletingId(artifactId);
+    if (!confirm('Delete this artifact?')) return
+    setDeletingId(artifactId)
     try {
       const res = await fetch(`/api/artifacts/${artifactId}`, {
-        method: "DELETE",
-      });
+        method: 'DELETE',
+      })
       if (!res.ok) {
         // silently keep UI in place if delete fails
-        console.error("Artifact delete failed:", res.status);
+        console.error('Artifact delete failed:', res.status)
       }
-      await mutate();
+      await mutate()
     } finally {
-      setDeletingId(null);
+      setDeletingId(null)
     }
   }
 
   return (
     <div className="space-y-3">
       {/* Upload form */}
-      <form
-        onSubmit={handleUpload}
-        className="flex gap-2 items-center flex-wrap"
-        noValidate
-      >
+      <form onSubmit={handleUpload} className="flex gap-2 items-center flex-wrap" noValidate>
         <label htmlFor={fileInputId} className="sr-only">
           Choose file to upload
         </label>
@@ -168,13 +157,8 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
           className="text-sm text-slate-700 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border file:border-slate-300 file:text-sm file:font-medium file:bg-white file:text-slate-700 hover:file:bg-slate-50 file:cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md disabled:opacity-50"
           aria-label="Choose file to upload"
         />
-        <Button
-          type="submit"
-          size="sm"
-          variant="secondary"
-          disabled={uploading}
-        >
-          {uploading ? "Uploading…" : "Upload artifact"}
+        <Button type="submit" size="sm" variant="secondary" disabled={uploading}>
+          {uploading ? 'Uploading…' : 'Upload artifact'}
         </Button>
       </form>
 
@@ -186,11 +170,7 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
 
       {/* Artifact list */}
       {isLoading && (
-        <div
-          className="space-y-2"
-          aria-label="Loading artifacts"
-          aria-busy="true"
-        >
+        <div className="space-y-2" aria-label="Loading artifacts" aria-busy="true">
           {[1, 2].map((i) => (
             <div
               key={i}
@@ -223,8 +203,8 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
       {!isLoading && !error && artifacts.length > 0 && (
         <ul className="space-y-2" aria-label="Uploaded artifacts">
           {artifacts.map((artifact) => {
-            const latestReview = artifact.reviews[0] ?? null;
-            const isDeletable = canDelete({ uploader: artifact.uploader });
+            const latestReview = artifact.reviews[0] ?? null
+            const isDeletable = canDelete({ uploader: artifact.uploader })
 
             return (
               <li
@@ -246,7 +226,7 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
                     {latestReview && (
                       <>
                         <AiStatusBadge review={latestReview} />
-                        {latestReview.status === "done" && (
+                        {latestReview.status === 'done' && (
                           <a
                             href={`/api/reviews/${latestReview.id}`}
                             className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
@@ -260,7 +240,7 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
                     )}
                   </div>
                   <p className="text-xs text-slate-400">
-                    Uploaded by {artifact.uploader.name} &middot;{" "}
+                    Uploaded by {artifact.uploader.name} &middot;{' '}
                     {new Date(artifact.createdAt).toLocaleDateString()}
                   </p>
                 </div>
@@ -294,10 +274,10 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
                   </button>
                 )}
               </li>
-            );
+            )
           })}
         </ul>
       )}
     </div>
-  );
+  )
 }

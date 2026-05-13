@@ -1,13 +1,13 @@
-"use client";
+'use client'
 
-import React, { useState, useCallback } from "react";
-import { z } from "zod";
-import { useSubcardTree } from "./useSubcardTree";
-import { SubcardRow } from "./SubcardRow";
-import type { SubtreeNode } from "@/lib/tree";
+import React, { useState, useCallback } from 'react'
+import { z } from 'zod'
+import { useSubcardTree } from './useSubcardTree'
+import { SubcardRow } from './SubcardRow'
+import type { SubtreeNode } from '@/lib/tree'
 
 // Relative depth at which nodes start collapsed
-const COLLAPSE_FROM_DEPTH = 3;
+const COLLAPSE_FROM_DEPTH = 3
 
 // ---- Zod schema for lazy-fetch subtree response -----------------------------
 
@@ -15,14 +15,14 @@ const userSchema = z.object({
   id: z.string(),
   email: z.string(),
   name: z.string(),
-});
+})
 
 const signoffSummarySchema = z.object({
   id: z.string(),
   decision: z.string(),
   createdAt: z.coerce.date(),
   user: userSchema,
-});
+})
 
 const subtreeNodeSchema: z.ZodType<SubtreeNode> = z.lazy(() =>
   z.object({
@@ -50,52 +50,49 @@ const subtreeNodeSchema: z.ZodType<SubtreeNode> = z.lazy(() =>
       reviewer: signoffSummarySchema.nullable(),
       approver: signoffSummarySchema.nullable(),
     }),
-  }),
-);
+  })
+)
 
 const subtreeResponseSchema = z.object({
   root: subtreeNodeSchema,
   descendants: z.array(subtreeNodeSchema),
-});
+})
 
 // Max siblings to show before a "Show N more" expander
-const SIBLINGS_PAGE_SIZE = 50;
+const SIBLINGS_PAGE_SIZE = 50
 
 export interface SubcardTreeProps {
-  cardId: string;
-  boardId: string;
-  columnId: string;
-  onOpenCard: (cardId: string) => void;
+  cardId: string
+  boardId: string
+  columnId: string
+  onOpenCard: (cardId: string) => void
 }
 
 // Build parentId -> children map from a flat list
-function buildChildMap(
-  nodes: SubtreeNode[],
-  rootId: string,
-): Map<string, SubtreeNode[]> {
-  const map = new Map<string, SubtreeNode[]>();
+function buildChildMap(nodes: SubtreeNode[], rootId: string): Map<string, SubtreeNode[]> {
+  const map = new Map<string, SubtreeNode[]>()
   for (const node of nodes) {
-    const pid = node.parentCardId ?? rootId;
-    const list = map.get(pid) ?? [];
-    list.push(node);
-    map.set(pid, list);
+    const pid = node.parentCardId ?? rootId
+    const list = map.get(pid) ?? []
+    list.push(node)
+    map.set(pid, list)
   }
-  return map;
+  return map
 }
 
 // ---- TreeList ---------------------------------------------------------------
 
 interface TreeListProps {
-  parentId: string;
-  childMap: Map<string, SubtreeNode[]>;
-  rootDepth: number;
-  isNodeExpanded: (id: string, relDepth: number) => boolean;
-  loadingIds: Set<string>;
-  onToggleExpand: (node: SubtreeNode, relDepth: number) => void;
-  onPromote: (node: SubtreeNode) => Promise<void>;
-  onOpenCard: (cardId: string) => void;
-  shownCountMap: Map<string, number>;
-  onShowMore: (parentId: string, currentCount: number) => void;
+  parentId: string
+  childMap: Map<string, SubtreeNode[]>
+  rootDepth: number
+  isNodeExpanded: (id: string, relDepth: number) => boolean
+  loadingIds: Set<string>
+  onToggleExpand: (node: SubtreeNode, relDepth: number) => void
+  onPromote: (node: SubtreeNode) => Promise<void>
+  onOpenCard: (cardId: string) => void
+  shownCountMap: Map<string, number>
+  onShowMore: (parentId: string, currentCount: number) => void
 }
 
 function TreeList({
@@ -110,20 +107,20 @@ function TreeList({
   shownCountMap,
   onShowMore,
 }: TreeListProps) {
-  const allChildren = childMap.get(parentId) ?? [];
-  const shownCount = shownCountMap.get(parentId) ?? SIBLINGS_PAGE_SIZE;
-  const visible = allChildren.slice(0, shownCount);
-  const hiddenCount = allChildren.length - visible.length;
+  const allChildren = childMap.get(parentId) ?? []
+  const shownCount = shownCountMap.get(parentId) ?? SIBLINGS_PAGE_SIZE
+  const visible = allChildren.slice(0, shownCount)
+  const hiddenCount = allChildren.length - visible.length
 
-  if (allChildren.length === 0) return null;
+  if (allChildren.length === 0) return null
 
   return (
     <ul id={`children-${parentId}`} className="list-none m-0 p-0" aria-label="Sub-cards">
       {visible.map((node) => {
-        const relDepth = node.depth - rootDepth;
-        const expanded = isNodeExpanded(node.id, relDepth);
-        const loading = loadingIds.has(node.id);
-        const hasChildren = (childMap.get(node.id) ?? []).length > 0;
+        const relDepth = node.depth - rootDepth
+        const expanded = isNodeExpanded(node.id, relDepth)
+        const loading = loadingIds.has(node.id)
+        const hasChildren = (childMap.get(node.id) ?? []).length > 0
 
         return (
           <React.Fragment key={node.id}>
@@ -152,7 +149,7 @@ function TreeList({
               />
             )}
           </React.Fragment>
-        );
+        )
       })}
       {hiddenCount > 0 && (
         <li>
@@ -166,18 +163,18 @@ function TreeList({
         </li>
       )}
     </ul>
-  );
+  )
 }
 
 // ---- AddSubcardForm ---------------------------------------------------------
 
 interface AddSubcardFormProps {
-  boardId: string;
-  parentCardId: string;
-  columnId: string;
-  assigneeId: string;
-  onCreated: () => void;
-  onCancel: () => void;
+  boardId: string
+  parentCardId: string
+  columnId: string
+  assigneeId: string
+  onCreated: () => void
+  onCancel: () => void
 }
 
 function AddSubcardForm({
@@ -188,44 +185,44 @@ function AddSubcardForm({
   onCreated,
   onCancel,
 }: AddSubcardFormProps) {
-  const [title, setTitle] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [title, setTitle] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const trimmed = title.trim();
-    if (!trimmed) return;
+    e.preventDefault()
+    const trimmed = title.trim()
+    if (!trimmed) return
 
-    setSubmitting(true);
-    setFormError(null);
+    setSubmitting(true)
+    setFormError(null)
 
     try {
       const res = await fetch(`/api/boards/${boardId}/cards`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: trimmed,
           columnId,
           assigneeId,
           parentCardId,
         }),
-      });
+      })
 
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        setFormError(body.error ?? "Failed to create sub-card.");
-        return;
+          error?: string
+        }
+        setFormError(body.error ?? 'Failed to create sub-card.')
+        return
       }
 
-      setTitle("");
-      onCreated();
+      setTitle('')
+      onCreated()
     } catch {
-      setFormError("Failed to create sub-card. Check your connection.");
+      setFormError('Failed to create sub-card. Check your connection.')
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
   }
 
@@ -253,7 +250,7 @@ function AddSubcardForm({
         disabled={submitting || !title.trim()}
         className="px-2.5 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
-        {submitting ? "Adding…" : "Add"}
+        {submitting ? 'Adding…' : 'Add'}
       </button>
       <button
         type="button"
@@ -269,98 +266,89 @@ function AddSubcardForm({
         </p>
       )}
     </form>
-  );
+  )
 }
 
 // ---- SubcardTree (main) -----------------------------------------------------
 
-export function SubcardTree({
-  cardId,
-  boardId,
-  columnId,
-  onOpenCard,
-}: SubcardTreeProps) {
-  const { data, isLoading, error, refresh } = useSubcardTree(cardId, 3);
+export function SubcardTree({ cardId, boardId, columnId, onOpenCard }: SubcardTreeProps) {
+  const { data, isLoading, error, refresh } = useSubcardTree(cardId, 3)
 
   // Nodes explicitly expanded by the user
-  const [manualExpanded, setManualExpanded] = useState<Set<string>>(new Set());
+  const [manualExpanded, setManualExpanded] = useState<Set<string>>(new Set())
   // Nodes explicitly collapsed by the user (overrides default expand for shallow nodes)
-  const [manualCollapsed, setManualCollapsed] = useState<Set<string>>(
-    new Set(),
-  );
+  const [manualCollapsed, setManualCollapsed] = useState<Set<string>>(new Set())
   // Nodes whose sub-fetch is in progress
-  const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
+  const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set())
   // Flat merged tree: base descendants + lazy-fetched descendants keyed by their root
-  const [extraDescendants, setExtraDescendants] = useState<SubtreeNode[]>([]);
+  const [extraDescendants, setExtraDescendants] = useState<SubtreeNode[]>([])
 
-  const [shownCountMap, setShownCountMap] = useState<Map<string, number>>(
-    new Map(),
-  );
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [shownCountMap, setShownCountMap] = useState<Map<string, number>>(new Map())
+  const [showAddForm, setShowAddForm] = useState(false)
 
-  const root = data?.root ?? null;
-  const descendants = data?.descendants ?? [];
-  const rootDepth = root?.depth ?? 0;
+  const root = data?.root ?? null
+  const descendants = data?.descendants ?? []
+  const rootDepth = root?.depth ?? 0
 
   // Merged flat list: initial descendants + lazily loaded ones
-  const allDescendants = [...descendants, ...extraDescendants];
-  const childMap = buildChildMap(allDescendants, cardId);
+  const allDescendants = [...descendants, ...extraDescendants]
+  const childMap = buildChildMap(allDescendants, cardId)
 
   // Determine if a node should be expanded
   function isNodeExpanded(id: string, relDepth: number): boolean {
-    if (manualExpanded.has(id)) return true;
-    if (manualCollapsed.has(id)) return false;
-    return relDepth < COLLAPSE_FROM_DEPTH;
+    if (manualExpanded.has(id)) return true
+    if (manualCollapsed.has(id)) return false
+    return relDepth < COLLAPSE_FROM_DEPTH
   }
 
   const handleToggleExpand = useCallback(
     async (node: SubtreeNode, relDepth: number) => {
-      const currentlyExpanded = isNodeExpanded(node.id, relDepth);
+      const currentlyExpanded = isNodeExpanded(node.id, relDepth)
 
       if (currentlyExpanded) {
-        setManualCollapsed((prev) => new Set([...prev, node.id]));
+        setManualCollapsed((prev) => new Set([...prev, node.id]))
         setManualExpanded((prev) => {
-          const next = new Set(prev);
-          next.delete(node.id);
-          return next;
-        });
-        return;
+          const next = new Set(prev)
+          next.delete(node.id)
+          return next
+        })
+        return
       }
 
       // Mark as manually expanded
-      setManualExpanded((prev) => new Set([...prev, node.id]));
+      setManualExpanded((prev) => new Set([...prev, node.id]))
       setManualCollapsed((prev) => {
-        const next = new Set(prev);
-        next.delete(node.id);
-        return next;
-      });
+        const next = new Set(prev)
+        next.delete(node.id)
+        return next
+      })
 
       // Lazy-fetch if at deep node and children not yet loaded
-      const hasChildren = (childMap.get(node.id) ?? []).length > 0;
+      const hasChildren = (childMap.get(node.id) ?? []).length > 0
       if (relDepth >= COLLAPSE_FROM_DEPTH && !hasChildren) {
-        setLoadingIds((prev) => new Set([...prev, node.id]));
+        setLoadingIds((prev) => new Set([...prev, node.id]))
         try {
-          const res = await fetch(`/api/cards/${node.id}/children?depth=3`);
+          const res = await fetch(`/api/cards/${node.id}/children?depth=3`)
           if (res.ok) {
-            const json: unknown = await res.json();
-            const payload = subtreeResponseSchema.parse(json);
+            const json: unknown = await res.json()
+            const payload = subtreeResponseSchema.parse(json)
             setExtraDescendants((prev) => {
               // Avoid duplicate node IDs
-              const existingIds = new Set(prev.map((n) => n.id));
+              const existingIds = new Set(prev.map((n) => n.id))
               const newNodes = [payload.root, ...payload.descendants].filter(
-                (n) => !existingIds.has(n.id),
-              );
-              return [...prev, ...newNodes];
-            });
+                (n) => !existingIds.has(n.id)
+              )
+              return [...prev, ...newNodes]
+            })
           }
         } catch {
           // non-fatal — expand shows empty children
         } finally {
           setLoadingIds((prev) => {
-            const next = new Set(prev);
-            next.delete(node.id);
-            return next;
-          });
+            const next = new Set(prev)
+            next.delete(node.id)
+            return next
+          })
         }
       }
     },
@@ -368,31 +356,31 @@ export function SubcardTree({
     // The callback must always use fresh versions. Omit from deps and use a ref-style approach
     // would overcomplicate; the async path here is safe since state setters are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rootDepth, manualExpanded, manualCollapsed, childMap],
-  );
+    [rootDepth, manualExpanded, manualCollapsed, childMap]
+  )
 
   const handlePromote = useCallback(
     async (node: SubtreeNode) => {
       const res = await fetch(`/api/cards/${node.id}/promote`, {
-        method: "POST",
-      });
+        method: 'POST',
+      })
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(body.error ?? "Promote failed.");
+          error?: string
+        }
+        throw new Error(body.error ?? 'Promote failed.')
       }
-      await refresh();
+      await refresh()
     },
-    [refresh],
-  );
+    [refresh]
+  )
 
   function handleShowMore(parentId: string, currentCount: number) {
     setShownCountMap((prev) => {
-      const next = new Map(prev);
-      next.set(parentId, currentCount + SIBLINGS_PAGE_SIZE);
-      return next;
-    });
+      const next = new Map(prev)
+      next.set(parentId, currentCount + SIBLINGS_PAGE_SIZE)
+      return next
+    })
   }
 
   // Loading skeleton
@@ -407,15 +395,11 @@ export function SubcardTree({
         </h3>
         <div className="space-y-2" aria-label="Loading sub-cards">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-7 bg-slate-100 animate-pulse rounded-md"
-              aria-hidden="true"
-            />
+            <div key={i} className="h-7 bg-slate-100 animate-pulse rounded-md" aria-hidden="true" />
           ))}
         </div>
       </section>
-    );
+    )
   }
 
   // Error state
@@ -439,7 +423,7 @@ export function SubcardTree({
           </button>
         </div>
       </section>
-    );
+    )
   }
 
   return (
@@ -463,7 +447,7 @@ export function SubcardTree({
             aria-expanded={showAddForm}
             className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
           >
-            {showAddForm ? "Cancel" : "+ Add sub-card"}
+            {showAddForm ? 'Cancel' : '+ Add sub-card'}
           </button>
         )}
       </div>
@@ -473,10 +457,10 @@ export function SubcardTree({
           boardId={boardId}
           parentCardId={cardId}
           columnId={columnId}
-          assigneeId={root.assigneeId ?? ""}
+          assigneeId={root.assigneeId ?? ''}
           onCreated={() => {
-            setShowAddForm(false);
-            void refresh();
+            setShowAddForm(false)
+            void refresh()
           }}
           onCancel={() => setShowAddForm(false)}
         />
@@ -484,8 +468,7 @@ export function SubcardTree({
 
       {descendants.length === 0 && !showAddForm && (
         <p className="text-sm text-slate-400 italic">
-          No sub-cards yet. Break this card into smaller pieces by adding
-          sub-cards.
+          No sub-cards yet. Break this card into smaller pieces by adding sub-cards.
         </p>
       )}
 
@@ -504,5 +487,5 @@ export function SubcardTree({
         />
       )}
     </section>
-  );
+  )
 }

@@ -6,10 +6,7 @@ import { decodeAiReviewParams } from '@/lib/cards'
 import { resolveCard } from '@/lib/resolve-card'
 
 // POST /api/cards/[cardId]/promote
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { cardId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { cardId: string } }) {
   try {
     const session = await requireSession(req)
     const existingCard = await resolveCard(params.cardId, session.orgId)

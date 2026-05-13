@@ -17,10 +17,7 @@ export default function DashboardPage() {
   const [newBoardName, setNewBoardName] = useState('')
   const [creating, setCreating] = useState(false)
 
-  const { data, mutate } = useSWR(
-    org ? `/api/orgs/${org.id}/boards` : null,
-    fetcher
-  )
+  const { data, mutate } = useSWR(org ? `/api/orgs/${org.id}/boards` : null, fetcher)
 
   const boards = data?.boards ?? data ?? []
 
@@ -63,33 +60,35 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {boards.map((board: {
-                id: string
-                name: string
-                columnCount?: number
-                cardCount?: number
-                createdAt?: string
-                updatedAt?: string
-              }) => (
-                <button
-                  key={board.id}
-                  onClick={() => router.push(`/board/${board.id}`)}
-                  className="bg-white rounded-lg border border-slate-200 p-5 text-left hover:border-blue-300 hover:shadow-md transition-all group"
-                >
-                  <h3 className="font-semibold text-slate-900 group-hover:text-blue-700 transition-colors mb-3">
-                    {board.name}
-                  </h3>
-                  <div className="flex items-center gap-4 text-sm text-slate-500">
-                    <span>{board.columnCount ?? 0} columns</span>
-                    <span>{board.cardCount ?? 0} cards</span>
-                  </div>
-                  {(board.updatedAt ?? board.createdAt) && (
-                    <p className="text-xs text-slate-400 mt-2">
-                      Updated {new Date(board.updatedAt ?? board.createdAt!).toLocaleDateString()}
-                    </p>
-                  )}
-                </button>
-              ))}
+              {boards.map(
+                (board: {
+                  id: string
+                  name: string
+                  columnCount?: number
+                  cardCount?: number
+                  createdAt?: string
+                  updatedAt?: string
+                }) => (
+                  <button
+                    key={board.id}
+                    onClick={() => router.push(`/board/${board.id}`)}
+                    className="bg-white rounded-lg border border-slate-200 p-5 text-left hover:border-blue-300 hover:shadow-md transition-all group"
+                  >
+                    <h3 className="font-semibold text-slate-900 group-hover:text-blue-700 transition-colors mb-3">
+                      {board.name}
+                    </h3>
+                    <div className="flex items-center gap-4 text-sm text-slate-500">
+                      <span>{board.columnCount ?? 0} columns</span>
+                      <span>{board.cardCount ?? 0} cards</span>
+                    </div>
+                    {(board.updatedAt ?? board.createdAt) && (
+                      <p className="text-xs text-slate-400 mt-2">
+                        Updated {new Date(board.updatedAt ?? board.createdAt!).toLocaleDateString()}
+                      </p>
+                    )}
+                  </button>
+                )
+              )}
             </div>
           )}
         </div>
@@ -97,15 +96,16 @@ export default function DashboardPage() {
 
       <Modal
         open={showNewBoard}
-        onClose={() => { setShowNewBoard(false); setNewBoardName('') }}
+        onClose={() => {
+          setShowNewBoard(false)
+          setNewBoardName('')
+        }}
         title="New Board"
         size="sm"
       >
         <form onSubmit={handleCreateBoard} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Board Name
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Board Name</label>
             <input
               type="text"
               value={newBoardName}
@@ -120,7 +120,10 @@ export default function DashboardPage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => { setShowNewBoard(false); setNewBoardName('') }}
+              onClick={() => {
+                setShowNewBoard(false)
+                setNewBoardName('')
+              }}
             >
               Cancel
             </Button>

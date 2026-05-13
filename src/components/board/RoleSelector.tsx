@@ -1,23 +1,23 @@
-"use client";
+'use client'
 
-import React, { useId } from "react";
+import React, { useId } from 'react'
 
 export type OrgMember = {
-  id: string;
-  name: string;
-  email: string;
-  isAgent?: boolean;
-};
+  id: string
+  name: string
+  email: string
+  isAgent?: boolean
+}
 
-export type RoleSelectorLabel = "Assignee" | "Reviewer" | "Approver";
+export type RoleSelectorLabel = 'Assignee' | 'Reviewer' | 'Approver'
 
 interface RoleSelectorProps {
-  label: RoleSelectorLabel;
-  selectedUserId: string | null;
-  orgMembers: OrgMember[];
-  required?: boolean;
-  onChange: (userId: string | null) => void;
-  disabled?: boolean;
+  label: RoleSelectorLabel
+  selectedUserId: string | null
+  orgMembers: OrgMember[]
+  required?: boolean
+  onChange: (userId: string | null) => void
+  disabled?: boolean
 }
 
 export function RoleSelector({
@@ -28,13 +28,13 @@ export function RoleSelector({
   onChange,
   disabled = false,
 }: RoleSelectorProps) {
-  const id = useId();
-  const humanMembers = orgMembers.filter((m) => !m.isAgent);
-  const agentMembers = orgMembers.filter((m) => m.isAgent);
+  const id = useId()
+  const humanMembers = orgMembers.filter((m) => !m.isAgent)
+  const agentMembers = orgMembers.filter((m) => m.isAgent)
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value;
-    onChange(val === "" ? null : val);
+    const val = e.target.value
+    onChange(val === '' ? null : val)
   }
 
   return (
@@ -53,7 +53,7 @@ export function RoleSelector({
       <select
         id={id}
         className="w-full px-2 py-1.5 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        value={selectedUserId ?? ""}
+        value={selectedUserId ?? ''}
         onChange={handleChange}
         disabled={disabled}
         aria-required={required}
@@ -86,5 +86,5 @@ export function RoleSelector({
         )}
       </select>
     </div>
-  );
+  )
 }

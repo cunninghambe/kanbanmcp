@@ -43,7 +43,11 @@ describe('GET /api/activity', () => {
 
   it('returns 401 when not authenticated', async () => {
     const { getIronSession } = await import('iron-session')
-    vi.mocked(getIronSession).mockResolvedValueOnce({ userId: '', orgId: '', save: vi.fn() } as never)
+    vi.mocked(getIronSession).mockResolvedValueOnce({
+      userId: '',
+      orgId: '',
+      save: vi.fn(),
+    } as never)
     const { GET } = await import('../src/app/api/activity/route')
     const req = makeRequest('http://localhost/api/activity')
     const res = await GET(req)

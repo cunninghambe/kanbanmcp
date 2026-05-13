@@ -31,9 +31,7 @@ export function useBoard(boardId: string | null) {
           return { ...col, cards: col.cards.filter((c) => c.id !== cardId) }
         }
         if (col.id === destColumnId) {
-          const card = data.columns
-            .flatMap((c) => c.cards)
-            .find((c) => c.id === cardId)
+          const card = data.columns.flatMap((c) => c.cards).find((c) => c.id === cardId)
           if (!card) return col
           const updatedCard = { ...card, columnId: destColumnId, position: newPosition }
           const otherCards = col.cards.filter((c) => c.id !== cardId)
@@ -76,9 +74,7 @@ export function useBoard(boardId: string | null) {
       ...data,
       columns: data.columns.map((col) => ({
         ...col,
-        cards: col.cards.map((c) =>
-          c.id === cardId ? { ...c, ...updates } : c
-        ),
+        cards: col.cards.map((c) => (c.id === cardId ? { ...c, ...updates } : c)),
       })),
     }
     mutate(optimistic, false)

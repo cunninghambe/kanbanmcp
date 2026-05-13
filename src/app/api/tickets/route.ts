@@ -47,10 +47,7 @@ export async function GET(req: NextRequest) {
     if (priorityFilter) where.priority = priorityFilter
     if (assigneeFilter) where.assigneeId = assigneeFilter
     if (searchQuery) {
-      where.OR = [
-        { title: { contains: searchQuery } },
-        { description: { contains: searchQuery } },
-      ]
+      where.OR = [{ title: { contains: searchQuery } }, { description: { contains: searchQuery } }]
     }
 
     const [tickets, total] = await Promise.all([

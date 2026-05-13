@@ -19,12 +19,9 @@ const createWebhookSchema = z.object({
   events: z
     .array(z.string())
     .min(1, 'At least one event is required')
-    .refine(
-      (evts) => evts.every((e) => (ALLOWED_EVENTS as readonly string[]).includes(e)),
-      {
-        message: `events must be one of: ${ALLOWED_EVENTS.join(', ')}`,
-      }
-    ),
+    .refine((evts) => evts.every((e) => (ALLOWED_EVENTS as readonly string[]).includes(e)), {
+      message: `events must be one of: ${ALLOWED_EVENTS.join(', ')}`,
+    }),
   secret: z.string().min(1, 'secret is required'),
 })
 

@@ -71,13 +71,22 @@ describe('MCP priority field - create_card', () => {
 
   it('creates card with explicit valid priority', async () => {
     mockPrisma.card.create.mockResolvedValue({
-      id: 'card-1', title: 'Test', priority: 'high', boardId: 'board-1', columnId: 'col-1',
+      id: 'card-1',
+      title: 'Test',
+      priority: 'high',
+      boardId: 'board-1',
+      columnId: 'col-1',
     })
     const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    const result = await handleMcpRequest(
-      makeRpc('create_card', { boardId: 'board-1', columnId: 'col-1', title: 'Test', priority: 'high' }),
+    const result = (await handleMcpRequest(
+      makeRpc('create_card', {
+        boardId: 'board-1',
+        columnId: 'col-1',
+        title: 'Test',
+        priority: 'high',
+      }),
       agentCtx
-    ) as { result: { priority: string } }
+    )) as { result: { priority: string } }
     expect(result.result.priority).toBe('high')
     expect(mockPrisma.card.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ priority: 'high' }) })
@@ -86,13 +95,17 @@ describe('MCP priority field - create_card', () => {
 
   it('creates card with default priority "none" when priority not provided', async () => {
     mockPrisma.card.create.mockResolvedValue({
-      id: 'card-1', title: 'Test', priority: 'none', boardId: 'board-1', columnId: 'col-1',
+      id: 'card-1',
+      title: 'Test',
+      priority: 'none',
+      boardId: 'board-1',
+      columnId: 'col-1',
     })
     const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('create_card', { boardId: 'board-1', columnId: 'col-1', title: 'Test' }),
       agentCtx
-    ) as { result: { priority: string } }
+    )) as { result: { priority: string } }
     expect(mockPrisma.card.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ priority: 'none' }) })
     )
@@ -100,20 +113,25 @@ describe('MCP priority field - create_card', () => {
 
   it('rejects invalid priority string', async () => {
     const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    const result = await handleMcpRequest(
-      makeRpc('create_card', { boardId: 'board-1', columnId: 'col-1', title: 'Test', priority: 'urgent' }),
+    const result = (await handleMcpRequest(
+      makeRpc('create_card', {
+        boardId: 'board-1',
+        columnId: 'col-1',
+        title: 'Test',
+        priority: 'urgent',
+      }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('priority')
   })
 
   it('rejects priority as a number (not a string)', async () => {
     const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('create_card', { boardId: 'board-1', columnId: 'col-1', title: 'Test', priority: 3 }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('priority')
   })
@@ -124,7 +142,9 @@ describe('MCP priority field - update_card', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPrisma.card.findFirst.mockResolvedValue({
-      id: 'card-1', boardId: 'board-1', columnId: 'col-1',
+      id: 'card-1',
+      boardId: 'board-1',
+      columnId: 'col-1',
       board: { orgId: 'org-1' },
     })
     mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1' })
@@ -133,10 +153,10 @@ describe('MCP priority field - update_card', () => {
   it('updates priority when valid value provided', async () => {
     mockPrisma.card.update.mockResolvedValue({ id: 'card-1', priority: 'critical' })
     const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('update_card', { cardId: 'card-1', priority: 'critical' }),
       agentCtx
-    ) as { result: { priority: string } }
+    )) as { result: { priority: string } }
     expect(result.result.priority).toBe('critical')
     expect(mockPrisma.card.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ priority: 'critical' }) })
@@ -145,10 +165,10 @@ describe('MCP priority field - update_card', () => {
 
   it('returns error when explicitly invalid priority string provided', async () => {
     const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('update_card', { cardId: 'card-1', title: 'New title', priority: 'INVALID' }),
       agentCtx
-    ) as { error?: { message: string; code: number } }
+    )) as { error?: { message: string; code: number } }
     // Explicitly invalid priority values should produce an error
     expect(result.error).toBeDefined()
     expect(result.error!.message).toContain('priority')
@@ -159,33 +179,30 @@ describe('MCP priority field - update_card', () => {
   it('does not include priority in update when priority not provided', async () => {
     mockPrisma.card.update.mockResolvedValue({ id: 'card-1', title: 'Updated' })
     const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    await handleMcpRequest(
-      makeRpc('update_card', { cardId: 'card-1', title: 'Updated' }),
-      agentCtx
-    )
+    await handleMcpRequest(makeRpc('update_card', { cardId: 'card-1', title: 'Updated' }), agentCtx)
     expect(mockPrisma.card.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.not.objectContaining({ priority: expect.anything() })
+        data: expect.not.objectContaining({ priority: expect.anything() }),
       })
     )
   })
 
   it('rejects invalid dueDate format', async () => {
     const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('update_card', { cardId: 'card-1', dueDate: 'not-a-date' }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('dueDate')
   })
 
   it('rejects empty title string', async () => {
     const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    const result = await handleMcpRequest(
+    const result = (await handleMcpRequest(
       makeRpc('update_card', { cardId: 'card-1', title: '' }),
       agentCtx
-    ) as { error: { message: string } }
+    )) as { error: { message: string } }
     expect(result.error).toBeDefined()
     expect(result.error.message).toContain('title')
   })
@@ -196,22 +213,27 @@ describe('MCP priority validation - all valid values', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPrisma.card.findFirst.mockResolvedValue({
-      id: 'card-1', boardId: 'board-1', columnId: 'col-1',
+      id: 'card-1',
+      boardId: 'board-1',
+      columnId: 'col-1',
       board: { orgId: 'org-1' },
     })
     mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1' })
   })
 
-  it.each(['none', 'low', 'medium', 'high', 'critical'])('accepts priority "%s"', async (priority) => {
-    mockPrisma.card.update.mockResolvedValue({ id: 'card-1', priority })
-    const { handleMcpRequest } = await import('../src/lib/mcp-server')
-    const result = await handleMcpRequest(
-      makeRpc('update_card', { cardId: 'card-1', priority }),
-      agentCtx
-    ) as { result?: unknown; error?: { message: string } }
-    expect(result.error).toBeUndefined()
-    expect(result.result).toBeDefined()
-  })
+  it.each(['none', 'low', 'medium', 'high', 'critical'])(
+    'accepts priority "%s"',
+    async (priority) => {
+      mockPrisma.card.update.mockResolvedValue({ id: 'card-1', priority })
+      const { handleMcpRequest } = await import('../src/lib/mcp-server')
+      const result = (await handleMcpRequest(
+        makeRpc('update_card', { cardId: 'card-1', priority }),
+        agentCtx
+      )) as { result?: unknown; error?: { message: string } }
+      expect(result.error).toBeUndefined()
+      expect(result.result).toBeDefined()
+    }
+  )
 
   it.each([null, undefined, 123, '', 'CRITICAL', 'urgent', 'blocker'])(
     'rejects or ignores invalid priority "%s"',

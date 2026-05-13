@@ -14,10 +14,7 @@ export default function SprintsPage() {
   const params = useParams()
   const boardId = params.boardId as string
 
-  const { data: boardData } = useSWR(
-    boardId ? `/api/boards/${boardId}` : null,
-    fetcher
-  )
+  const { data: boardData } = useSWR(boardId ? `/api/boards/${boardId}` : null, fetcher)
 
   const boardName = boardData?.name ?? 'Board'
 

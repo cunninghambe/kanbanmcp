@@ -20,10 +20,7 @@ export async function requireApiKey(req: NextRequest): Promise<AgentContext> {
 
   const rawKey = authHeader.slice('Bearer '.length).trim()
   if (!rawKey) {
-    throw NextResponse.json(
-      { error: 'Unauthorized: empty API key' },
-      { status: 401 }
-    )
+    throw NextResponse.json({ error: 'Unauthorized: empty API key' }, { status: 401 })
   }
 
   const keyHash = createHash('sha256').update(rawKey).digest('hex')
@@ -33,10 +30,7 @@ export async function requireApiKey(req: NextRequest): Promise<AgentContext> {
   })
 
   if (!apiKey) {
-    throw NextResponse.json(
-      { error: 'Unauthorized: invalid API key' },
-      { status: 401 }
-    )
+    throw NextResponse.json({ error: 'Unauthorized: invalid API key' }, { status: 401 })
   }
 
   // Fire-and-forget lastUsedAt update — errors are silently ignored

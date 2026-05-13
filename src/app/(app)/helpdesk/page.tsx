@@ -69,10 +69,7 @@ export default function HelpdeskPage() {
   if (priorityFilter) params.set('priority', priorityFilter)
   params.set('limit', '50')
 
-  const { data, mutate, isLoading } = useSWR(
-    `/api/tickets?${params.toString()}`,
-    fetcher
-  )
+  const { data, mutate, isLoading } = useSWR(`/api/tickets?${params.toString()}`, fetcher)
 
   const tickets: Ticket[] = data?.tickets ?? []
   const total: number = data?.pagination?.total ?? 0
@@ -120,7 +117,9 @@ export default function HelpdeskPage() {
               >
                 <option value="">All Statuses</option>
                 {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
                 ))}
               </select>
               <select
@@ -130,10 +129,14 @@ export default function HelpdeskPage() {
               >
                 <option value="">All Priorities</option>
                 {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
                 ))}
               </select>
-              <span className="text-sm text-slate-500">{total} ticket{total !== 1 ? 's' : ''}</span>
+              <span className="text-sm text-slate-500">
+                {total} ticket{total !== 1 ? 's' : ''}
+              </span>
             </div>
             <Button onClick={() => setShowNew(true)}>New Ticket</Button>
           </div>
@@ -179,23 +182,27 @@ export default function HelpdeskPage() {
                           {ticket.reporter
                             ? `by ${ticket.reporter.name}`
                             : ticket.agentName
-                            ? `by agent ${ticket.agentName}`
-                            : 'Unknown reporter'}
+                              ? `by agent ${ticket.agentName}`
+                              : 'Unknown reporter'}
                         </span>
-                        {ticket.assignee && (
-                          <span>assigned to {ticket.assignee.name}</span>
-                        )}
-                        <span>{ticket._count.comments} comment{ticket._count.comments !== 1 ? 's' : ''}</span>
+                        {ticket.assignee && <span>assigned to {ticket.assignee.name}</span>}
+                        <span>
+                          {ticket._count.comments} comment{ticket._count.comments !== 1 ? 's' : ''}
+                        </span>
                         <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
 
                     {/* Badges */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PRIORITY_COLORS[ticket.priority] ?? 'bg-slate-100 text-slate-600'}`}>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${PRIORITY_COLORS[ticket.priority] ?? 'bg-slate-100 text-slate-600'}`}
+                      >
                         {PRIORITY_LABELS[ticket.priority] ?? ticket.priority}
                       </span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[ticket.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[ticket.status] ?? 'bg-slate-100 text-slate-600'}`}
+                      >
                         {STATUS_LABELS[ticket.status] ?? ticket.status}
                       </span>
                     </div>
@@ -210,7 +217,11 @@ export default function HelpdeskPage() {
       {/* New Ticket Modal */}
       <Modal
         open={showNew}
-        onClose={() => { setShowNew(false); setNewTitle(''); setNewDesc('') }}
+        onClose={() => {
+          setShowNew(false)
+          setNewTitle('')
+          setNewDesc('')
+        }}
         title="New Ticket"
         size="md"
       >
@@ -230,9 +241,7 @@ export default function HelpdeskPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Description
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
             <textarea
               value={newDesc}
               onChange={(e) => setNewDesc(e.target.value)}
@@ -242,16 +251,16 @@ export default function HelpdeskPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Priority
-            </label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
             <select
               value={newPriority}
               onChange={(e) => setNewPriority(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
+                <option key={v} value={v}>
+                  {l}
+                </option>
               ))}
             </select>
           </div>
@@ -259,7 +268,11 @@ export default function HelpdeskPage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => { setShowNew(false); setNewTitle(''); setNewDesc('') }}
+              onClick={() => {
+                setShowNew(false)
+                setNewTitle('')
+                setNewDesc('')
+              }}
             >
               Cancel
             </Button>

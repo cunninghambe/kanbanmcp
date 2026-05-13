@@ -4,10 +4,7 @@ import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 
 // GET /api/orgs/[orgId]
 // Returns the organization with its members. Requires org membership.
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { orgId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { orgId: string } }) {
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, params.orgId, 'MEMBER')

@@ -20,9 +20,9 @@ Keys are verified by SHA-256 hash stored in the `ApiKey` table. The raw key is n
 
 ### Known API keys
 
-| Org | Key |
-|---|---|
-| A1 | `9cb481a9c5abd54e45a6b3396814780caa34e0c8d54e829fc77e98e6d0066d51` |
+| Org      | Key                                                                |
+| -------- | ------------------------------------------------------------------ |
+| A1       | `9cb481a9c5abd54e45a6b3396814780caa34e0c8d54e829fc77e98e6d0066d51` |
 | Autogeny | `9508504220de2bb65084146423f116ec5e50388597ada4f813b6b71fd358c658` |
 
 For CLI tools on this server, the active key is `kanban-claude-agent-key-for-cli-tools-persistent` (resolves to the A1 org).
@@ -33,13 +33,13 @@ For CLI tools on this server, the active key is `kanban-claude-agent-key-for-cli
 
 ### Board and Column IDs
 
-| Name | ID |
-|---|---|
+| Name                | ID                          |
+| ------------------- | --------------------------- |
 | Board: Slack-for-AI | `cmnkvo2rv000jtb9tbgbn10ym` |
-| Column: Backlog | `cmnkvo2rw000ltb9tbsddtbjg` |
+| Column: Backlog     | `cmnkvo2rw000ltb9tbsddtbjg` |
 | Column: In Progress | `cmnkvo2rw000ntb9tvhvyz3e2` |
-| Column: Review | `cmnkvo2rw000ptb9to4z5397u` |
-| Column: Done | `cmnkvo2rw000rtb9ts5yeu2xa` |
+| Column: Review      | `cmnkvo2rw000ptb9to4z5397u` |
+| Column: Done        | `cmnkvo2rw000rtb9ts5yeu2xa` |
 
 ### Get board (columns + cards)
 
@@ -339,6 +339,7 @@ Done:        cmnkvo2rw000rtb9ts5yeu2xa
 ### MCP endpoint summary
 
 All MCP calls go to `POST /api/mcp` with:
+
 ```json
 {"jsonrpc": "2.0", "id": 1, "method": "<tool>", "params": {...}}
 ```

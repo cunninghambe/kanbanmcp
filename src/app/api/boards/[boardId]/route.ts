@@ -24,10 +24,7 @@ async function resolveBoard(boardId: string, orgId: string) {
 
 // GET /api/boards/[boardId]
 // Returns the full board with columns and cards ordered by position ASC.
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { boardId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { boardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveBoard(params.boardId, session.orgId)
@@ -69,10 +66,7 @@ export async function GET(
 
 // PATCH /api/boards/[boardId]
 // Updates the board name. Requires MEMBER role.
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { boardId: string } }
-) {
+export async function PATCH(req: NextRequest, { params }: { params: { boardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveBoard(params.boardId, session.orgId)

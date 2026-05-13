@@ -55,10 +55,15 @@ import { NextRequest } from 'next/server'
 // ─── Mock @anthropic-ai/sdk ──────────────────────────────────────────────────
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class MockAnthropic {},
-  RateLimitError: class extends Error { status = 429 },
+  RateLimitError: class extends Error {
+    status = 429
+  },
   APIError: class extends Error {
     status: number
-    constructor(status: number, message: string) { super(message); this.status = status }
+    constructor(status: number, message: string) {
+      super(message)
+      this.status = status
+    }
   },
 }))
 
@@ -89,7 +94,9 @@ vi.mock('../../src/lib/storage', () => ({ getStorageDriver: () => mockStorage })
 vi.mock('../../prisma/seed-ai-reviewer', () => ({
   AI_REVIEWER_EMAIL: 'ai-reviewer@kanbanmcp.local',
   AI_REVIEWER_NAME: 'AI Reviewer',
-  ensureAiReviewerUser: vi.fn().mockResolvedValue({ id: 'reviewer-bot', email: 'ai-reviewer@kanbanmcp.local' }),
+  ensureAiReviewerUser: vi
+    .fn()
+    .mockResolvedValue({ id: 'reviewer-bot', email: 'ai-reviewer@kanbanmcp.local' }),
 }))
 
 // ─── Mock prisma ─────────────────────────────────────────────────────────────
@@ -285,7 +292,11 @@ describe('AC-2: PATCH /api/cards/[cardId] — assigneeId cannot be set to null',
     vi.clearAllMocks()
     mockSession.userId = 'user-1'
     mockSession.orgId = 'org-1'
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     mockPrisma.card.findUnique.mockResolvedValue(PARENT_CARD)
   })
 
@@ -350,7 +361,10 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     mockStorage.getStream.mockImplementation(async () => makeStream('# spec content'))
 
     // Reviewer user lookup by worker
-    mockPrisma.user.findUnique.mockResolvedValue({ id: 'reviewer-bot', email: 'ai-reviewer@kanbanmcp.local' })
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'reviewer-bot',
+      email: 'ai-reviewer@kanbanmcp.local',
+    })
 
     // AI review comment
     mockPrisma.comment.create.mockResolvedValue({ id: 'comment-1' })
@@ -362,7 +376,11 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     // ── Step 1: POST parent card ──────────────────────────────────────────────
     // Given: board org-1, org member user-1
     mockPrisma.board.findUnique.mockResolvedValue({ id: 'board-1', orgId: 'org-1' })
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     mockPrisma.orgMember.findMany.mockResolvedValue([{ userId: 'user-1' }])
     mockPrisma.column.findUnique.mockResolvedValue({ id: 'col-1', boardId: 'board-1' })
     mockPrisma.card.findFirst.mockResolvedValue(null)
@@ -392,7 +410,10 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     // ── Step 2: POST child card (subcard) ─────────────────────────────────────
     // Given: parent card exists at depth=0
     mockPrisma.card.findUnique.mockResolvedValueOnce({
-      id: 'parent-card', boardId: 'board-1', path: '', depth: 0,
+      id: 'parent-card',
+      boardId: 'board-1',
+      path: '',
+      depth: 0,
     })
     mockPrisma.card.create.mockResolvedValueOnce({
       ...CHILD_CARD,
@@ -470,11 +491,13 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     await flushForTests()
 
     // Then: AiReview transitioned running → done
-    const updateCalls = mockPrisma.aiReview.update.mock.calls as Array<[{ data: { status: string; output?: string } }]>
+    const updateCalls = mockPrisma.aiReview.update.mock.calls as Array<
+      [{ data: { status: string; output?: string } }]
+    >
     const runningCall = updateCalls.find((c) => c[0].data.status === 'running')
     const doneCall = updateCalls.find((c) => c[0].data.status === 'done')
     expect(runningCall).toBeDefined() // AC-6: status transitions running
-    expect(doneCall).toBeDefined()    // AC-6: status transitions done
+    expect(doneCall).toBeDefined() // AC-6: status transitions done
     expect(doneCall![0].data.output).toContain('error handling')
 
     // Then: comment posted by AI Reviewer user
@@ -497,7 +520,11 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
       reviewerId: 'user-reviewer',
       approverId: null,
     })
-    mockPrisma.orgMember.findUnique.mockResolvedValueOnce({ userId: 'user-reviewer', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValueOnce({
+      userId: 'user-reviewer',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     const createdSignoff = {
       id: 'signoff-1',
       cardId: 'parent-card',
@@ -532,13 +559,16 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     })
     mockPrisma.card.findMany.mockResolvedValueOnce([CHILD_CARD])
     mockPrisma.signoff.findMany.mockResolvedValueOnce([createdSignoff])
-    mockPrisma.orgMember.findUnique.mockResolvedValueOnce({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValueOnce({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
 
     const { GET: getChildren } = await import('../../src/app/api/cards/[cardId]/children/route')
-    const childrenReq = new NextRequest(
-      'http://localhost/api/cards/parent-card/children?depth=1',
-      { method: 'GET' }
-    )
+    const childrenReq = new NextRequest('http://localhost/api/cards/parent-card/children?depth=1', {
+      method: 'GET',
+    })
     const childrenRes = await getChildren(childrenReq, { params: { cardId: 'parent-card' } })
 
     // Then: tree includes parent and child; parent has APPROVED signoff
@@ -564,10 +594,16 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     mockPrisma.card.findUnique.mockResolvedValueOnce(PARENT_CARD)
     mockPrisma.card.findMany.mockResolvedValueOnce([CHILD_CARD])
     mockPrisma.signoff.findMany.mockResolvedValueOnce([])
-    mockPrisma.orgMember.findUnique.mockResolvedValueOnce({ userId: 'user-1', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValueOnce({
+      userId: 'user-1',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
 
     const { GET: getChildren } = await import('../../src/app/api/cards/[cardId]/children/route')
-    const httpReq = new NextRequest('http://localhost/api/cards/parent-card/children?depth=1', { method: 'GET' })
+    const httpReq = new NextRequest('http://localhost/api/cards/parent-card/children?depth=1', {
+      method: 'GET',
+    })
     const httpRes = await getChildren(httpReq, { params: { cardId: 'parent-card' } })
     expect(httpRes.status).toBe(200)
     const httpBody = await httpRes.json()
@@ -579,10 +615,15 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     mockPrisma.signoff.findMany.mockResolvedValueOnce([])
 
     const { handleMcpRequest } = await import('../../src/lib/mcp-server')
-    const mcpResult = await handleMcpRequest(
-      { jsonrpc: '2.0', id: 1, method: 'list_card_tree', params: { cardId: 'parent-card', depth: 1 } },
+    const mcpResult = (await handleMcpRequest(
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'list_card_tree',
+        params: { cardId: 'parent-card', depth: 1 },
+      },
       { orgId: 'org-1', agentName: 'test-agent', keyId: 'key-1', permissions: ['*'] }
-    ) as { result: { root: { id: string }; descendants: Array<{ id: string }> } }
+    )) as { result: { root: { id: string }; descendants: Array<{ id: string }> } }
 
     // Then: both paths expose the same root id and descendant ids
     expect(mcpResult.result.root.id).toBe(httpBody.root.id)

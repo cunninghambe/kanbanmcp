@@ -22,10 +22,12 @@ Extend the existing card detail panel (wherever the current single-card view liv
 ## Files to create / modify
 
 **Modify:**
+
 - The existing card detail / card modal component (locate first; commonly `src/app/.../CardModal.tsx` or similar)
 - The existing data-fetching hook for a card (likely `useCard` with SWR) — extend to include the new fields and refetch points
 
 **Create (co-located with the card panel):**
+
 - `RoleSelector.tsx` — searchable select for org members, used for `assigneeId`/`reviewerId`/`approverId`
 - `AiReviewToggle.tsx` — switch + collapsible `<details>` for the params editor (model, rubric, customInstructions)
 - `ArtifactList.tsx` — upload, list, delete, status badge per AI review
@@ -71,7 +73,7 @@ interface AiReviewToggleProps {
 ```ts
 interface ArtifactListProps {
   cardId: string
-  canDelete: (artifact: { uploaderId: string }) => boolean  // injected by the parent (knows current user id + admin role)
+  canDelete: (artifact: { uploaderId: string }) => boolean // injected by the parent (knows current user id + admin role)
 }
 ```
 
@@ -88,8 +90,8 @@ interface ArtifactListProps {
 ```ts
 interface SignoffPanelProps {
   cardId: string
-  role: 'REVIEWER' | 'APPROVER'  // determined by parent based on current user vs card.reviewerId/approverId
-  onSubmitted: () => void          // parent refreshes the card
+  role: 'REVIEWER' | 'APPROVER' // determined by parent based on current user vs card.reviewerId/approverId
+  onSubmitted: () => void // parent refreshes the card
 }
 ```
 
@@ -144,6 +146,7 @@ interface SignoffPanelProps {
 ## Tests to write
 
 Component tests under `__tests__/components/` (create the directory if missing):
+
 - `card-panel.test.tsx` — renders sections in order; calls PATCH on role change
 - `role-selector.test.tsx` — keyboard navigation; required-but-empty rejected
 - `ai-review-toggle.test.tsx` — toggle on → params editor expands; invalid params blocks save
@@ -151,6 +154,7 @@ Component tests under `__tests__/components/` (create the directory if missing):
 - `signoff-panel.test.tsx` — only renders when current user is the card's reviewer or approver; POSTs to /signoffs
 
 Stack:
+
 - `@testing-library/react` — **not yet in `package.json`**; add as a dev dep in this task (`@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`). Pin exact versions. Update `vitest.config.ts` to add `environment: 'jsdom'` for component tests (or use the multi-environment config). The coder must justify bundle impact in the PR description (testing-library is dev-only, no runtime cost).
 - Query by accessible role / label, not by CSS class. Per global CLAUDE.md.
 

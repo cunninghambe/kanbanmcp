@@ -20,11 +20,13 @@ Add a sub-card tree section to the card detail panel that lists children fetched
 ## Files to create / modify
 
 **Create (co-located with the card panel):**
+
 - `SubcardTree.tsx` — the recursive renderer
 - `SubcardRow.tsx` — single row (extracted for clarity)
 - `useSubcardTree.ts` — SWR hook for the tree
 
 **Modify:**
+
 - The card panel from Task 08 — add `<SubcardTree cardId={cardId} />` as a new section beneath Signoffs
 
 ## Interface contract
@@ -32,7 +34,10 @@ Add a sub-card tree section to the card detail panel that lists children fetched
 ### `useSubcardTree(cardId, depth)`
 
 ```ts
-function useSubcardTree(cardId: string, depth: number): {
+function useSubcardTree(
+  cardId: string,
+  depth: number
+): {
   data: { root: SubtreeNode; descendants: SubtreeNode[] } | undefined
   isLoading: boolean
   error: Error | undefined
@@ -46,7 +51,7 @@ Default `depth = 3`. The hook fetches `/api/cards/[cardId]/children?depth=3`. Wh
 
 ```ts
 interface SubcardTreeProps {
-  cardId: string  // the root of the tree this component renders
+  cardId: string // the root of the tree this component renders
 }
 ```
 
@@ -63,10 +68,10 @@ interface SubcardRowProps {
   node: SubtreeNode
   hasChildren: boolean
   isExpanded: boolean
-  isLoading: boolean      // when this row's children are mid-fetch
+  isLoading: boolean // when this row's children are mid-fetch
   onToggleExpand: () => void
   onPromote: () => Promise<void>
-  depth: number           // relative depth from the root of this tree (root = 0)
+  depth: number // relative depth from the root of this tree (root = 0)
 }
 ```
 

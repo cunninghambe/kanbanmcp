@@ -26,10 +26,7 @@ async function resolveCard(cardId: string, orgId: string) {
 
 // GET /api/cards/[cardId]/comments
 // Returns all comments for the card, ordered by creation time ascending.
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { cardId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { cardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveCard(params.cardId, session.orgId)
@@ -53,10 +50,7 @@ export async function GET(
 
 // POST /api/cards/[cardId]/comments
 // Creates a comment on the card, linked to the session user.
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { cardId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { cardId: string } }) {
   try {
     const session = await requireSession(req)
     await resolveCard(params.cardId, session.orgId)

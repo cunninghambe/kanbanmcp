@@ -52,13 +52,23 @@ vi.mock('../../src/lib/ai-review/queue', () => ({
 }))
 
 // ─── Mock storage (needed by worker module transitively) ─────────────────────
-vi.mock('../../src/lib/storage', () => ({ getStorageDriver: () => ({ put: vi.fn(), getStream: vi.fn(), delete: vi.fn() }) }))
+vi.mock('../../src/lib/storage', () => ({
+  getStorageDriver: () => ({ put: vi.fn(), getStream: vi.fn(), delete: vi.fn() }),
+}))
 
 // ─── Mock @anthropic-ai/sdk ───────────────────────────────────────────────────
 vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(),
-  RateLimitError: class extends Error { status = 429 },
-  APIError: class extends Error { status: number; constructor(s: number, m: string) { super(m); this.status = s } },
+  RateLimitError: class extends Error {
+    status = 429
+  },
+  APIError: class extends Error {
+    status: number
+    constructor(s: number, m: string) {
+      super(m)
+      this.status = s
+    }
+  },
 }))
 
 // ─── Mock seed-ai-reviewer ────────────────────────────────────────────────────
@@ -159,7 +169,12 @@ describe('POST /api/artifacts/[artifactId]/reviews', () => {
 
   it('triggers re-review, returns 202 with pending row', async () => {
     mockPrisma.artifact.findUnique.mockResolvedValue(makeArtifactWithOrg('org-1'))
-    const pendingRow = makeReview({ status: 'pending', output: null, startedAt: null, finishedAt: null })
+    const pendingRow = makeReview({
+      status: 'pending',
+      output: null,
+      startedAt: null,
+      finishedAt: null,
+    })
     mockEnqueue.mockResolvedValue(undefined)
     mockPrisma.aiReview.findFirst.mockResolvedValue(pendingRow)
 

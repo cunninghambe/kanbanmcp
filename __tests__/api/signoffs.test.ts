@@ -121,7 +121,11 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
   it('returns 201 when assigned approver submits APPROVER signoff', async () => {
     mockSession.userId = 'user-approver'
     setupCard(baseCard)
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-approver', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-approver',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
     const createdSignoff = {
       id: 'signoff-2',
       cardId: 'card-1',
@@ -148,7 +152,11 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
   it('returns 403 when user is neither reviewer nor approver (AC-7)', async () => {
     mockSession.userId = 'user-other'
     setupCard(baseCard)
-    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-other', orgId: 'org-1', role: 'MEMBER' })
+    mockPrisma.orgMember.findUnique.mockResolvedValue({
+      userId: 'user-other',
+      orgId: 'org-1',
+      role: 'MEMBER',
+    })
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'POST', {
@@ -334,10 +342,7 @@ describe('GET /api/cards/[cardId]/signoffs', () => {
       .mockResolvedValueOnce(signoffRows[1]) // latest APPROVER = s2
 
     const { GET } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
-    const req = makeRequest(
-      'http://localhost/api/cards/card-1/signoffs?latestPerRole=true',
-      'GET'
-    )
+    const req = makeRequest('http://localhost/api/cards/card-1/signoffs?latestPerRole=true', 'GET')
     const res = await GET(req, { params: { cardId: 'card-1' } })
     expect(res.status).toBe(200)
     const body = await res.json()

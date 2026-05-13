@@ -4,8 +4,7 @@ export const AI_REVIEWER_EMAIL = 'ai-reviewer@kanbanmcp.local'
 export const AI_REVIEWER_NAME = 'AI Reviewer'
 
 // Unusable bcrypt hash — service account, login is blocked by isAgent check in auth/login route.
-const AI_REVIEWER_PASSWORD_HASH =
-  '$2a$12$I2IzYybCYMKhJG4L6DFE5.DDzTl09Ak7/5VjVPDmJO.OM/pqIS6e2'
+const AI_REVIEWER_PASSWORD_HASH = '$2a$12$I2IzYybCYMKhJG4L6DFE5.DDzTl09Ak7/5VjVPDmJO.OM/pqIS6e2'
 
 export async function ensureAiReviewerUser(
   prisma: PrismaClient
