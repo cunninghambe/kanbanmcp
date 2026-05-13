@@ -5,32 +5,41 @@ import { ensureAiReviewerUser } from './seed-ai-reviewer'
 const prisma = new PrismaClient()
 
 async function main() {
-  // Create organization
-  const org = await prisma.organization.create({
-    data: {
-      name: 'Demo Org',
-      slug: 'demo',
-    },
+  // Idempotent: re-running seed against an existing DB is allowed.
+  const org = await prisma.organization.upsert({
+    where: { slug: 'demo' },
+    update: {},
+    create: { name: 'Demo Org', slug: 'demo' },
   })
 
-  // Create admin user
   const passwordHash = await bcrypt.hash('demo1234', 12)
-  const user = await prisma.user.create({
-    data: {
+  const user = await prisma.user.upsert({
+    where: { email: 'admin@demo.com' },
+    update: {},
+    create: {
       email: 'admin@demo.com',
       name: 'Admin User',
       passwordHash,
     },
   })
 
-  // Link user to org as ADMIN
-  await prisma.orgMember.create({
-    data: {
+  await prisma.orgMember.upsert({
+    where: { userId_orgId: { userId: user.id, orgId: org.id } },
+    update: {},
+    create: {
       userId: user.id,
       orgId: org.id,
       role: 'ADMIN',
     },
   })
+
+  // Skip board/sprint/cards creation if a board already exists for this org
+  const existingBoard = await prisma.board.findFirst({ where: { orgId: org.id } })
+  if (existingBoard) {
+    await ensureAiReviewerUser(prisma)
+    console.log('Seed: existing data preserved; AI Reviewer user ensured')
+    return
+  }
 
   // Create board
   const board = await prisma.board.create({
