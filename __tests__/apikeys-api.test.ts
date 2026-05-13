@@ -176,7 +176,7 @@ describe('DELETE /api/apikeys/[keyId]', () => {
     mockPrisma.apiKey.findUnique.mockResolvedValue(null)
     const { DELETE } = await import('../src/app/api/apikeys/[keyId]/route')
     const req = makeRequest('http://localhost/api/apikeys/nonexistent', 'DELETE')
-    const res = await DELETE(req, { params: { keyId: 'nonexistent' } })
+    const res = await DELETE(req, { params: Promise.resolve({ keyId: 'nonexistent' }) })
     expect(res.status).toBe(404)
   })
 
@@ -187,7 +187,7 @@ describe('DELETE /api/apikeys/[keyId]', () => {
     })
     const { DELETE } = await import('../src/app/api/apikeys/[keyId]/route')
     const req = makeRequest('http://localhost/api/apikeys/key-1', 'DELETE')
-    const res = await DELETE(req, { params: { keyId: 'key-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ keyId: 'key-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -196,7 +196,7 @@ describe('DELETE /api/apikeys/[keyId]', () => {
     mockPrisma.apiKey.delete.mockResolvedValue({})
     const { DELETE } = await import('../src/app/api/apikeys/[keyId]/route')
     const req = makeRequest('http://localhost/api/apikeys/key-1', 'DELETE')
-    const res = await DELETE(req, { params: { keyId: 'key-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ keyId: 'key-1' }) })
     expect(res.status).toBe(204)
     expect(mockPrisma.apiKey.delete).toHaveBeenCalledWith({ where: { id: 'key-1' } })
   })

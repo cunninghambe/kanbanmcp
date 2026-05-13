@@ -44,7 +44,8 @@ async function resolveTicket(ticketId: string, orgId: string) {
 }
 
 // GET /api/tickets/[ticketId]
-export async function GET(req: NextRequest, { params }: { params: { ticketId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ ticketId: string }> }) {
+  const params = await ctx.params
   try {
     const auth = await resolveAuth(req)
     await resolveTicket(params.ticketId, auth.orgId)
@@ -79,7 +80,8 @@ export async function GET(req: NextRequest, { params }: { params: { ticketId: st
 
 // PATCH /api/tickets/[ticketId]
 // Updates ticket fields. Logs activity entries for status/priority/assignee changes.
-export async function PATCH(req: NextRequest, { params }: { params: { ticketId: string } }) {
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ ticketId: string }> }) {
+  const params = await ctx.params
   try {
     const auth = await resolveAuth(req)
     const existing = await resolveTicket(params.ticketId, auth.orgId)
@@ -195,7 +197,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { ticketId: 
 
 // DELETE /api/tickets/[ticketId]
 // Hard-deletes the ticket. Cascades handle comments and activity.
-export async function DELETE(req: NextRequest, { params }: { params: { ticketId: string } }) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ ticketId: string }> }) {
+  const params = await ctx.params
   try {
     const auth = await resolveAuth(req)
     await resolveTicket(params.ticketId, auth.orgId)

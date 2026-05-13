@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db'
 import { sessionOptions, SessionData } from '@/lib/session'
 
 export async function GET() {
-  const session = await getIronSession<SessionData>(cookies(), sessionOptions)
+  const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
 
   if (!session.userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -41,7 +41,8 @@ async function resolveBoard(boardId: string, orgId: string) {
 
 // POST /api/boards/[boardId]/cards
 // Creates a card in the specified column. Position = max existing + 1 (or 0 if empty column).
-export async function POST(req: NextRequest, { params }: { params: { boardId: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ boardId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     await resolveBoard(params.boardId, session.orgId)

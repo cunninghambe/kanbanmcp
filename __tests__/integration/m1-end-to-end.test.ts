@@ -309,7 +309,7 @@ describe('AC-2: PATCH /api/cards/[cardId] — assigneeId cannot be set to null',
     const req = makeJsonRequest('http://localhost/api/cards/parent-card', 'PATCH', {
       assigneeId: null,
     })
-    const res = await PATCH(req, { params: { cardId: 'parent-card' } })
+    const res = await PATCH(req, { params: Promise.resolve({ cardId: 'parent-card' }) })
 
     expect(res.status).toBe(400)
     const body = await res.json()
@@ -326,7 +326,7 @@ describe('AC-2: PATCH /api/cards/[cardId] — assigneeId cannot be set to null',
     const req = makeJsonRequest('http://localhost/api/cards/parent-card', 'PATCH', {
       assigneeId: '',
     })
-    const res = await PATCH(req, { params: { cardId: 'parent-card' } })
+    const res = await PATCH(req, { params: Promise.resolve({ cardId: 'parent-card' }) })
 
     expect(res.status).toBe(400)
   })
@@ -405,7 +405,7 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
       aiAutoReview: true,
       aiReviewParams: { model: 'claude-opus-4-7', rubric: 'review code quality' },
     })
-    const parentRes = await postCard(createParentReq, { params: { boardId: 'board-1' } })
+    const parentRes = await postCard(createParentReq, { params: Promise.resolve({ boardId: 'board-1' }) })
 
     // Then: parent card created
     expect(parentRes.status).toBe(201)
@@ -432,7 +432,7 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
       assigneeId: 'user-1',
       parentCardId: 'parent-card',
     })
-    const childRes = await postCard(createChildReq, { params: { boardId: 'board-1' } })
+    const childRes = await postCard(createChildReq, { params: Promise.resolve({ boardId: 'board-1' }) })
 
     // Then: child has correct parentCardId, path, depth
     expect(childRes.status).toBe(201)
@@ -482,7 +482,7 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
 
     // Note: the artifact route mocks requireSession/requireOrgRole via api-helpers.
     // We need those to resolve. In this file we mock iron-session directly.
-    const uploadRes = await postArtifact(uploadReq, { params: { cardId: 'parent-card' } })
+    const uploadRes = await postArtifact(uploadReq, { params: Promise.resolve({ cardId: 'parent-card' }) })
 
     // Then: artifact created (201) with correct shape
     expect(uploadRes.status).toBe(201)
@@ -549,7 +549,7 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
       decision: 'APPROVED',
       comment: 'LGTM',
     })
-    const signoffRes = await postSignoff(signoffReq, { params: { cardId: 'parent-card' } })
+    const signoffRes = await postSignoff(signoffReq, { params: Promise.resolve({ cardId: 'parent-card' }) })
 
     // Then: signoff created successfully
     expect(signoffRes.status).toBe(201)
@@ -575,7 +575,7 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     const childrenReq = new NextRequest('http://localhost/api/cards/parent-card/children?depth=1', {
       method: 'GET',
     })
-    const childrenRes = await getChildren(childrenReq, { params: { cardId: 'parent-card' } })
+    const childrenRes = await getChildren(childrenReq, { params: Promise.resolve({ cardId: 'parent-card' }) })
 
     // Then: tree includes parent and child; parent has APPROVED signoff
     expect(childrenRes.status).toBe(200)
@@ -610,7 +610,7 @@ describe('AC-6: end-to-end M1 pipeline (create parent → child → upload → r
     const httpReq = new NextRequest('http://localhost/api/cards/parent-card/children?depth=1', {
       method: 'GET',
     })
-    const httpRes = await getChildren(httpReq, { params: { cardId: 'parent-card' } })
+    const httpRes = await getChildren(httpReq, { params: Promise.resolve({ cardId: 'parent-card' }) })
     expect(httpRes.status).toBe(200)
     const httpBody = await httpRes.json()
 

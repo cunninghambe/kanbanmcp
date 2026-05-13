@@ -13,7 +13,8 @@ function safeFilename(name: string): string {
 
 // GET /api/artifacts/[artifactId]/download
 // Streams the artifact bytes to the client with appropriate headers.
-export async function GET(req: NextRequest, { params }: { params: { artifactId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ artifactId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
 

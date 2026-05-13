@@ -102,7 +102,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
       decision: 'APPROVED',
       comment: 'Looks good',
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.signoff.id).toBe('signoff-1')
@@ -143,7 +143,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
       role: 'APPROVER',
       decision: 'REJECTED',
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(201)
     const body = await res.json()
     expect(body.signoff.role).toBe('APPROVER')
@@ -163,7 +163,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
       role: 'REVIEWER',
       decision: 'APPROVED',
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(403)
   })
 
@@ -176,7 +176,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
       role: 'APPROVER',
       decision: 'APPROVED',
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(403)
   })
 
@@ -188,7 +188,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
       role: 'REVIEWER',
       decision: 'APPROVED',
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('No reviewer assigned')
@@ -202,7 +202,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
       role: 'REVIEWER',
       decision: 'MAYBE',
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.issues).toBeDefined()
@@ -217,7 +217,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
       decision: 'APPROVED',
       comment: 'x'.repeat(2001),
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.issues).toBeDefined()
@@ -237,7 +237,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
       role: 'REVIEWER',
       decision: 'APPROVED',
     })
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -267,7 +267,7 @@ describe('POST /api/cards/[cardId]/signoffs', () => {
         Authorization: 'Bearer valid-api-key',
       },
     })
-    const res = await POST(reqWithBearer, { params: { cardId: 'card-1' } })
+    const res = await POST(reqWithBearer, { params: Promise.resolve({ cardId: 'card-1' }) })
     // userId='' cannot equal any real reviewerId → 403
     expect(res.status).toBe(403)
   })
@@ -322,7 +322,7 @@ describe('GET /api/cards/[cardId]/signoffs', () => {
 
     const { GET } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'GET')
-    const res = await GET(req, { params: { cardId: 'card-1' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.signoffs).toHaveLength(3)
@@ -343,7 +343,7 @@ describe('GET /api/cards/[cardId]/signoffs', () => {
 
     const { GET } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs?latestPerRole=true', 'GET')
-    const res = await GET(req, { params: { cardId: 'card-1' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     // latest reviewer is s3, latest approver is s2
@@ -359,7 +359,7 @@ describe('GET /api/cards/[cardId]/signoffs', () => {
 
     const { GET } = await import('../../src/app/api/cards/[cardId]/signoffs/route')
     const req = makeRequest('http://localhost/api/cards/card-1/signoffs', 'GET')
-    const res = await GET(req, { params: { cardId: 'card-1' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(403)
   })
 })

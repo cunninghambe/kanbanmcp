@@ -59,7 +59,7 @@ describe('GET /api/cards/[cardId]/artifacts', () => {
 
     const { GET } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = new NextRequest('http://localhost/api/cards/card-1/artifacts', { method: 'GET' })
-    const res = await GET(req, { params: { cardId: 'card-1' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'card-1' }) })
 
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -72,7 +72,7 @@ describe('GET /api/cards/[cardId]/artifacts', () => {
     mockPrisma.artifact.findMany.mockResolvedValue([])
     const { GET } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = new NextRequest('http://localhost/api/cards/card-1/artifacts', { method: 'GET' })
-    const res = await GET(req, { params: { cardId: 'card-1' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.artifacts).toEqual([])
@@ -83,7 +83,7 @@ describe('GET /api/cards/[cardId]/artifacts', () => {
     mockPrisma.artifact.findMany.mockResolvedValue([art])
     const { GET } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = new NextRequest('http://localhost/api/cards/card-1/artifacts', { method: 'GET' })
-    const res = await GET(req, { params: { cardId: 'card-1' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     const body = await res.json()
     const a = body.artifacts[0]
     expect(a).toHaveProperty('uploader')
@@ -95,7 +95,7 @@ describe('GET /api/cards/[cardId]/artifacts', () => {
     mockPrisma.card.findUnique.mockResolvedValue(null)
     const { GET } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const req = new NextRequest('http://localhost/api/cards/card-1/artifacts', { method: 'GET' })
-    const res = await GET(req, { params: { cardId: 'card-1' } })
+    const res = await GET(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(404)
   })
 })

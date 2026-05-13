@@ -222,7 +222,7 @@ describe('DELETE /api/webhooks/[webhookId]', () => {
     mockPrisma.webhook.findUnique.mockResolvedValue(null)
     const { DELETE } = await import('../src/app/api/webhooks/[webhookId]/route')
     const req = makeRequest('http://localhost/api/webhooks/nonexistent', 'DELETE')
-    const res = await DELETE(req, { params: { webhookId: 'nonexistent' } })
+    const res = await DELETE(req, { params: Promise.resolve({ webhookId: 'nonexistent' }) })
     expect(res.status).toBe(404)
   })
 
@@ -230,7 +230,7 @@ describe('DELETE /api/webhooks/[webhookId]', () => {
     mockPrisma.webhook.findUnique.mockResolvedValue({ id: 'webhook-1', orgId: 'other-org' })
     const { DELETE } = await import('../src/app/api/webhooks/[webhookId]/route')
     const req = makeRequest('http://localhost/api/webhooks/webhook-1', 'DELETE')
-    const res = await DELETE(req, { params: { webhookId: 'webhook-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ webhookId: 'webhook-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -239,7 +239,7 @@ describe('DELETE /api/webhooks/[webhookId]', () => {
     mockPrisma.webhook.delete.mockResolvedValue({})
     const { DELETE } = await import('../src/app/api/webhooks/[webhookId]/route')
     const req = makeRequest('http://localhost/api/webhooks/webhook-1', 'DELETE')
-    const res = await DELETE(req, { params: { webhookId: 'webhook-1' } })
+    const res = await DELETE(req, { params: Promise.resolve({ webhookId: 'webhook-1' }) })
     expect(res.status).toBe(204)
     expect(mockPrisma.webhook.delete).toHaveBeenCalledWith({ where: { id: 'webhook-1' } })
   })

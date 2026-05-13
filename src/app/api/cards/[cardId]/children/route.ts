@@ -14,7 +14,8 @@ function parseDepth(raw: string | null): number {
 }
 
 // GET /api/cards/[cardId]/children?depth=N
-export async function GET(req: NextRequest, { params }: { params: { cardId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ cardId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     const card = await resolveCard(params.cardId, session.orgId)

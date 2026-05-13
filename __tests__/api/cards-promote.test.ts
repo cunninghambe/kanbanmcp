@@ -82,7 +82,7 @@ describe('POST /api/cards/[cardId]/promote', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/promote/route')
     const req = makeRequest('http://localhost/api/cards/card-1/promote')
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
 
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -103,7 +103,7 @@ describe('POST /api/cards/[cardId]/promote', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/promote/route')
     const req = makeRequest('http://localhost/api/cards/card-1/promote')
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
 
     expect(res.status).toBe(200)
     expect(mockPrisma.$transaction).not.toHaveBeenCalled()
@@ -115,7 +115,7 @@ describe('POST /api/cards/[cardId]/promote', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/promote/route')
     const req = makeRequest('http://localhost/api/cards/nonexistent/promote')
-    const res = await POST(req, { params: { cardId: 'nonexistent' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'nonexistent' }) })
     expect(res.status).toBe(404)
   })
 
@@ -129,7 +129,7 @@ describe('POST /api/cards/[cardId]/promote', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/promote/route')
     const req = makeRequest('http://localhost/api/cards/card-1/promote')
-    const res = await POST(req, { params: { cardId: 'card-1' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
     expect(res.status).toBe(404)
   })
 
@@ -149,7 +149,7 @@ describe('POST /api/cards/[cardId]/promote', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/promote/route')
     const req = makeRequest('http://localhost/api/cards/card-1/promote')
-    await POST(req, { params: { cardId: 'card-1' } })
+    await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
 
     expect(mockPrisma.$transaction).toHaveBeenCalled()
     expect(txMock.card.update).toHaveBeenCalledWith(

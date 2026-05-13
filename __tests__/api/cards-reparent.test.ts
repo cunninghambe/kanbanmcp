@@ -95,7 +95,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
       parentCardId: 'card-A',
     })
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Cannot reparent a card to itself')
@@ -110,7 +110,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
       parentCardId: 'card-B',
     })
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toMatch(/same board/)
@@ -133,7 +133,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
       parentCardId: 'card-B',
     })
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Cycle detected')
@@ -156,7 +156,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
       parentCardId: 'card-B',
     })
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Maximum nesting depth (50) reached')
@@ -179,7 +179,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: null })
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(200)
     expect(txMock.card.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { parentCardId: null } })
@@ -205,7 +205,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
       parentCardId: 'card-B',
     })
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(200)
     expect(mockPrisma.$transaction).toHaveBeenCalled()
   })
@@ -218,7 +218,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     const req = makeRequest('http://localhost/api/cards/nonexistent/reparent', {
       parentCardId: null,
     })
-    const res = await POST(req, { params: { cardId: 'nonexistent' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'nonexistent' }) })
     expect(res.status).toBe(404)
   })
 
@@ -231,7 +231,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', { parentCardId: null })
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(404)
   })
 
@@ -241,7 +241,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', {})
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(400)
   })
 
@@ -264,7 +264,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
       parentCardId: 'card-B',
     })
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(200)
   })
 
@@ -286,7 +286,7 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
       parentCardId: 'card-B',
     })
-    const res = await POST(req, { params: { cardId: 'card-A' } })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Maximum nesting depth (50) reached')

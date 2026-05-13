@@ -5,7 +5,8 @@ import { getStorageDriver } from '@/lib/storage'
 
 // DELETE /api/artifacts/[artifactId]
 // Deletes an artifact. Only the uploader or an org admin may do this.
-export async function DELETE(req: NextRequest, { params }: { params: { artifactId: string } }) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ artifactId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
 

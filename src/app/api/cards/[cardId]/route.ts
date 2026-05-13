@@ -52,7 +52,8 @@ async function resolveCard(cardId: string, orgId: string) {
 
 // GET /api/cards/[cardId]
 // Returns card with labels, comments, assignee, reviewer, and approver details.
-export async function GET(req: NextRequest, { params }: { params: { cardId: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ cardId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     await resolveCard(params.cardId, session.orgId)
@@ -96,7 +97,8 @@ export async function GET(req: NextRequest, { params }: { params: { cardId: stri
 
 // PATCH /api/cards/[cardId]
 // Updates card fields. Handles column moves, bulk position updates, and new M1 fields.
-export async function PATCH(req: NextRequest, { params }: { params: { cardId: string } }) {
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ cardId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     const existingCard = await resolveCard(params.cardId, session.orgId)
@@ -269,7 +271,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { cardId: st
 
 // DELETE /api/cards/[cardId]
 // Deletes the card. Cascades handle comments and label associations.
-export async function DELETE(req: NextRequest, { params }: { params: { cardId: string } }) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ cardId: string }> }) {
+  const params = await ctx.params
   try {
     const session = await requireSession(req)
     await resolveCard(params.cardId, session.orgId)
