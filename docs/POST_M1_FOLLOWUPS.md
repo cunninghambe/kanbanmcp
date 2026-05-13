@@ -1,117 +1,126 @@
 # Post-M1 Follow-Ups
 
-Items deliberately deferred during M1 implementation. Tracked here so M2/M3 sprints can pick them up.
+Status board for items deferred during M1. Updated as work lands.
 
 ## Security & Dependencies
 
-### 1. Next.js HIGH-severity CVEs (pre-existing on `main`)
+### 1. Next.js HIGH-severity CVEs ✅ DONE
 
-Current: `next@^14.2.21` carries several HIGH-severity audit findings:
+Upgraded `next` from `14.2.35` to `16.2.6` (pinned exact). All four target HIGH advisories cleared (HTTP smuggling, RSC DoS, Image Optimizer DoS, fast-uri path traversal). Migration covered route handler params-as-Promise, async `cookies()`/`headers()`, middleware → proxy rename, ESLint 8 → 9 flat config.
 
-- **GHSA-h25m-26qc-wcjf** — HTTP request deserialization DoS with RSC
-- **GHSA-ggv3-7p47-pfv8** — HTTP request smuggling in rewrites
-- **GHSA-9g9p-9gw9-jx7f** — DoS via Image Optimizer remotePatterns
-- (~12 more advisories)
+### 2. `fast-uri` HIGH (transitive) ✅ DONE
 
-`npm audit fix --force` upgrades to Next.js 16 (breaking). Needs a planned upgrade sprint covering route handler changes, instrumentation API stability, and SSR behaviour. Out of scope for M1.
+Resolved with #1 (fast-uri is now patched in the Next.js 16 dependency tree).
 
-Until upgraded: pin to exact version (`"next": "14.2.21"` instead of `^14.2.21`) to prevent silent CVE-introducing upgrades.
+### 3. Security headers missing ✅ DONE
 
-### 2. `fast-uri` HIGH (transitive)
+`next.config.js` `async headers()` returns:
 
-- **GHSA-q3j6-qgpj-74h6** — path traversal via percent-encoded dot segments
-- **GHSA-v39h-62p7-jpjc** — host confusion via percent-encoded authority delimiters
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+- `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` (production only)
 
-Transitive through Next.js. Resolves when #1 is fixed.
+### 4. Depth-cap race condition ✅ DONE
 
-### 3. Security headers missing
+Card create now wraps the parent-depth re-read + insert in a single `prisma.$transaction`. Two concurrent creates under the same parent serialise correctly.
 
-`next.config.js` does not set `X-Frame-Options`, `X-Content-Type-Options`, or `Strict-Transport-Security`. Add a `headers()` config to apply these globally on API routes and pages before production deployment.
+### 5. AI worker cost-amplification controls ✅ DONE (partial — cooldown)
 
-### 4. Depth-cap race condition
+Per-artifact cooldown: `enqueueAiReview` returns `false` if a `pending`/`running` review exists; manual trigger route returns 409. Per-org budget and per-org daily request count are still open — see [Future work](#future-work-not-yet-actioned).
 
-The card-create depth check (`parent.depth + 1 >= MAX_NESTING_DEPTH`) is not wrapped in a transaction with the insert. Two concurrent inserts under the same depth-49 parent could theoretically both pass the check and produce two depth-50 children. The cap is 50 levels, exceeding it by 1 has minimal practical impact, but a `$transaction` wrapper is the correct long-term fix.
+### 6. `bootstrapWorker` doesn't reset `startedAt` ✅ DONE
 
-### 5. AI worker cost-amplification controls
+Orphan recovery on app boot now sets `startedAt: null` alongside `status: 'pending'`. Re-processed jobs report accurate durations.
 
-Any org member can call `POST /api/artifacts/[id]/reviews` repeatedly, queuing unbounded Claude calls. M1 has single-concurrency queue (serialises) but no per-org or per-artifact rate limit. Before production:
+### 7. `rubricSnapshot` exposed in GET responses ✅ RESOLVED
 
-- Per-artifact cooldown (one `pending` review at a time)
-- Per-org daily token budget
-- Per-org daily request count
-
-### 6. AI Reviewer `bootstrapWorker` doesn't reset `startedAt`
-
-When `running` rows are reset to `pending` on app boot, `startedAt` is not cleared. Re-processed jobs report a misleading `finishedAt - startedAt` duration. Minor data-integrity issue; fix is one line in `src/lib/ai-review/worker.ts`.
-
-### 7. `rubricSnapshot` exposed in GET responses
-
-`GET /api/reviews/[reviewId]` and `GET /api/artifacts/[id]/reviews` include `rubricSnapshot` in the response. Any org MEMBER can read another team's rubric criteria. Whether this is intended is a product question. If not, redact for non-author readers.
+Product decision: org members can see rubrics. Current behavior (org-wide visibility) is intended. No code change.
 
 ## Operational
 
-### 8. AI Reviewer User ID capture
+### 8. AI Reviewer User ID capture ✅ DONE
 
-After running `npm run db:seed-ai-reviewer` on a fresh DB, the script logs `[seed-ai-reviewer] id=<cuid>`. Copy that cuid into `.env` as `AI_REVIEWER_USER_ID=<cuid>` to skip the in-memory email-lookup cache on every worker boot. Optional; the worker resolves by email if the env var is unset.
+`.env.example` documents the capture procedure. Run `npm run db:seed-ai-reviewer` once; copy the printed cuid to `.env` as `AI_REVIEWER_USER_ID`. Optional — worker resolves by email if unset.
 
 ### 9. `npm install` requires `--include=dev` ✅ DONE
 
-~~Global npm config has `omit=dev` on this server.~~ Fixed: `.npmrc` at repo root sets `omit=` (empty), overriding the global `omit=dev`. `npm install` now installs devDependencies without any extra flags.
+Repo `.npmrc` sets `include=dev`, overriding the server-wide `NODE_ENV=production` → `omit=dev` default. `npm install` now installs devDependencies without any extra flags.
 
-### 10. `npm run lint` not configured
+### 10. `npm run lint` not configured ✅ DONE
 
-The repo has no `.eslintrc` / `eslint.config.js`. `next lint` drops into an interactive setup wizard. ESLint config should be added — or `lint` should be removed from `package.json`'s scripts.
+`eslint.config.js` flat-config (ESLint 9) extends `next/core-web-vitals`. `npm run lint` runs cleanly (0 errors, 9 cosmetic warnings about stale `eslint-disable` directives — see [Future work](#future-work-not-yet-actioned)).
 
-### 11. Prettier configured but not enforced
+### 11. Prettier configured but not enforced ✅ DONE
 
-~90 files in the repo fail `prettier --check`. Not introduced by M1 work; pre-existing. Either run prettier across the codebase or remove the gate.
+`.prettierrc.json` + `.prettierignore` in place. Codebase reformatted once. Run `npx prettier --write .` to keep new code clean.
 
-### 12. `.gitignore` for `.next/`
+### 12. `.gitignore` for `.next/` ✅ DONE
 
-The `.next/` directory is not in `.gitignore`. Generated build artifacts can leak into staging. Add `.next/` to `.gitignore` and run `git rm --cached -r .next/` once.
+`.next/` is in `.gitignore` and `git rm --cached -r .next/` was run to untrack the previously-committed build artifacts.
 
 ## Test infrastructure
 
-### 13. AC-1 / AC-3 manual smoke step
+### 13. AC-1 / AC-3 manual smoke step ✅ DONE
 
-Per the M1.10 PR, AC-1 (fresh-DB migration) and AC-3 (seed idempotency) are manual smoke steps because they require destroying `kanban.db`:
+`scripts/smoke.sh` + `npm run smoke` wrap the destructive smoke test (`rm kanban.db && db:push && db:seed && npm test`). 484 tests pass after a fresh DB cycle.
 
-```bash
-rm /root/kanbanmcp/kanban.db
-npm run db:push
-npm run db:seed
-npm test
-```
+### 14. E5 manual QA → automated Playwright ✅ DONE
 
-Worth wrapping in a `scripts/smoke.sh` and CI matrix.
-
-### 14. E5 manual QA ✅ DONE
-
-Implemented as `e2e/assignee-former-member.spec.ts`. The test seeds user A and B, assigns a card to A, removes A from OrgMember, then logs in as B and asserts the card detail panel shows "(former member)" in the Assignee field.
-
-Bug found and fixed: `RoleSelector.tsx` previously rendered the select control as blank when the assigned user was not in `orgMembers`. Added a "(former member)" disabled option when `selectedUserId` is set but missing from the member list.
+`e2e/assignee-former-member.spec.ts` (Playwright + chromium, pinned 1.60.0). Test surfaced + fixed a real `RoleSelector.tsx` bug: previously rendered a blank select when the assigned user was no longer in `orgMembers`. Now injects a disabled `(former member)` option.
 
 ## Product / spec open questions
 
-### 15. Description-only AI review
+### 15. Description-only AI review ✅ DONE
 
-Spec §11 open question: should AI review be runnable on the card description alone (no artifact), e.g. "review this spec text"? M1 says no — only artifacts. Decide for M2.
+`POST /api/cards/[id]/reviews` triggers AI review on the card's `description` (no artifact required). Schema migration made `AiReview.artifactId` nullable and added a required `cardId`. Worker branches on `artifactId` presence. 17 new tests.
 
-### 16. Board-level default rubric
+### 16. Board-level default rubric ❌ WON'T DO
 
-Currently the AI review default rubric falls back to env (`AI_REVIEW_DEFAULT_RUBRIC`). Board-level defaults are a small extra schema field if wanted.
+Product decision: not adding. Inheritance chain remains `card → ancestors → env default`.
 
-### 17. "Assigned to me" notification feed
+### 17. "Assigned to me" notification feed ✅ DONE
 
-Spec §11 open question. Punted to M3.
+All three surfaces shipped:
 
-### 18. Cross-org 404 vs 403 hardening — partial
+- **API:** `GET /api/me/assignments` returns 4 categories (`asAssignee`, `asReviewer`, `asApprover`, `overdue`).
+- **Dashboard widget:** Three collapsible sections with SWR + 30s refresh on the `/dashboard` page.
+- **Avatar badge:** Numeric red badge on the Sidebar avatar; hidden at 0; capped at 99+; shares SWR cache with the widget.
+- **Email digest:** `POST /api/cron/digest` with `CRON_SECRET` bearer auth; pluggable email provider (`EMAIL_PROVIDER=log` default; `resend` stub for M2).
 
-Only the new M1 routes (signoffs, children/promote/reparent, AI review routes) return 404 for cross-org. Existing routes (`cards/[cardId]/route.ts`, `boards/[boardId]/cards/route.ts` for non-M1 fields, sprints, etc.) still return 403. Globalise during the next security pass.
+### 18. Cross-org 404 vs 403 hardening ✅ DONE
 
-## M2 scope (referenced from M1 spec)
+All 14 `resolveX` helpers across cards / boards / artifacts / sprints / tickets routes now return 404 on cross-org access. 5 test assertions flipped from 403 to 404.
 
-External-doc AI review:
+## Additional fixes that landed (not in original list)
+
+### 19. `prisma/seed.ts` idempotent ✅ DONE
+
+Replaced `.create()` with `.upsert()` for the demo Organization, admin User, and OrgMember. Skips board/sprint/cards creation if a demo board already exists. `scripts/smoke.sh` is now re-runnable.
+
+### 20. `react-hooks/set-state-in-effect` errors ✅ DONE
+
+Two ESLint errors fixed in `AiReviewToggle.tsx` (via `key={card.id}` on the parent — component remounts on card change) and `CardModal.tsx` (via the documented "previous prop in state" pattern — sync state during render, not in an effect).
+
+---
+
+## Future work (not yet actioned)
+
+Smaller items that have come up but aren't blocking. Pick up at your discretion:
+
+- **Per-org daily token budget + request count** for AI reviews (item #5 partial — per-artifact cooldown landed; org-level budget is still open). Important before prod scale.
+- **PostCSS moderate** inside `next@16.2.6`'s bundle — `npm audit` flags 2 moderate. Not fixable without a Next.js patch upstream; track until they release one.
+- **`typescript: { ignoreBuildErrors: true }` in `next.config.js`** — pre-existing debt. tsc is clean right now so it's dormant, but it should come off once we trust the type gate.
+- **9 stale `eslint-disable` directives** scattered through `__tests__/components/_helpers/mock-swr.ts`, `__tests__/lib/extractors.test.ts`, and `src/app/api/artifacts/[artifactId]/download/route.ts`. Run `npx eslint . --fix` — should be auto-cleanable.
+- **Real Resend integration** for the email digest. The pluggable provider is in place; flip `EMAIL_PROVIDER=resend` and finish `src/lib/email/providers/resend.ts`.
+- **Real cron scheduler** for `POST /api/cron/digest` — endpoint exists with bearer auth, but needs a scheduler (Vercel cron, GitHub Actions schedule, or external).
+- **Multi-instance proxy rate limiter** — `src/proxy.ts` uses an in-memory sliding window. Replace with Redis or KV-backed counter when running >1 process / serverless.
+- **Web Push** for the assigned-to-me badge — currently SWR polls every 30s. Push would be more efficient.
+
+## M2 scope
+
+External-doc AI review (referenced from M1 spec §11):
 
 - OAuth (per-user Google identity)
 - Drive / Docs / Sheets / Slides API clients
