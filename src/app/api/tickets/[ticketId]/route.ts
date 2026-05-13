@@ -38,7 +38,7 @@ async function resolveTicket(ticketId: string, orgId: string) {
     throw NextResponse.json({ error: 'Ticket not found' }, { status: 404 })
   }
   if (ticket.orgId !== orgId) {
-    throw NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    throw NextResponse.json({ error: 'Ticket not found' }, { status: 404 })
   }
   return ticket
 }

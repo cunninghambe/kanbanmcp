@@ -77,8 +77,8 @@ import {
   flushForTests,
   __setClaudeClientForTests,
   resetQueueForTests,
+  bootstrapWorker,
 } from '../../src/lib/ai-review/worker'
-
 // The mock always returns the same driver object.
 const mockStorage = getStorageDriver() as unknown as {
   getStream: ReturnType<typeof vi.fn>
@@ -395,6 +395,54 @@ describe('AI Review Pipeline', () => {
         (c: Array<{ data: { status?: string } }>) => c[0].data.status === 'skipped'
       )
       expect(skippedCall).toBeDefined()
+    })
+  })
+
+  describe('#5: per-artifact cooldown', () => {
+    it('returns false and skips enqueue when a pending review already exists', async () => {
+      // Simulate an existing pending review for the artifact
+      mockPrisma.aiReview.findFirst.mockResolvedValue({ id: 'existing-review-1' })
+
+      const result = await enqueueAiReview(ARTIFACT_ID)
+
+      expect(result).toBe(false)
+      expect(mockPrisma.aiReview.create).not.toHaveBeenCalled()
+    })
+
+    it('returns false and skips enqueue when a running review already exists', async () => {
+      mockPrisma.aiReview.findFirst.mockResolvedValue({ id: 'running-review-1' })
+
+      const result = await enqueueAiReview(ARTIFACT_ID)
+
+      expect(result).toBe(false)
+      expect(mockPrisma.aiReview.create).not.toHaveBeenCalled()
+    })
+
+    it('returns true and enqueues when no pending/running review exists', async () => {
+      mockPrisma.aiReview.findFirst.mockResolvedValue(null)
+      const reviewRow = makeReviewRow()
+      mockPrisma.aiReview.create.mockResolvedValue(reviewRow)
+
+      const result = await enqueueAiReview(ARTIFACT_ID)
+
+      expect(result).toBe(true)
+      expect(mockPrisma.aiReview.create).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('#6: bootstrapWorker resets startedAt to null', () => {
+    it('clears startedAt when resetting running rows to pending', async () => {
+      mockPrisma.aiReview.updateMany.mockResolvedValue({ count: 1 })
+      mockPrisma.aiReview.findMany.mockResolvedValue([])
+
+      await bootstrapWorker()
+
+      expect(mockPrisma.aiReview.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: 'running' },
+          data: expect.objectContaining({ status: 'pending', startedAt: null }),
+        })
+      )
     })
   })
 })

@@ -75,7 +75,7 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 403 when artifact belongs to different org', async () => {
+  it('returns 404 when artifact belongs to different org', async () => {
     mockPrisma.artifact.findUnique.mockResolvedValue({
       ...baseArtifact,
       card: { board: { orgId: 'other-org' } },
@@ -83,7 +83,7 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
     const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
     const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
     const res = await GET(req, { params: { artifactId: 'art-1' } })
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
   it('returns 410 when file is missing from storage (ENOENT)', async () => {

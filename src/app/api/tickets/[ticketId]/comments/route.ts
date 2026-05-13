@@ -23,7 +23,7 @@ async function resolveAuth(req: NextRequest) {
 async function resolveTicket(ticketId: string, orgId: string) {
   const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
   if (!ticket) throw NextResponse.json({ error: 'Ticket not found' }, { status: 404 })
-  if (ticket.orgId !== orgId) throw NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (ticket.orgId !== orgId) throw NextResponse.json({ error: 'Ticket not found' }, { status: 404 })
   return ticket
 }
 

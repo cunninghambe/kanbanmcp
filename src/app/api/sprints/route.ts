@@ -19,7 +19,7 @@ async function resolveBoard(boardId: string, orgId: string) {
     throw NextResponse.json({ error: 'Board not found' }, { status: 404 })
   }
   if (board.orgId !== orgId) {
-    throw NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    throw NextResponse.json({ error: 'Board not found' }, { status: 404 })
   }
   return board
 }
