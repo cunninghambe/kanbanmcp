@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "followup/**", "feat/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm install
+
+      - name: Unit tests
+        run: npm test
+        env:
+          SESSION_SECRET: test-secret
+          DATABASE_URL: file:./kanban.db
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: npm run e2e
+        env:
+          CI: "true"
+          SESSION_SECRET: test-secret-e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

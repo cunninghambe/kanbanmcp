@@ -32,6 +32,9 @@ export function RoleSelector({
   const humanMembers = orgMembers.filter((m) => !m.isAgent)
   const agentMembers = orgMembers.filter((m) => m.isAgent)
 
+  const isFormerMember =
+    selectedUserId !== null && !orgMembers.some((m) => m.id === selectedUserId)
+
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value
     onChange(val === '' ? null : val)
@@ -62,6 +65,11 @@ export function RoleSelector({
         {required && !selectedUserId && (
           <option value="" disabled>
             Select {label.toLowerCase()}
+          </option>
+        )}
+        {isFormerMember && (
+          <option value={selectedUserId!} disabled>
+            (former member)
           </option>
         )}
 

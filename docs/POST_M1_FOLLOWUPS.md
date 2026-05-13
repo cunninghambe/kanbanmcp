@@ -54,9 +54,9 @@ When `running` rows are reset to `pending` on app boot, `startedAt` is not clear
 
 After running `npm run db:seed-ai-reviewer` on a fresh DB, the script logs `[seed-ai-reviewer] id=<cuid>`. Copy that cuid into `.env` as `AI_REVIEWER_USER_ID=<cuid>` to skip the in-memory email-lookup cache on every worker boot. Optional; the worker resolves by email if the env var is unset.
 
-### 9. `npm install` requires `--include=dev`
+### 9. `npm install` requires `--include=dev` ✅ DONE
 
-Global npm config has `omit=dev` on this server. Running `npm install` will silently drop devDependencies (including `vitest`, `@types/node`, `@vitejs/plugin-react`). Use `npm install --include=dev` until the global config is fixed.
+~~Global npm config has `omit=dev` on this server.~~ Fixed: `.npmrc` at repo root sets `omit=` (empty), overriding the global `omit=dev`. `npm install` now installs devDependencies without any extra flags.
 
 ### 10. `npm run lint` not configured
 
@@ -85,9 +85,11 @@ npm test
 
 Worth wrapping in a `scripts/smoke.sh` and CI matrix.
 
-### 14. E5 manual QA
+### 14. E5 manual QA ✅ DONE
 
-Edge case E5 ("assignee removed from org → '(former member)' shown in UI") is a manual-QA-only check. Worth a Playwright/Cypress integration test in M2/M3.
+Implemented as `e2e/assignee-former-member.spec.ts`. The test seeds user A and B, assigns a card to A, removes A from OrgMember, then logs in as B and asserts the card detail panel shows "(former member)" in the Assignee field.
+
+Bug found and fixed: `RoleSelector.tsx` previously rendered the select control as blank when the assigned user was not in `orgMembers`. Added a "(former member)" disabled option when `selectedUserId` is set but missing from the member list.
 
 ## Product / spec open questions
 
