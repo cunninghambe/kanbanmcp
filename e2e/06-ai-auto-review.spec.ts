@@ -2,12 +2,16 @@
  * 06: AI Auto-Review (REAL CLAUDE CALL)
  * Skip if neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is set.
  *
- * - Open a card
- * - Toggle AiReviewToggle to ON, set rubric for spelling errors
- * - Upload a text file with deliberate spelling errors
- * - Wait up to 60 seconds for the AI review to reach "done" (polling DB)
- * - Reload the card modal and verify a comment appears from the AI Reviewer
- * - Confirm inputTokens > 0
+ * Uses direct API calls (page.request) to eliminate the toggle→params→upload
+ * race that caused intermittent failures when going through the UI.
+ *
+ * Steps:
+ * 1. PATCH the card to set aiAutoReview=true and aiReviewParams (awaited)
+ * 2. POST a multipart artifact upload (awaited — triggers enqueueAiReview
+ *    synchronously inside the route handler while aiAutoReview is guaranteed set)
+ * 3. Poll DB until AiReview.status === 'done' (60s budget)
+ * 4. Open the card modal in the browser and verify the AI Reviewer comment
+ * 5. Confirm inputTokens > 0
  */
 import './fixtures/load-anthropic-env'
 import { test, expect } from '@playwright/test'
@@ -36,7 +40,7 @@ test.beforeAll(async () => {
 
   const card = await prisma.card.upsert({
     where: { id: 'e2e-ai-auto-review-card' },
-    update: {},
+    update: { aiAutoReview: false, aiReviewParams: null },
     create: {
       id: 'e2e-ai-auto-review-card',
       title: 'AI Auto-Review Card',
@@ -54,47 +58,44 @@ test.beforeAll(async () => {
 
 test.describe('06 – AI auto-review (real Claude)', () => {
   test('triggers a real AI review on artifact upload', async ({ page }) => {
-    // Skipped: flaky against the real Claude API in re-runs. Original integration
-    // verified inputTokens=54/outputTokens=82 with the OAuth token (see PR #24),
-    // but the toggle-save → params-save → upload race triggers intermittent
-    // misses. Tracked in docs/POST_M1_FOLLOWUPS.md.
-    test.skip(true, 'Flaky against real Claude — see POST_M1_FOLLOWUPS.md')
     if (!hasKey) return
 
     await loginAsAdmin(page)
     await page.goto(`/board/${boardId}`)
-    await page.getByText('AI Auto-Review Card').first().click()
-    await expect(page.getByRole('dialog')).toBeVisible()
 
-    // Enable AI Auto-Review
-    const aiSection = page.getByRole('region', { name: /AI Auto-Review/i })
-    await expect(aiSection).toBeVisible()
-
-    const toggle = aiSection.getByRole('checkbox')
-    if (!(await toggle.isChecked())) {
-      await toggle.click()
-    }
-
-    // Fill in rubric
-    const rubricTextarea = aiSection.locator('textarea').first()
-    await rubricTextarea.fill('Identify any spelling errors or grammar issues. Output as a markdown bullet list.')
-
-    await aiSection.getByRole('button', { name: /Save params/i }).click()
-    await expect(aiSection.getByRole('button', { name: /Save params/i })).toBeEnabled({ timeout: 10_000 })
-
-    // Upload a text file with deliberate spelling errors
-    const artifactsSection = page.getByRole('region', { name: /Artifacts/i })
-    const fileInput = artifactsSection.locator('input[type="file"]')
-    await fileInput.setInputFiles({
-      name: 'spelling-errors.txt',
-      mimeType: 'text/plain',
-      buffer: Buffer.from('This documnt has speling mistakes. Thier are serveral errers hear.', 'utf-8'),
+    // Step 1: PATCH the card to enable aiAutoReview and set review params.
+    // Awaiting the response guarantees the DB is updated before the upload.
+    const patchRes = await page.request.patch(`/api/cards/${cardId}`, {
+      data: {
+        aiAutoReview: true,
+        aiReviewParams: {
+          model: 'claude-haiku-4-5-20251001',
+          rubric:
+            'Identify any spelling errors or grammar issues. Output as a markdown bullet list.',
+        },
+      },
     })
-    await artifactsSection.getByRole('button', { name: /Upload artifact/i }).click()
+    expect(patchRes.status()).toBe(200)
 
-    await expect(artifactsSection.getByText('spelling-errors.txt')).toBeVisible({ timeout: 15_000 })
+    // Step 2: Upload the artifact via multipart POST.
+    // The route handler reads card.aiAutoReview from the DB synchronously after
+    // storing the file, so enqueueAiReview fires with the flag already set.
+    const uploadRes = await page.request.post(`/api/cards/${cardId}/artifacts`, {
+      multipart: {
+        file: {
+          name: 'spelling-errors.txt',
+          mimeType: 'text/plain',
+          buffer: Buffer.from(
+            'This documnt has speling mistakes. Thier are serveral errers hear.',
+            'utf-8'
+          ),
+        },
+      },
+    })
+    expect(uploadRes.status()).toBe(201)
 
-    // Poll the DB until the AI review reaches "done" (uses a fresh Prisma instance)
+    // Step 3: Poll the DB until the AI review reaches "done" (fresh Prisma instance
+    // avoids SQLite read-lock contention with the worker).
     const reviewPrisma = new PrismaClient({ datasources: { db: { url: `file:${E2E_DB}` } } })
     try {
       await expect(async () => {
@@ -107,8 +108,7 @@ test.describe('06 – AI auto-review (real Claude)', () => {
       await reviewPrisma.$disconnect()
     }
 
-    // Reload the card modal to pick up the freshly-posted comment
-    await page.keyboard.press('Escape')
+    // Step 4: Open the card modal in the browser and verify the AI Reviewer comment.
     await page.getByText('AI Auto-Review Card').first().click()
     await expect(page.getByRole('dialog')).toBeVisible()
 
@@ -116,13 +116,15 @@ test.describe('06 – AI auto-review (real Claude)', () => {
     await expect(commentsSection).toBeVisible()
     await expect(commentsSection.getByText(/AI review of/i)).toBeVisible({ timeout: 15_000 })
 
-    // Confirm tokens were used
+    // Step 5: Confirm tokens were used (proves real Claude path was exercised).
     const finalPrisma = new PrismaClient({ datasources: { db: { url: `file:${E2E_DB}` } } })
     try {
       const review = await finalPrisma.aiReview.findFirst({ where: { cardId, status: 'done' } })
       expect(review).not.toBeNull()
       expect(review!.inputTokens).toBeGreaterThan(0)
-      console.log(`[06] AI review completed. inputTokens=${review!.inputTokens} outputTokens=${review!.outputTokens}`)
+      console.log(
+        `[06] AI review completed. inputTokens=${review!.inputTokens} outputTokens=${review!.outputTokens}`
+      )
     } finally {
       await finalPrisma.$disconnect()
     }
