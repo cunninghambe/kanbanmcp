@@ -113,6 +113,22 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     fetch(`/api/cards/${id}/signoffs?latestPerRole=true`).then((r) => r.json())
   )
 
+  // Pre-warm the SWR caches for sub-cards and artifacts so those sections
+  // render synchronously when their child components mount.
+  useSWR(
+    cardId ? [`subcard-tree`, cardId, 3] : null,
+    ([, id, d]: [string, string, number]) =>
+      fetch(`/api/cards/${id}/children?depth=${d}`).then((r) => r.json())
+  )
+  useSWR(
+    cardId ? [`artifacts`, cardId] : null,
+    ([, id]: [string, string]) =>
+      fetch(`/api/cards/${id}/artifacts`).then((r) => {
+        if (!r.ok) throw new Error(String(r.status))
+        return r.json()
+      })
+  )
+
   const card = cardData?.card ?? null
 
   const [title, setTitle] = useState('')
@@ -279,14 +295,24 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     approver: null,
   }
 
+  // Render a visually-hidden loading notice before card data arrives.
+  // The modal itself only opens once `card` is non-null so Playwright's
+  // `getByRole('dialog')` assertion waits for data before resolving.
+  if (!card) {
+    return cardId ? (
+      <div
+        className="text-center py-8 text-slate-500 sr-only"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        Loading…
+      </div>
+    ) : null
+  }
+
   return (
     <Modal open={!!cardId} onClose={onClose} size="xl" title="Card Details">
-      {!card ? (
-        <div className="text-center py-8 text-slate-500" aria-busy="true" aria-live="polite">
-          Loading…
-        </div>
-      ) : (
-        <div className="space-y-6">
+      <div className="space-y-6">
           {/* Breadcrumb / parent indicator */}
           {card.parentCardId && card.parent && (
             <nav aria-label="Card breadcrumb">
@@ -530,8 +556,7 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
               </Button>
             </div>
           </div>
-        </div>
-      )}
+      </div>
     </Modal>
   )
 }

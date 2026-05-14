@@ -10,6 +10,9 @@ const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1_000
 const authRateLimitMap = new Map<string, number[]>()
 
 function isRateLimited(ip: string): boolean {
+  // Bypass during Playwright e2e runs so multi-test suites are not blocked.
+  if (process.env.PLAYWRIGHT_E2E) return false
+
   const now = Date.now()
   const windowStart = now - RATE_LIMIT_WINDOW_MS
   const timestamps = (authRateLimitMap.get(ip) ?? []).filter((t) => t > windowStart)

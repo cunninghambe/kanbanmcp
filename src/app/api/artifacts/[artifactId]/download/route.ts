@@ -7,7 +7,6 @@ import { getStorageDriver } from '@/lib/storage'
 /** Strips control characters and escapes quotes from a filename for Content-Disposition. */
 function safeFilename(name: string): string {
   // Remove control characters (0x00–0x1F, 0x7F), then escape double-quotes.
-  // eslint-disable-next-line no-control-regex
   return name.replace(/[\x00-\x1f\x7f]/g, '').replace(/"/g, '\\"')
 }
 

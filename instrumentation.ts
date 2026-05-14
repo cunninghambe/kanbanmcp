@@ -3,6 +3,13 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     const { bootstrapWorker } = await import('./src/lib/ai-review/worker')
-    await bootstrapWorker()
+    try {
+      await bootstrapWorker()
+    } catch (err) {
+      // Gracefully handle DB unavailability at startup (e.g. during e2e test runs
+      // before the database is fully initialised). Pending reviews will not be
+      // re-enqueued — they will be picked up on the next server restart.
+      console.warn('[instrumentation] bootstrapWorker failed, skipping re-queue:', err)
+    }
   }
 }
