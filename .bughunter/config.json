@@ -1,0 +1,20 @@
+{
+  "projectName": "kanbanmcp",
+  "surfaceMcpUrl": "http://127.0.0.1:3105",
+  "browserMcpUrl": "http://127.0.0.1:3104/mcp",
+  "browserTransport": "mcp-http",
+  "appBaseUrl": "http://localhost:3000",
+  "roles": ["admin", "anon"],
+  "resetPolicy": "per-run",
+  "maxBugs": 200,
+  "discoveryFixtures": {},
+  "domainHints": {},
+  "forbiddenPaths": [
+    "prisma/schema.prisma",
+    "prisma/migrations/**",
+    "package-lock.json",
+    ".env",
+    ".env.local",
+    ".env.production"
+  ]
+}
