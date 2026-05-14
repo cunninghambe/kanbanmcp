@@ -175,7 +175,7 @@ Manifest: `GET /api/mcp` (no auth).
 ## Tests
 
 - **Unit + integration:** 484 tests across 45 files, all passing. `npm test`.
-- **End-to-end:** 1 Playwright test (E5 former-member assignee). `npm run e2e`.
+- **End-to-end:** 17 Playwright tests across 10 spec files, all passing — login, card create + roles, sub-card tree (nest + promote), signoff workflow, artifact upload + MIME/size rejects, real-Claude AI auto-review (artifact + description, captures inputTokens), assigned-to-me widget + badge, former-member assignee, reparent cycle detection. `npm run e2e`. Real-Claude tests use either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`; skip gracefully if neither is set.
 - **Smoke:** `scripts/smoke.sh` destroys the dev DB, re-applies schema, re-seeds, runs the full unit suite. `npm run smoke`.
 - **Migrations:** `npx prisma migrate deploy` on a fresh DB succeeds.
 

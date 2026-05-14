@@ -50,7 +50,7 @@ Repo `.npmrc` sets `include=dev`, overriding the server-wide `NODE_ENV=productio
 
 ### 10. `npm run lint` not configured ✅ DONE
 
-`eslint.config.js` flat-config (ESLint 9) extends `next/core-web-vitals`. `npm run lint` runs cleanly (0 errors, 9 cosmetic warnings about stale `eslint-disable` directives — see [Future work](#future-work-not-yet-actioned)).
+`eslint.config.js` flat-config (ESLint 9) extends `next/core-web-vitals`. `npm run lint` runs cleanly (0 errors, 0 warnings).
 
 ### 11. Prettier configured but not enforced ✅ DONE
 
@@ -112,7 +112,7 @@ Smaller items that have come up but aren't blocking. Pick up at your discretion:
 - **Per-org daily token budget + request count** for AI reviews (item #5 partial — per-artifact cooldown landed; org-level budget is still open). Important before prod scale.
 - **PostCSS moderate** inside `next@16.2.6`'s bundle — `npm audit` flags 2 moderate. Not fixable without a Next.js patch upstream; track until they release one.
 - **`typescript: { ignoreBuildErrors: true }` in `next.config.js`** — pre-existing debt. tsc is clean right now so it's dormant, but it should come off once we trust the type gate.
-- **9 stale `eslint-disable` directives** scattered through `__tests__/components/_helpers/mock-swr.ts`, `__tests__/lib/extractors.test.ts`, and `src/app/api/artifacts/[artifactId]/download/route.ts`. Run `npx eslint . --fix` — should be auto-cleanable.
+- ~~9 stale `eslint-disable` directives~~ ✅ Done (auto-fixed via `eslint --fix` in PR #25).
 - **Real Resend integration** for the email digest. The pluggable provider is in place; flip `EMAIL_PROVIDER=resend` and finish `src/lib/email/providers/resend.ts`.
 - **Real cron scheduler** for `POST /api/cron/digest` — endpoint exists with bearer auth, but needs a scheduler (Vercel cron, GitHub Actions schedule, or external).
 - **Multi-instance proxy rate limiter** — `src/proxy.ts` uses an in-memory sliding window. Replace with Redis or KV-backed counter when running >1 process / serverless.

@@ -14,3 +14,9 @@ playwright/.cache/
 .surfacemcp/
 .env.local
 .env.test
+
+# BugHunter
+.bughunter/runs/
+.bughunter/history.db
+.bughunter/*.lock
+

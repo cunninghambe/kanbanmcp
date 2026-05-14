@@ -1,0 +1,36 @@
+{
+  "surfaces": [
+    {
+      "name": "web",
+      "stack": "nextjs",
+      "root": ".",
+      "baseUrl": "http://localhost:3000",
+      "port": 3105,
+      "launchDevCommand": "npm run dev -- -p 3000",
+      "watchPaths": ["src/app", "src/components", "src/lib", "prisma/schema.prisma"],
+      "watchIgnore": [],
+      "auth": {
+        "kind": "form",
+        "loginMethod": "POST",
+        "loginPath": "/api/auth/login",
+        "bodyFormat": "json",
+        "loginFields": { "email": "email", "password": "password" },
+        "successCheck": { "kind": "status", "code": 200 },
+        "cookieName": "kanban-session"
+      },
+      "roles": [
+        {
+          "name": "admin",
+          "credentials": { "email": "admin@demo.com", "password": "demo1234" }
+        },
+        {
+          "name": "anon",
+          "credentials": {}
+        }
+      ],
+      "excludedRoutes": ["/api/auth/logout", "/logout"],
+      "externalIntegrations": [],
+      "_suggestedExternalIntegrations": []
+    }
+  ]
+}
