@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test'
 import path from 'path'
+import './e2e/fixtures/load-anthropic-env'
 
 const E2E_DB = path.resolve(__dirname, 'playwright-e2e.db')
 const SESSION_SECRET = 'd597d4a359550cb02ffcf391f220b6f8f492ca205f5b2ecfcb011d203bc3fb74'
@@ -24,16 +25,23 @@ export default defineConfig({
   globalTeardown: './e2e/global-teardown.ts',
 
   webServer: {
-    command: `npx next dev -p ${E2E_PORT}`,
+    // DATABASE_URL is set as a shell prefix so it takes effect before Next.js
+    // loads any .env files — Turbopack in Next.js 16 only shows "Environments: .env"
+    // and the webServer env object alone is not enough to override .env values.
+    command: `DATABASE_URL=file:${E2E_DB} PLAYWRIGHT_E2E=1 npx next dev -p ${E2E_PORT}`,
     port: E2E_PORT,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120_000,
     env: {
       DATABASE_URL: `file:${E2E_DB}`,
       SESSION_SECRET,
       COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
       PORT: String(E2E_PORT),
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
+      CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN ?? '',
+      AI_REVIEW_DEFAULT_MODEL: process.env.AI_REVIEW_DEFAULT_MODEL ?? 'claude-haiku-4-5-20251001',
+      AI_REVIEW_DEFAULT_RUBRIC: 'You are a strict code/document reviewer. Give a 3-bullet critique.',
+      PLAYWRIGHT_E2E: '1',
     },
   },
 })

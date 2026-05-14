@@ -13,16 +13,19 @@ const loginSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  // Rate limit: 10 attempts per IP per 15 minutes
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-    req.headers.get('x-real-ip') ??
-    'unknown'
-  if (!checkRateLimit(`login:${ip}`, 10, 15 * 60 * 1000)) {
-    return NextResponse.json(
-      { error: 'Too many login attempts. Please try again later.' },
-      { status: 429 }
-    )
+  // Rate limit: 10 attempts per IP per 15 minutes.
+  // Skipped during Playwright e2e runs so suites with many tests are not blocked.
+  if (!process.env.PLAYWRIGHT_E2E) {
+    const ip =
+      req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+      req.headers.get('x-real-ip') ??
+      'unknown'
+    if (!checkRateLimit(`login:${ip}`, 10, 15 * 60 * 1000)) {
+      return NextResponse.json(
+        { error: 'Too many login attempts. Please try again later.' },
+        { status: 429 }
+      )
+    }
   }
 
   try {

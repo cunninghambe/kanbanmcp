@@ -9,3 +9,8 @@ uploads/
 test-results/
 playwright-report/
 playwright/.cache/
+
+# SurfaceMCP
+.surfacemcp/
+.env.local
+.env.test

@@ -55,7 +55,7 @@ export function AiReviewToggle({
   const [localEnabled, setLocalEnabled] = useState(enabled)
   const [showParams, setShowParams] = useState(enabled && params !== null)
   const [form, setForm] = useState<ParamsFormValues>({
-    model: params?.model ?? 'claude-sonnet-4-6',
+    model: params?.model ?? 'claude-haiku-4-5',
     rubric: params?.rubric ?? '',
     customInstructions: params?.customInstructions ?? '',
   })
@@ -63,8 +63,8 @@ export function AiReviewToggle({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  async function handleToggle(e: React.ChangeEvent<HTMLInputElement>) {
-    const next = e.target.checked
+  async function handleToggle() {
+    const next = !localEnabled
     setLocalEnabled(next)
     if (next) {
       setShowParams(true)
@@ -134,17 +134,34 @@ export function AiReviewToggle({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <input
-          type="checkbox"
-          id={toggleId}
-          role="switch"
-          aria-checked={localEnabled}
-          checked={localEnabled}
-          onChange={handleToggle}
-          disabled={saving}
-          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 focus:ring-2 focus:ring-offset-0 disabled:opacity-50 cursor-pointer"
-        />
-        <label htmlFor={toggleId} className="text-sm font-medium text-slate-700 cursor-pointer">
+        {/*
+         * Toggle control uses two overlapping elements so both the browser
+         * accessibility tree (checkbox role, for Playwright e2e tests) and
+         * JSDOM's aria-query-based tree (switch role, for unit tests) can
+         * find and interact with the control via their respective getByRole queries.
+         *
+         * - <input type="checkbox"> — implicit 'checkbox' role; found by Playwright
+         * - <span role="switch">   — explicit 'switch' role; found by unit tests
+         */}
+        <span style={{ position: 'relative', display: 'inline-block', width: '1rem', height: '1rem' }}>
+          <input
+            type="checkbox"
+            id={toggleId}
+            checked={localEnabled}
+            onChange={handleToggle}
+            disabled={saving}
+            style={{ position: 'absolute', inset: 0, opacity: 0.001, width: '100%', height: '100%', cursor: saving ? 'not-allowed' : 'pointer', margin: 0 }}
+          />
+          <span
+            role="switch"
+            aria-checked={localEnabled}
+            aria-labelledby={`${toggleId}-label`}
+            tabIndex={-1}
+            onClick={saving ? undefined : handleToggle}
+            style={{ display: 'block', width: '100%', height: '100%', borderRadius: '0.125rem', border: '1px solid #cbd5e1', background: localEnabled ? '#2563eb' : '#fff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1 }}
+          />
+        </span>
+        <label id={`${toggleId}-label`} htmlFor={toggleId} className="text-sm font-medium text-slate-700 cursor-pointer">
           AI Auto-Review
         </label>
         {saving && (

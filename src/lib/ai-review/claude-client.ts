@@ -57,10 +57,15 @@ export async function runClaudeReview(
   content: ExtractedContent,
   filename: string
 ): Promise<ClaudeReviewResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured')
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim() || null
+  const authToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || null
+  if (!apiKey && !authToken) throw new Error('ANTHROPIC_API_KEY not configured (set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN)')
 
-  const client = new Anthropic({ apiKey })
+  // Prefer OAuth token when both are present — authToken wins and apiKey is suppressed
+  // to avoid sending both X-Api-Key and Authorization headers simultaneously.
+  const client = authToken
+    ? new Anthropic({ apiKey: null, authToken })
+    : new Anthropic({ apiKey })
   const systemPrompt = buildSystemPrompt(params)
   const userMessage = buildUserMessage(content, filename)
 
