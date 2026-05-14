@@ -14,10 +14,11 @@ interface KanbanColumnProps {
     })[]
   }
   onCardClick: (cardId: string) => void
+  onCardHover?: (cardId: string) => void
   onAddCard: (columnId: string, title: string) => Promise<void>
 }
 
-export function KanbanColumn({ column, onCardClick, onAddCard }: KanbanColumnProps) {
+export function KanbanColumn({ column, onCardClick, onCardHover, onAddCard }: KanbanColumnProps) {
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -70,6 +71,7 @@ export function KanbanColumn({ column, onCardClick, onAddCard }: KanbanColumnPro
                 card={card}
                 index={index}
                 onClick={() => onCardClick(card.id)}
+                onHover={onCardHover ? () => onCardHover(card.id) : undefined}
               />
             ))}
             {provided.placeholder}

@@ -1,5 +1,5 @@
 /**
- * E5: "assignee removed from org shows (former member)"
+ * 09: "assignee removed from org shows (former member)"
  *
  * Scenario:
  *  - User A (admin@demo.com) is the assignee of a card.
@@ -14,23 +14,20 @@ import * as bcrypt from 'bcryptjs'
 import path from 'path'
 
 const E2E_DB = path.resolve(__dirname, '../playwright-e2e.db')
-const prisma = new PrismaClient({
-  datasources: { db: { url: `file:${E2E_DB}` } },
-})
 
 let boardId: string
 let orgId: string
 let userAId: string
 
 test.beforeAll(async () => {
-  // Retrieve the org and user A seeded by globalSetup
+  const prisma = new PrismaClient({ datasources: { db: { url: `file:${E2E_DB}` } } })
+
   const org = await prisma.organization.findUniqueOrThrow({ where: { slug: 'demo' } })
   orgId = org.id
 
   const userA = await prisma.user.findUniqueOrThrow({ where: { email: 'admin@demo.com' } })
   userAId = userA.id
 
-  // Ensure user B exists with a known password
   const passwordHash = await bcrypt.hash('testpass99', 12)
   const userB = await prisma.user.upsert({
     where: { email: 'b@e2e.test' },
@@ -43,8 +40,7 @@ test.beforeAll(async () => {
     create: { userId: userB.id, orgId, role: 'MEMBER' },
   })
 
-  // Create a board + column + card assigned to user A
-  const board = await prisma.board.create({ data: { name: 'E5 Board', orgId } })
+  const board = await prisma.board.create({ data: { name: 'E9 Board', orgId } })
   boardId = board.id
   const column = await prisma.column.create({
     data: { name: 'To Do', boardId, position: 0 },
@@ -60,13 +56,16 @@ test.beforeAll(async () => {
     },
   })
 
-  // Remove user A from the org — simulates "removed from org"
   await prisma.orgMember.delete({
     where: { userId_orgId: { userId: userAId, orgId } },
   })
+
+  // Disconnect before UI test to avoid SQLite contention
+  await prisma.$disconnect()
 })
 
 test.afterAll(async () => {
+  const prisma = new PrismaClient({ datasources: { db: { url: `file:${E2E_DB}` } } })
   // Restore user A's membership so the seed stays valid for future runs
   await prisma.orgMember.upsert({
     where: { userId_orgId: { userId: userAId, orgId } },
@@ -84,26 +83,17 @@ test('assignee removed from org shows (former member) in card detail', async ({ 
   await page.click('button[type="submit"]')
   await page.waitForURL('**/dashboard')
 
-  // Navigate to the board
   await page.goto(`/board/${boardId}`)
-
-  // Click the card to open the detail panel
   await page.getByText('Former-member card').click()
 
-  // Target the Assignee select within the "Roles" section (CardDetailSections).
-  // There are two Assignee selects on the page — one in the Roles section (main
-  // content) and one in the sidebar. Both should reflect "(former member)", but
-  // we assert on the Roles section one because it has a clear accessible label.
   const rolesSection = page.getByRole('region', { name: 'Roles' })
   await expect(rolesSection).toBeVisible()
 
   const assigneeSelect = rolesSection.getByLabel('Assignee')
   await expect(assigneeSelect).toBeVisible()
 
-  // The select must have a "(former member)" option rendered by RoleSelector.
   const formerMemberOption = assigneeSelect.locator('option', { hasText: '(former member)' })
   await expect(formerMemberOption).toHaveCount(1)
 
-  // The select's current value should be the former member's user ID (not empty).
   await expect(assigneeSelect).toHaveValue(userAId)
 })

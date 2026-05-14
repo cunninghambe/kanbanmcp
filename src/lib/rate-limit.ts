@@ -19,6 +19,9 @@ const store = new Map<string, Window>()
  * @returns true if the request should be allowed, false if rate-limited.
  */
 export function checkRateLimit(key: string, limit: number, windowMs: number): boolean {
+  // Bypass entirely during Playwright e2e runs so multi-test suites are not blocked.
+  if (process.env.PLAYWRIGHT_E2E) return true
+
   const now = Date.now()
   const entry = store.get(key)
 

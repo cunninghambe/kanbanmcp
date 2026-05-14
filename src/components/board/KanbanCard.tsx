@@ -11,6 +11,7 @@ interface KanbanCardProps {
   }
   index: number
   onClick: () => void
+  onHover?: () => void
 }
 
 function getRelativeDate(date: Date | string | null): { text: string; overdue: boolean } | null {
@@ -50,7 +51,7 @@ function getPriorityLabel(priority: string): string {
   return priority.charAt(0).toUpperCase() + priority.slice(1)
 }
 
-export function KanbanCard({ card, index, onClick }: KanbanCardProps) {
+export function KanbanCard({ card, index, onClick, onHover }: KanbanCardProps) {
   const dueInfo = getRelativeDate(card.dueDate)
   const initials =
     card.assignee?.name
@@ -71,6 +72,7 @@ export function KanbanCard({ card, index, onClick }: KanbanCardProps) {
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           onClick={onClick}
+          onMouseEnter={onHover}
           className={`
             relative bg-white rounded-md border border-slate-200 p-3 cursor-pointer
             hover:border-blue-300 hover:shadow-sm transition-all

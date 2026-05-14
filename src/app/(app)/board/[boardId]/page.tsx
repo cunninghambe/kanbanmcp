@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
+import { preload } from 'swr'
 import { useBoard } from '@/hooks/useBoard'
 import { useRealtime } from '@/hooks/useRealtime'
 import { Header } from '@/components/layout/Header'
@@ -16,6 +17,27 @@ export default function BoardPage() {
   // SSE real-time sync — board updates from agent MCP calls appear within ~2s
   useRealtime({ boardId })
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+
+  function preloadCardData(cardId: string) {
+    preload(
+      [`subcard-tree`, cardId, 3],
+      ([, id, d]: [string, string, number]) =>
+        fetch(`/api/cards/${id}/children?depth=${d}`).then((r) => r.json())
+    )
+    preload(
+      [`artifacts`, cardId],
+      ([, id]: [string, string]) =>
+        fetch(`/api/cards/${id}/artifacts`).then((r) => {
+          if (!r.ok) throw new Error(String(r.status))
+          return r.json()
+        })
+    )
+  }
+
+  function handleCardClick(cardId: string) {
+    preloadCardData(cardId)
+    setSelectedCardId(cardId)
+  }
 
   async function handleAddCard(columnId: string, title: string) {
     await fetch(`/api/boards/${boardId}/cards`, {
@@ -45,7 +67,8 @@ export default function BoardPage() {
         <KanbanBoard
           columns={columns as Parameters<typeof KanbanBoard>[0]['columns']}
           boardId={boardId}
-          onCardClick={setSelectedCardId}
+          onCardClick={handleCardClick}
+          onCardHover={preloadCardData}
           onMoveCard={moveCard}
           onAddCard={handleAddCard}
         />

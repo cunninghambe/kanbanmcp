@@ -13,6 +13,7 @@ interface KanbanBoardProps {
   })[]
   boardId: string
   onCardClick: (cardId: string) => void
+  onCardHover?: (cardId: string) => void
   onMoveCard: (
     cardId: string,
     sourceColumnId: string,
@@ -23,7 +24,7 @@ interface KanbanBoardProps {
   onAddCard: (columnId: string, title: string) => Promise<void>
 }
 
-export function KanbanBoard({ columns, onCardClick, onMoveCard, onAddCard }: KanbanBoardProps) {
+export function KanbanBoard({ columns, onCardClick, onCardHover, onMoveCard, onAddCard }: KanbanBoardProps) {
   function onDragEnd(result: DropResult) {
     const { source, destination, draggableId } = result
 
@@ -55,7 +56,7 @@ export function KanbanBoard({ columns, onCardClick, onMoveCard, onAddCard }: Kan
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="flex gap-4 overflow-x-auto pb-4 h-full">
         {columns.map((col) => (
-          <KanbanColumn key={col.id} column={col} onCardClick={onCardClick} onAddCard={onAddCard} />
+          <KanbanColumn key={col.id} column={col} onCardClick={onCardClick} onCardHover={onCardHover} onAddCard={onAddCard} />
         ))}
         {columns.length === 0 && (
           <div className="flex items-center justify-center w-full text-slate-400 text-sm">
