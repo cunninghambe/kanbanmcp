@@ -55,7 +55,7 @@ export function AiReviewToggle({
   const [localEnabled, setLocalEnabled] = useState(enabled)
   const [showParams, setShowParams] = useState(enabled && params !== null)
   const [form, setForm] = useState<ParamsFormValues>({
-    model: params?.model ?? 'claude-haiku-4-5',
+    model: params?.model ?? 'claude-sonnet-4-6',
     rubric: params?.rubric ?? '',
     customInstructions: params?.customInstructions ?? '',
   })
