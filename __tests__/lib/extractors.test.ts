@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // vi.mock is hoisted. Factory cannot use external variables.
 vi.mock('pdf-parse', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const PDFParse = vi.fn(function (this: any) {
     this.getText = vi.fn().mockResolvedValue({ text: '' })
     this.destroy = vi.fn().mockResolvedValue(undefined)
@@ -19,7 +19,7 @@ describe('extractContent', () => {
   beforeEach(() => {
     // Reset clears the once queue then restore a default implementation.
     vi.mocked(PDFParse).mockReset()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     vi.mocked(PDFParse).mockImplementation(function (this: any) {
       this.getText = vi.fn().mockResolvedValue({ text: '' })
       this.destroy = vi.fn().mockResolvedValue(undefined)
@@ -63,7 +63,7 @@ describe('extractContent', () => {
     it('PDF with extracted text → text (E12 happy path)', async () => {
       const getText = vi.fn().mockResolvedValue({ text: 'PDF content here' })
       const destroy = vi.fn().mockResolvedValue(undefined)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       vi.mocked(PDFParse).mockImplementationOnce(function (this: any) {
         this.getText = getText
         this.destroy = destroy
@@ -77,7 +77,7 @@ describe('extractContent', () => {
     it('PDF with empty text → empty (E12)', async () => {
       const getText = vi.fn().mockResolvedValue({ text: '   ' })
       const destroy = vi.fn().mockResolvedValue(undefined)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       vi.mocked(PDFParse).mockImplementationOnce(function (this: any) {
         this.getText = getText
         this.destroy = destroy
@@ -91,7 +91,7 @@ describe('extractContent', () => {
     it('PDF extraction throws → empty', async () => {
       const getText = vi.fn().mockRejectedValue(new Error('encrypted PDF'))
       const destroy = vi.fn().mockResolvedValue(undefined)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       vi.mocked(PDFParse).mockImplementationOnce(function (this: any) {
         this.getText = getText
         this.destroy = destroy
@@ -113,7 +113,7 @@ describe('extractContent', () => {
     it('PDF exactly at 10 MB → parsed normally (boundary)', async () => {
       const getText = vi.fn().mockResolvedValue({ text: 'boundary content' })
       const destroy = vi.fn().mockResolvedValue(undefined)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       vi.mocked(PDFParse).mockImplementationOnce(function (this: any) {
         this.getText = getText
         this.destroy = destroy
