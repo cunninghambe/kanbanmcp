@@ -130,12 +130,14 @@ External-doc AI review (referenced from M1 spec §11):
 
 ## Flaky e2e tests (track for investigation)
 
-### 21. Real-Claude e2e tests (#06, #07) are flaky
+### 21. Real-Claude e2e tests (#06, #07) are flaky ✅ DONE
 
-`e2e/06-ai-auto-review.spec.ts` and `e2e/07-description-only-review.spec.ts` both make real Claude API calls (Haiku via OAuth token). Original PR #24 integration verified both pass with captured token counts (06: input=54/output=82; 07: input=40/output=221–273). Re-runs are intermittent — test 06 times out polling the DB for `status='done'` even though the worker should fire.
+`e2e/06-ai-auto-review.spec.ts` and `e2e/07-description-only-review.spec.ts` both make real Claude API calls (Haiku via OAuth token). Original PR #24 integration verified both pass with captured token counts (06: input=54/output=82; 07: input=40/output=221–273). Re-runs were intermittent — test 06 was timing out polling the DB for `status='done'` because the toggle-save PATCH + params-save PATCH + upload raced through the UI.
 
-Suspected cause: race between toggle-save PATCH + params-save PATCH + upload — if `card.aiAutoReview` isn't committed before the upload triggers `enqueueAiReview`, the auto-enqueue is skipped silently.
+Fixed by rewriting both tests to bypass the UI for state setup, mirroring the `__tests__/api/ai-review-pipeline.test.ts` approach:
+- `page.request.patch(...)` sets `aiAutoReview: true` and `aiReviewParams` and awaits the 200 response before uploading.
+- `page.request.post(...)` performs the multipart artifact upload (test 06) or triggers the description review (test 07) and awaits the 201 response.
+- `beforeAll` for test 07 deletes stale `AiReview` rows from previous runs so the 409 cooldown check does not block re-runs.
+- DB polling and browser assertions are unchanged.
 
-Currently marked `test.skip()` with a tracking note pointing here. Fix path:
-- Make the UI test wait deterministically for the toggle-save to land (await server response, not button-enabled state) before uploading.
-- Or use a direct API harness (page.request.post) instead of UI clicks, mirroring the worker-integration test in `__tests__/api/ai-review-pipeline.test.ts` that DOES pass deterministically.
+`test.skip()` removed from both tests. Both are now 17/17 passing with no skips.
