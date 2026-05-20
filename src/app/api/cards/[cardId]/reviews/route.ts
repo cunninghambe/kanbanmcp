@@ -34,8 +34,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ cardId: st
     const enqueued = await enqueueCardDescriptionReview(cardId)
     if (!enqueued) return apiError(409, 'A review is already pending or running')
 
+    // The in-process worker may flip the row from 'pending' to 'running' (or even
+    // through to 'done'/'failed') before this lookup runs, so we filter only by
+    // cardId + null artifactId and rely on createdAt ordering for the row we just
+    // created. Constraining by status here is racy — see route 500 incident.
     const review = await prisma.aiReview.findFirst({
-      where: { cardId, artifactId: null, status: { in: ['pending', 'failed'] } },
+      where: { cardId, artifactId: null },
       orderBy: { createdAt: 'desc' },
     })
 
