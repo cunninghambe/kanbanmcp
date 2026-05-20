@@ -2,8 +2,13 @@
 // AUTOGENY_TS_TOLERANCE
 const isProd = process.env.NODE_ENV === 'production'
 
+const path = require('path')
+
 const nextConfig = {
   typescript: { ignoreBuildErrors: true },
+  turbopack: {
+    root: path.resolve(__dirname),
+  },
   async redirects() {
     return [
       {
