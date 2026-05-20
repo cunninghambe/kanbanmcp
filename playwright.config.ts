@@ -3,7 +3,7 @@ import path from 'path'
 import './e2e/fixtures/load-anthropic-env'
 
 const E2E_DB = path.resolve(__dirname, 'playwright-e2e.db')
-const SESSION_SECRET = 'REDACTED_SESSION_SECRET'
+const SESSION_SECRET = 'playwright-test-secret-not-a-real-secret-min-32-chars-padding-xx'
 const E2E_PORT = 3099
 
 export default defineConfig({
