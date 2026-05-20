@@ -102,10 +102,13 @@ describe('runClaudeReview', () => {
     expect(callArg.messages[0].content[0].type).toBe('image')
   })
 
-  it('throws immediately when ANTHROPIC_API_KEY is not set', async () => {
+  it('throws immediately when no AI backend is configured', async () => {
     delete process.env.ANTHROPIC_API_KEY
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+    delete process.env.CLAUDEMCP_URL
+    delete process.env.CLAUDEMCP_PROJECT
     await expect(runClaudeReview(baseParams, textContent, 'test.txt')).rejects.toThrow(
-      'ANTHROPIC_API_KEY not configured'
+      'No AI backend configured'
     )
   })
 
