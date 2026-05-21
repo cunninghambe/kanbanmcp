@@ -44,6 +44,22 @@ vi.mock('../src/lib/db', () => ({
   default: mockPrisma,
 }))
 
+// ─── Mock claude-mcp-registry ─────────────────────────────────────────────────
+const mockEnsureProjectDirectory = vi.fn()
+const mockUpsertProject = vi.fn()
+const mockReloadClaudeMcp = vi.fn()
+
+vi.mock('../src/lib/claude-mcp-registry', () => ({
+  ensureProjectDirectory: (...args: unknown[]) => mockEnsureProjectDirectory(...args),
+  upsertProject: (...args: unknown[]) => mockUpsertProject(...args),
+  reloadClaudeMcp: (...args: unknown[]) => mockReloadClaudeMcp(...args),
+  readRegistry: vi.fn().mockResolvedValue({}),
+  writeRegistry: vi.fn(),
+  __setProjectsJsonPathForTests: vi.fn(),
+  PROJECTS_JSON_PATH: '/tmp/test-projects.json',
+  CLAUDE_MCP_PROCESS_NAME: 'claude-mcp',
+}))
+
 function makeRequest(url: string, method: string, body?: unknown): NextRequest {
   return new NextRequest(url, {
     method,
@@ -277,5 +293,100 @@ describe('POST /api/orgs/[orgId]/boards', () => {
     const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', { name: 'New Board' })
     const res = await POST(req, { params: Promise.resolve({ orgId: 'org-1' }) })
     expect(res.status).toBe(403)
+  })
+
+  it('POST with repoPath calls registry helpers and returns claudeRegistration: ok:true', async () => {
+    mockEnsureProjectDirectory.mockResolvedValue(undefined)
+    mockUpsertProject.mockResolvedValue(undefined)
+    mockReloadClaudeMcp.mockResolvedValue(undefined)
+    mockPrisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Test Org' })
+    const newBoard = { id: 'board-3', orgId: 'org-1', name: 'Claude Board', createdAt: new Date() }
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) =>
+        fn({
+          board: { create: vi.fn().mockResolvedValue(newBoard) },
+          column: {
+            create: vi.fn().mockImplementation(
+              ({ data }: { data: { name: string; position: number } }) =>
+                Promise.resolve({ id: `col-${data.position}`, ...data, boardId: 'board-3' })
+            ),
+          },
+        } as unknown as typeof mockPrisma)
+    )
+
+    const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
+    const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', {
+      name: 'Claude Board',
+      repoPath: '/opt/claude-board',
+    })
+    const res = await POST(req, { params: Promise.resolve({ orgId: 'org-1' }) })
+    expect(res.status).toBe(201)
+    const body = await res.json() as {
+      board: { name: string }
+      claudeRegistration: { ok: boolean; project: string; path: string }
+    }
+    expect(body.board.name).toBe('Claude Board')
+    expect(body.claudeRegistration).toEqual({ ok: true, project: 'claude-board', path: '/opt/claude-board' })
+    expect(mockEnsureProjectDirectory).toHaveBeenCalledWith('/opt/claude-board', 'main')
+    expect(mockUpsertProject).toHaveBeenCalledWith('claude-board', '/opt/claude-board', 'main')
+    expect(mockReloadClaudeMcp).toHaveBeenCalled()
+  })
+
+  it('POST without repoPath returns NO claudeRegistration field', async () => {
+    mockPrisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Test Org' })
+    const newBoard = { id: 'board-4', orgId: 'org-1', name: 'Plain Board', createdAt: new Date() }
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) =>
+        fn({
+          board: { create: vi.fn().mockResolvedValue(newBoard) },
+          column: {
+            create: vi.fn().mockImplementation(
+              ({ data }: { data: { name: string; position: number } }) =>
+                Promise.resolve({ id: `col-${data.position}`, ...data, boardId: 'board-4' })
+            ),
+          },
+        } as unknown as typeof mockPrisma)
+    )
+
+    const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
+    const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', { name: 'Plain Board' })
+    const res = await POST(req, { params: Promise.resolve({ orgId: 'org-1' }) })
+    expect(res.status).toBe(201)
+    const body = await res.json() as Record<string, unknown>
+    expect(body.board).toBeDefined()
+    expect('claudeRegistration' in body).toBe(false)
+  })
+
+  it('POST with repoPath that throws during registration returns claudeRegistration:ok:false but still creates board', async () => {
+    mockEnsureProjectDirectory.mockRejectedValue(new Error('git init failed'))
+    mockPrisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Test Org' })
+    const newBoard = { id: 'board-5', orgId: 'org-1', name: 'Fail Board', createdAt: new Date() }
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) =>
+        fn({
+          board: { create: vi.fn().mockResolvedValue(newBoard) },
+          column: {
+            create: vi.fn().mockImplementation(
+              ({ data }: { data: { name: string; position: number } }) =>
+                Promise.resolve({ id: `col-${data.position}`, ...data, boardId: 'board-5' })
+            ),
+          },
+        } as unknown as typeof mockPrisma)
+    )
+
+    const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
+    const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', {
+      name: 'Fail Board',
+      repoPath: '/opt/fail-board',
+    })
+    const res = await POST(req, { params: Promise.resolve({ orgId: 'org-1' }) })
+    expect(res.status).toBe(201)
+    const body = await res.json() as {
+      board: { name: string }
+      claudeRegistration: { ok: boolean; error: string }
+    }
+    expect(body.board).toBeDefined()
+    expect(body.claudeRegistration.ok).toBe(false)
+    expect(body.claudeRegistration.error).toContain('git init failed')
   })
 })

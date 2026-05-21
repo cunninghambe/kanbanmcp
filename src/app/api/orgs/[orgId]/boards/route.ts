@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
+import { slugifyBoardName } from '@/lib/card-execution/projects'
+import { ensureProjectDirectory, upsertProject, reloadClaudeMcp } from '@/lib/claude-mcp-registry'
 
 const createBoardSchema = z.object({
   name: z.string().min(1, 'Board name is required').max(255),
+  repoPath: z.string().min(1).optional(),
 })
+
+type ClaudeRegistration =
+  | { ok: true; project: string; path: string }
+  | { ok: false; error: string }
 
 const DEFAULT_COLUMNS = [
   { name: 'Backlog', position: 0 },
@@ -94,7 +101,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ orgId: str
       return [newBoard, ...newColumns]
     })
 
-    return NextResponse.json({ board, columns }, { status: 201 })
+    const slug = slugifyBoardName(result.data.name)
+    let claudeRegistration: ClaudeRegistration | undefined
+
+    if (result.data.repoPath && slug) {
+      try {
+        await ensureProjectDirectory(result.data.repoPath, 'main')
+        await upsertProject(slug, result.data.repoPath, 'main')
+        await reloadClaudeMcp()
+        claudeRegistration = { ok: true, project: slug, path: result.data.repoPath }
+      } catch (regErr) {
+        const msg = regErr instanceof Error ? regErr.message : String(regErr)
+        console.error('POST /api/orgs/[orgId]/boards: claude registration failed:', msg)
+        claudeRegistration = { ok: false, error: msg }
+      }
+    }
+
+    return NextResponse.json(
+      claudeRegistration !== undefined
+        ? { board, columns, claudeRegistration }
+        : { board, columns },
+      { status: 201 }
+    )
   } catch (err) {
     if (err instanceof NextResponse) return err
     console.error('POST /api/orgs/[orgId]/boards error:', err)

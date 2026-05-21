@@ -43,7 +43,9 @@ export function DesignSidebar() {
 
   const [creatingBoard, setCreatingBoard] = useState(false)
   const [newBoardName, setNewBoardName] = useState('')
+  const [newBoardRepoPath, setNewBoardRepoPath] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
+  const [claudeRegError, setClaudeRegError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
@@ -54,22 +56,33 @@ export function DesignSidebar() {
     if (!name || !org) return
     setSubmitting(true)
     setCreateError(null)
+    setClaudeRegError(null)
     try {
+      const payload: { name: string; repoPath?: string } = { name }
+      const repoPath = newBoardRepoPath.trim()
+      if (repoPath) payload.repoPath = repoPath
       const res = await fetch(`/api/orgs/${org.id}/boards`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         setCreateError(body.error ?? res.statusText)
         return
       }
-      const { board } = (await res.json()) as { board: { id: string } }
+      const responseBody = (await res.json()) as {
+        board: { id: string }
+        claudeRegistration?: { ok: boolean; error?: string }
+      }
+      if (responseBody.claudeRegistration?.ok === false) {
+        setClaudeRegError(responseBody.claudeRegistration.error ?? 'Claude registration failed')
+      }
       setNewBoardName('')
+      setNewBoardRepoPath('')
       setCreatingBoard(false)
       mutateBoards()
-      router.push(`/board/${board.id}`)
+      router.push(`/board/${responseBody.board.id}`)
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create board')
     } finally {
@@ -185,6 +198,15 @@ export function DesignSidebar() {
             style={{ fontSize: 12, height: 28 }}
             aria-label="New board name"
           />
+          <input
+            type="text"
+            placeholder="repo path (optional, e.g. /opt/board-name)"
+            value={newBoardRepoPath}
+            onChange={(e) => setNewBoardRepoPath(e.target.value)}
+            className="km-input"
+            style={{ fontSize: 12, height: 28 }}
+            aria-label="Repo path for Claude project"
+          />
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               type="submit"
@@ -199,7 +221,9 @@ export function DesignSidebar() {
               onClick={() => {
                 setCreatingBoard(false)
                 setNewBoardName('')
+                setNewBoardRepoPath('')
                 setCreateError(null)
+                setClaudeRegError(null)
               }}
               className="km-btn km-btn--ghost km-btn--sm"
             >
@@ -213,6 +237,15 @@ export function DesignSidebar() {
               role="alert"
             >
               {createError}
+            </div>
+          )}
+          {claudeRegError && (
+            <div
+              className="km-mono"
+              style={{ fontSize: 10, color: 'var(--warn)', letterSpacing: '0.04em' }}
+              role="alert"
+            >
+              claude reg failed: {claudeRegError}
             </div>
           )}
         </form>

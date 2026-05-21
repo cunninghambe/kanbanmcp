@@ -8,11 +8,13 @@ import { Filter, Plus } from 'lucide-react'
 import { useBoard } from '@/hooks/useBoard'
 import { useRealtime } from '@/hooks/useRealtime'
 import { useSession } from '@/hooks/useSession'
+import { useClaudeProjects } from '@/hooks/useClaudeProjects'
 import { Topbar } from '@/components/design/Topbar'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import { CardModal } from '@/components/board/CardModal'
 import { BoardFilters, filterCards, EMPTY_FILTERS } from '@/components/board/BoardFilters'
 import { NewCardModal } from '@/components/board/NewCardModal'
+import { slugifyBoardName } from '@/lib/card-execution/projects'
 import type { FilterState } from '@/components/board/BoardFilters'
 import type { Card, Label, User } from '@/types'
 
@@ -35,11 +37,18 @@ export default function BoardPage() {
 
   useRealtime({ boardId })
 
+  const { projects: claudeProjects, mutate: mutateClaudeProjects } = useClaudeProjects()
+  const isRegistered = board ? claudeProjects.includes(slugifyBoardName(board.name)) : true
+
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS)
   const [newCardOpen, setNewCardOpen] = useState(false)
+  const [registerModalOpen, setRegisterModalOpen] = useState(false)
+  const [registerRepoPath, setRegisterRepoPath] = useState('')
+  const [registerError, setRegisterError] = useState<string | null>(null)
+  const [registerSubmitting, setRegisterSubmitting] = useState(false)
 
   // Fetch org members for filter + new-card modal
   const { data: membersData } = useSWR(
@@ -115,6 +124,33 @@ export default function BoardPage() {
     setSearchQuery('')
   }
 
+  async function handleRegisterProject(e: React.FormEvent) {
+    e.preventDefault()
+    const repoPath = registerRepoPath.trim()
+    if (!repoPath) return
+    setRegisterSubmitting(true)
+    setRegisterError(null)
+    try {
+      const res = await fetch(`/api/boards/${boardId}/register-claude-project`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoPath }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        setRegisterError(body.error ?? res.statusText)
+        return
+      }
+      await mutateClaudeProjects()
+      setRegisterModalOpen(false)
+      setRegisterRepoPath('')
+    } catch (err) {
+      setRegisterError(err instanceof Error ? err.message : 'Registration failed')
+    } finally {
+      setRegisterSubmitting(false)
+    }
+  }
+
   // Apply filters + search to produce filtered columns
   type RichCard = Card & { labels?: { label: Label }[]; assignee?: User | null; priority?: string | null }
   const filteredColumns = useMemo(() => {
@@ -159,6 +195,16 @@ export default function BoardPage() {
 
   const topbarRight = (
     <div className="flex items-center gap-2">
+      {!isRegistered && (
+        <button
+          className="km-btn km-mono"
+          onClick={() => setRegisterModalOpen(true)}
+          aria-label="Register Claude project"
+          style={{ color: 'var(--warn)', fontSize: 11 }}
+        >
+          register claude project
+        </button>
+      )}
       <button
         className={`km-btn${filterOpen ? ' km-btn--primary' : ''}`}
         aria-label="Toggle filters"
@@ -237,6 +283,83 @@ export default function BoardPage() {
           onClose={() => setNewCardOpen(false)}
           onCreated={() => mutate()}
         />
+      )}
+
+      {registerModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Register Claude project"
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 100,
+          }}
+        >
+          <form
+            onSubmit={handleRegisterProject}
+            style={{
+              background: 'var(--bg-1)',
+              border: '1px solid var(--line)',
+              borderRadius: 6,
+              padding: 24,
+              width: 360,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
+            <div className="km-mono" style={{ fontSize: 12, color: 'var(--fg-0)' }}>
+              register claude project
+            </div>
+            <div className="km-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+              project slug: {slugifyBoardName(board?.name ?? '')}
+            </div>
+            <label htmlFor="register-repo-path" style={{ fontSize: 12, color: 'var(--fg-2)' }}>
+              repo path
+            </label>
+            <input
+              id="register-repo-path"
+              type="text"
+              placeholder="e.g. /opt/my-project"
+              value={registerRepoPath}
+              onChange={(e) => setRegisterRepoPath(e.target.value)}
+              className="km-input"
+              style={{ fontSize: 12, height: 32 }}
+              autoFocus
+            />
+            {registerError && (
+              <div
+                className="km-mono"
+                style={{ fontSize: 10, color: 'var(--err)' }}
+                role="alert"
+              >
+                {registerError}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="km-btn km-btn--ghost km-btn--sm"
+                onClick={() => {
+                  setRegisterModalOpen(false)
+                  setRegisterRepoPath('')
+                  setRegisterError(null)
+                }}
+              >
+                cancel
+              </button>
+              <button
+                type="submit"
+                disabled={registerSubmitting || !registerRepoPath.trim()}
+                className="km-btn km-btn--primary km-btn--sm"
+              >
+                {registerSubmitting ? 'registering…' : 'register'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </>
   )
