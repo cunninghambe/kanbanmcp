@@ -274,6 +274,17 @@
 }
 .km-input:focus { outline: 1px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
 
+/* Force <option> popup to match the token theme — without this, browsers
+   render the option list with the OS native background, which clashes
+   badly in dark mode (light-grey text on white). Applied globally to all
+   <option> elements since there's no legitimate case for per-select
+   option theming. Chrome/Firefox respect this; Safari falls back to
+   the native control. */
+option {
+  background: var(--bg-2);
+  color: var(--fg-1);
+}
+
 /* ---- kanban card ---- */
 .km-kc {
   background: var(--bg-2);
