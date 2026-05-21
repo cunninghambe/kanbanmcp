@@ -54,13 +54,19 @@ export function KanbanBoard({ columns, onCardClick, onCardHover, onMoveCard, onA
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="flex gap-4 overflow-x-auto pb-4 h-full">
+      <div
+        className="flex overflow-x-auto h-full"
+        style={{ gap: 12, padding: 16, background: 'var(--bg-0)', alignItems: 'flex-start' }}
+      >
         {columns.map((col) => (
           <KanbanColumn key={col.id} column={col} onCardClick={onCardClick} onCardHover={onCardHover} onAddCard={onAddCard} />
         ))}
         {columns.length === 0 && (
-          <div className="flex items-center justify-center w-full text-slate-400 text-sm">
-            No columns found
+          <div
+            className="flex items-center justify-center w-full km-mono"
+            style={{ color: 'var(--fg-3)', fontSize: 12 }}
+          >
+            no columns found
           </div>
         )}
       </div>

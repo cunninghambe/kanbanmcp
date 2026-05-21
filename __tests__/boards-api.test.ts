@@ -238,6 +238,35 @@ describe('POST /api/orgs/[orgId]/boards', () => {
     expect(Array.isArray(body.columns)).toBe(true)
   })
 
+  it('creates exactly 5 columns in canonical order: Backlog(0), In Progress(1), Review(2), Blocked(3), Done(4)', async () => {
+    // Given — org exists, transaction mock captures column.create calls
+    mockPrisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Test Org' })
+    const newBoard = { id: 'board-2', orgId: 'org-1', name: 'AC10 Board', createdAt: new Date() }
+    const columnCreateSpy = vi.fn().mockImplementation(
+      ({ data }: { data: { name: string; position: number } }) =>
+        Promise.resolve({ id: `col-${data.position}`, ...data, boardId: 'board-2' })
+    )
+    mockPrisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof mockPrisma) => Promise<unknown>) =>
+        fn({ board: { create: vi.fn().mockResolvedValue(newBoard) }, column: { create: columnCreateSpy } } as unknown as typeof mockPrisma)
+    )
+
+    // When
+    const { POST } = await import('../src/app/api/orgs/[orgId]/boards/route')
+    const req = makeRequest('http://localhost/api/orgs/org-1/boards', 'POST', { name: 'AC10 Board' })
+    const res = await POST(req, { params: Promise.resolve({ orgId: 'org-1' }) })
+
+    // Then — response is 201 with exactly 5 columns in canonical order
+    expect(res.status).toBe(201)
+    const body = await res.json() as { board: { name: string }; columns: { name: string; position: number }[] }
+    expect(body.columns).toHaveLength(5)
+    expect(body.columns[0]).toMatchObject({ name: 'Backlog', position: 0 })
+    expect(body.columns[1]).toMatchObject({ name: 'In Progress', position: 1 })
+    expect(body.columns[2]).toMatchObject({ name: 'Review', position: 2 })
+    expect(body.columns[3]).toMatchObject({ name: 'Blocked', position: 3 })
+    expect(body.columns[4]).toMatchObject({ name: 'Done', position: 4 })
+  })
+
   it('returns 403 when user lacks ADMIN role', async () => {
     mockPrisma.orgMember.findUnique.mockResolvedValue({
       userId: 'user-1',

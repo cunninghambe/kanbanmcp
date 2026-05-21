@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import type { AssignmentCard } from '@/app/api/me/assignments/route'
 
+export { type AssignmentCard }
 export const ASSIGNMENTS_SWR_KEY = '/api/me/assignments'
 
 const fetcher = (url: string) =>
@@ -13,12 +13,33 @@ const fetcher = (url: string) =>
     return r.json()
   })
 
-type AssignmentsData = {
+export type AssignmentsData = {
   asAssignee: AssignmentCard[]
   asReviewer: AssignmentCard[]
   asApprover: AssignmentCard[]
   overdue: AssignmentCard[]
 }
+
+/**
+ * Data hook for the dashboard assignment queues.
+ * Returns structured assignment data fetched from /api/me/assignments.
+ * Refreshes every 30 seconds.
+ */
+export function useAssignments(): {
+  data: AssignmentsData | undefined
+  isLoading: boolean
+  error: Error | undefined
+} {
+  const { data, error, isLoading } = useSWR<AssignmentsData>(ASSIGNMENTS_SWR_KEY, fetcher, {
+    refreshInterval: 30_000,
+  })
+  return { data, isLoading, error }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy accordion widget — preserved for test compatibility.
+// The Phase 3 dashboard page uses useAssignments() + QueueTable instead.
+// ---------------------------------------------------------------------------
 
 function Section({
   title,
@@ -98,6 +119,11 @@ interface AssignmentWidgetProps {
   onCardClick: (boardId: string, cardId: string) => void
 }
 
+/**
+ * Legacy assignment widget — three collapsible sections.
+ * Kept for backward compatibility; the Phase 3 dashboard uses
+ * useAssignments() + QueueTable for the restyled view.
+ */
 export function AssignmentWidget({ onCardClick }: AssignmentWidgetProps) {
   const { data, error, isLoading } = useSWR<AssignmentsData>(ASSIGNMENTS_SWR_KEY, fetcher, {
     refreshInterval: 30_000,
@@ -132,22 +158,9 @@ export function AssignmentWidget({ onCardClick }: AssignmentWidgetProps) {
 
   return (
     <div className="space-y-3">
-      <Section
-        title="Needs your action"
-        cards={needsAction}
-        onCardClick={handleClick}
-      />
-      <Section
-        title="Assigned to you"
-        cards={data.asAssignee}
-        onCardClick={handleClick}
-      />
-      <Section
-        title="Overdue"
-        cards={data.overdue}
-        overdue
-        onCardClick={handleClick}
-      />
+      <Section title="Needs your action" cards={needsAction} onCardClick={handleClick} />
+      <Section title="Assigned to you" cards={data.asAssignee} onCardClick={handleClick} />
+      <Section title="Overdue" cards={data.overdue} overdue onCardClick={handleClick} />
     </div>
   )
 }

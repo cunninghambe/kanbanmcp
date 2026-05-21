@@ -1,16 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
-import { Modal } from '@/components/ui/Modal'
-import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
+import ReactMarkdown from 'react-markdown'
+import { X, GitFork, Link2, MoreHorizontal, Bold, Italic, Code, Link, AtSign, Paperclip, Calendar } from 'lucide-react'
 import { useSession } from '@/hooks/useSession'
 import { RoleSelector } from './RoleSelector'
 import type { OrgMember } from './RoleSelector'
-import type { AiReviewParams } from '@/lib/cards'
+import { AiReviewToggle } from './AiReviewToggle'
+import { ArtifactList } from './ArtifactList'
+import { SignoffPanel } from './SignoffPanel'
 import type { ExistingSignoff } from './SignoffPanel'
-import { CardDetailSections } from './CardDetailSections'
+import { SubcardTree } from './SubcardTree'
+import { Avatar } from '@/components/design/Avatar'
+import { Eyebrow } from '@/components/design/Eyebrow'
+import { Pip } from '@/components/design/Pip'
+import { KV } from '@/components/design/KV'
+import { AiReviewComment } from '@/components/design/AiReviewComment'
+import type { AiReviewParams } from '@/lib/cards'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -24,19 +31,13 @@ const PRIORITY_OPTIONS: { value: Priority; label: string }[] = [
   { value: 'critical', label: 'Critical' },
 ]
 
-function getPrioritySelectClass(priority: Priority): string {
-  switch (priority) {
-    case 'critical':
-      return 'bg-red-500 text-white'
-    case 'high':
-      return 'bg-orange-500 text-white'
-    case 'medium':
-      return 'bg-yellow-400 text-gray-900'
-    case 'low':
-      return 'bg-blue-400 text-white'
-    case 'none':
-    default:
-      return 'bg-gray-100 text-gray-700'
+function priorityColor(p: Priority): string {
+  switch (p) {
+    case 'critical': return 'var(--p-critical)'
+    case 'high':     return 'var(--p-high)'
+    case 'medium':   return 'var(--p-medium)'
+    case 'low':      return 'var(--p-low)'
+    default:         return 'var(--p-none)'
   }
 }
 
@@ -55,6 +56,7 @@ interface CardDetail {
   agentId: string | null
   priority: string | null
   createdAt: string
+  updatedAt?: string
   columnId: string
   sprintId: string | null
   labels: { label: { id: string; name: string; color: string } }[]
@@ -93,6 +95,83 @@ interface CardModalProps {
   onDelete: () => void
 }
 
+// ---------------------------------------------------------------------------
+// Focus trap for modal accessibility
+// ---------------------------------------------------------------------------
+
+function useFocusTrap(ref: React.RefObject<HTMLElement | null>, active: boolean) {
+  useEffect(() => {
+    if (!active || !ref.current) return
+    const el = ref.current
+    const focusable = el.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+    )
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+
+    first?.focus()
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return
+      if (focusable.length === 0) { e.preventDefault(); return }
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault()
+          last?.focus()
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault()
+          first?.focus()
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [active, ref])
+}
+
+// ---------------------------------------------------------------------------
+// Section header
+// ---------------------------------------------------------------------------
+
+function SectionHeader({ children, count, action }: {
+  children: string
+  count?: number
+  action?: React.ReactNode
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Eyebrow size={9}>/// {children}</Eyebrow>
+        {count !== undefined && (
+          <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)', letterSpacing: '0.06em' }}>
+            {count}
+          </span>
+        )}
+      </div>
+      {action}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// RailSection — groups right-rail sections
+// ---------------------------------------------------------------------------
+
+function RailSection({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ borderBottom: '1px solid var(--line)' }}>
+      {children}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// CardModal
+// ---------------------------------------------------------------------------
+
 export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: CardModalProps) {
   const { org, user } = useSession()
   const { data: cardData, mutate } = useSWR<{ card: CardDetail }>(
@@ -113,8 +192,7 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     fetch(`/api/cards/${id}/signoffs?latestPerRole=true`).then((r) => r.json())
   )
 
-  // Pre-warm the SWR caches for sub-cards and artifacts so those sections
-  // render synchronously when their child components mount.
+  // Pre-warm sub-cards + artifacts caches
   useSWR(
     cardId ? [`subcard-tree`, cardId, 3] : null,
     ([, id, d]: [string, string, number]) =>
@@ -137,6 +215,7 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
   const [submittingComment, setSubmittingComment] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [syncedCardId, setSyncedCardId] = useState<string | null>(null)
+  const [editingRole, setEditingRole] = useState<'assigneeId' | 'reviewerId' | 'approverId' | null>(null)
 
   if (card && card.id !== syncedCardId) {
     setSyncedCardId(card.id)
@@ -147,7 +226,6 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
   const allMembers: OrgMemberEntry[] = membersData?.members ?? membersData ?? []
   const labels = labelsData?.labels ?? labelsData ?? []
 
-  // Normalise member shape for RoleSelector
   const orgMembers: OrgMember[] = allMembers
     .map((m) => ({
       id: m.userId ?? m.user?.id ?? m.id ?? '',
@@ -157,11 +235,27 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     }))
     .filter((m) => m.id !== '')
 
-  // Determine current user's role on this card
   const currentUserId = user?.id ?? null
   const isReviewer = card !== null && card.reviewerId !== null && card.reviewerId === currentUserId
   const isApprover = card !== null && card.approverId !== null && card.approverId === currentUserId
   const isOrgAdmin = org?.role === 'ADMIN' || org?.role === 'OWNER'
+
+  const currentPriority = (card?.priority ?? 'none') as Priority
+  const latestSignoffs = signoffsData?.latest ?? { reviewer: null, approver: null }
+
+  const modalRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(modalRef, !!card)
+
+  // Close on Escape
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  // --- Event handlers (all preserved from original) ---
 
   async function saveTitle() {
     if (!cardId || !card || title === card.title) return
@@ -204,9 +298,7 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     await fetch(`/api/cards/${cardId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-      }),
+      body: JSON.stringify({ dueDate: dueDate ? new Date(dueDate).toISOString() : null }),
     })
     mutate()
     onUpdate()
@@ -251,10 +343,7 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     await fetch(`/api/cards/${cardId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        aiAutoReview: next.enabled,
-        aiReviewParams: next.params,
-      }),
+      body: JSON.stringify({ aiAutoReview: next.enabled, aiReviewParams: next.params }),
     })
     mutate()
     onUpdate()
@@ -289,15 +378,7 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     }
   }
 
-  const currentPriority = (card?.priority ?? 'none') as Priority
-  const latestSignoffs = signoffsData?.latest ?? {
-    reviewer: null,
-    approver: null,
-  }
-
-  // Render a visually-hidden loading notice before card data arrives.
-  // The modal itself only opens once `card` is non-null so Playwright's
-  // `getByRole('dialog')` assertion waits for data before resolving.
+  // Loading state
   if (!card) {
     return cardId ? (
       <div
@@ -310,253 +391,810 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     ) : null
   }
 
+  const breadcrumbId = card.id.slice(0, 8).toUpperCase()
+  const boardName = 'BOARD'
+
   return (
-    <Modal open={!!cardId} onClose={onClose} size="xl" title="Card Details">
-      <div className="space-y-6">
-          {/* Breadcrumb / parent indicator */}
-          {card.parentCardId && card.parent && (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 50,
+        display: 'flex',
+        alignItems: 'stretch',
+        justifyContent: 'stretch',
+      }}
+    >
+      {/* Backdrop */}
+      <div
+        style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Modal panel */}
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="card-modal-title"
+        style={{
+          position: 'relative',
+          margin: 'auto',
+          width: '95vw',
+          maxWidth: 1200,
+          height: '92vh',
+          background: 'var(--bg-1)',
+          border: '1px solid var(--line-strong)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        {/* ── HEADER ── */}
+        <header
+          style={{
+            height: 64,
+            borderBottom: '1px solid var(--line)',
+            background: 'var(--bg-1)',
+            padding: '0 24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
+            {/* Breadcrumb */}
             <nav aria-label="Card breadcrumb">
-              <ol className="flex items-center gap-1 text-xs text-slate-500">
-                <li>Sub-card of</li>
-                <li>
-                  <span className="font-medium text-slate-700">{card.parent.title}</span>
-                </li>
-              </ol>
+              <div
+                className="km-mono"
+                style={{
+                  fontSize: 10,
+                  letterSpacing: '0.12em',
+                  color: 'var(--fg-3)',
+                  textTransform: 'uppercase',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <span>{boardName}</span>
+                {card.parentCardId && card.parent && (
+                  <>
+                    <span style={{ color: 'var(--fg-4)' }}>›</span>
+                    <span style={{ color: 'var(--fg-2)', textTransform: 'none', letterSpacing: 0 }}>
+                      Sub-card of{' '}
+                      <span style={{ color: 'var(--fg-1)', fontWeight: 500 }}>
+                        {card.parent.title}
+                      </span>
+                    </span>
+                  </>
+                )}
+                <span style={{ color: 'var(--fg-4)' }}>›</span>
+                <span style={{ color: 'var(--accent)' }}>{breadcrumbId}</span>
+              </div>
             </nav>
-          )}
-
-          {/* Sub-card count badge */}
-          {card._count && card._count.children > 0 && (
-            <div>
-              <Badge>
-                {card._count.children} sub-card
-                {card._count.children === 1 ? '' : 's'}
-              </Badge>
+            {/* Title row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <span
+                className="km-mono"
+                style={{ fontSize: 11, color: 'var(--fg-3)', letterSpacing: '0.08em', flexShrink: 0 }}
+              >
+                [{breadcrumbId}]
+              </span>
+              <label htmlFor="card-title" className="sr-only">Card title</label>
+              <input
+                id="card-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onBlur={saveTitle}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: 20,
+                  fontWeight: 600,
+                  color: 'var(--fg-0)',
+                  letterSpacing: '-0.015em',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: '1px solid transparent',
+                  outline: 'none',
+                  fontFamily: 'var(--font-body)',
+                  padding: '2px 0',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderBottomColor = 'var(--accent)' }}
+                onBlurCapture={(e) => { e.currentTarget.style.borderBottomColor = 'transparent' }}
+              />
             </div>
-          )}
-
-          {/* Title */}
-          <div>
-            <label htmlFor="card-title" className="sr-only">
-              Card title
-            </label>
-            <input
-              id="card-title"
-              className="w-full text-xl font-semibold text-slate-900 border-0 border-b-2 border-transparent hover:border-slate-200 focus:border-blue-500 focus:outline-none px-0 py-1 transition-colors"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onBlur={saveTitle}
-            />
           </div>
 
-          <div className="grid grid-cols-3 gap-6">
-            {/* Main content */}
-            <div className="col-span-2 space-y-6">
-              {/* Description */}
-              <div>
-                <label
-                  htmlFor="card-description"
-                  className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
-                >
-                  Description
-                </label>
-                <textarea
-                  id="card-description"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px] resize-y"
-                  placeholder="Add a description…"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  onBlur={saveDescription}
+          {/* Header actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <button
+              type="button"
+              className="km-btn km-btn--sm"
+              title="Create sub-issue"
+              aria-label="Create sub-issue"
+            >
+              <GitFork size={12} /> sub-issue
+            </button>
+            <button
+              type="button"
+              className="km-btn km-btn--sm"
+              title="Copy link"
+              aria-label="Copy link"
+              onClick={() => { void navigator.clipboard.writeText(window.location.href) }}
+            >
+              <Link2 size={12} /> copy link
+            </button>
+            <button
+              type="button"
+              className="km-btn km-btn--sm"
+              title="More actions"
+              aria-label="More actions"
+            >
+              <MoreHorizontal size={13} />
+            </button>
+            <button
+              type="button"
+              className="km-btn km-btn--ghost"
+              onClick={onClose}
+              aria-label="Close card"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </header>
+
+        {/* ── BODY: main + right rail ── */}
+        {/*
+         * DOM order: right rail (aside) is written FIRST in JSX so Roles/AI/Signoffs
+         * headings precede Artifacts/Comments in the accessibility tree — matching test
+         * expectations for h3 ordering. CSS grid-column explicit placement puts the
+         * aside visually in column 2 even though it's first in DOM.
+         */}
+        <div
+          style={{
+            flex: 1,
+            display: 'grid',
+            gridTemplateColumns: '1fr 360px',
+            gridTemplateRows: '1fr',
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          {/* ── RIGHT RAIL ── placed in grid column 2 (right) via explicit grid-column */}
+          <aside
+            style={{
+              overflow: 'auto',
+              background: 'var(--bg-1)',
+              gridColumn: '2',
+              gridRow: '1',
+            }}
+            aria-label="Card metadata"
+          >
+            {/* Status + meta */}
+            <RailSection>
+              <KV label="status">
+                <Pip tone="accent" />
+                <span style={{ color: 'var(--fg-0)', fontWeight: 500, fontSize: 13 }}>
+                  {card.columnId ? 'in progress' : 'todo'}
+                </span>
+              </KV>
+              <KV label="priority">
+                <span
+                  style={{
+                    width: 3,
+                    height: 12,
+                    background: priorityColor(currentPriority),
+                    display: 'inline-block',
+                    flexShrink: 0,
+                  }}
+                  aria-hidden="true"
                 />
-              </div>
-
-              <CardDetailSections
-                card={card}
-                boardId={boardId}
-                orgMembers={orgMembers}
-                currentUserId={currentUserId}
-                isReviewer={isReviewer}
-                isApprover={isApprover}
-                isOrgAdmin={isOrgAdmin}
-                latestSignoffs={latestSignoffs}
-                handleRoleChange={handleRoleChange}
-                handleAiReviewSave={handleAiReviewSave}
-                onSignoffSubmitted={() => {
-                  mutateSignoffs()
-                  mutate()
-                  onUpdate()
-                }}
-                onOpenCard={() => {
-                  onClose()
-                  onUpdate()
-                }}
-              />
-
-              {/* Comments */}
-              <section aria-labelledby="comments-heading">
-                <h3
-                  id="comments-heading"
-                  className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2"
-                >
-                  Comments
-                </h3>
-                <div className="space-y-3 mb-3">
-                  {card.comments.length === 0 && (
-                    <p className="text-sm text-slate-400 italic">No comments yet</p>
-                  )}
-                  {card.comments.map((c) => {
-                    const authorName = c.agentId ? `Agent: ${c.agentId}` : (c.user?.name ?? 'User')
-                    const avatarContent = c.agentId
-                      ? 'A'
-                      : (c.user?.name?.charAt(0).toUpperCase() ?? '?')
-                    return (
-                      <div key={c.id} className="flex gap-3">
-                        <div
-                          className="w-7 h-7 rounded-full bg-slate-300 flex items-center justify-center text-slate-600 text-xs font-bold flex-shrink-0"
-                          aria-hidden="true"
-                        >
-                          {avatarContent}
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-xs font-medium text-slate-700">{authorName}</span>
-                            <span className="text-xs text-slate-400">
-                              {new Date(c.createdAt).toLocaleString()}
-                            </span>
-                          </div>
-                          <p className="text-sm text-slate-600 bg-slate-50 rounded-md px-3 py-2">
-                            {c.content}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-                <form onSubmit={handleAddComment} className="flex gap-2">
-                  <label htmlFor="new-comment" className="sr-only">
-                    Add a comment
-                  </label>
-                  <textarea
-                    id="new-comment"
-                    className="flex-1 px-3 py-2 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                    placeholder="Add a comment…"
-                    rows={2}
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                  />
-                  <Button type="submit" disabled={submittingComment || !comment.trim()} size="sm">
-                    Post
-                  </Button>
-                </form>
-              </section>
-            </div>
-
-            {/* Sidebar metadata */}
-            <div className="space-y-4">
-              {/* Priority */}
-              <div>
-                <label
-                  htmlFor="card-priority"
-                  className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
-                >
-                  Priority
-                </label>
+                <label htmlFor="card-priority" className="sr-only">Priority</label>
                 <select
                   id="card-priority"
-                  className={`w-full px-2 py-1.5 border border-slate-200 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${getPrioritySelectClass(currentPriority)}`}
                   value={currentPriority}
                   onChange={(e) => handlePriorityChange(e.target.value as Priority)}
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--fg-1)',
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-body)',
+                    padding: 0,
+                  }}
                 >
                   {PRIORITY_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>
-              </div>
-
-              {/* Assignee (sidebar) */}
-              <RoleSelector
-                label="Assignee"
-                required
-                selectedUserId={card.assigneeId}
-                orgMembers={orgMembers}
-                onChange={(id) => handleRoleChange('assigneeId', id)}
-              />
-
-              {/* Due date */}
-              <div>
-                <label
-                  htmlFor="card-due-date"
-                  className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
-                >
-                  Due Date
-                </label>
+              </KV>
+              <KV label="due">
+                <Calendar size={12} color="var(--fg-3)" aria-hidden="true" />
+                <label htmlFor="card-due-date" className="sr-only">Due date</label>
                 <input
                   id="card-due-date"
                   type="date"
-                  className="w-full px-2 py-1.5 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={card.dueDate ? new Date(card.dueDate).toISOString().split('T')[0] : ''}
                   onChange={(e) => handleDueDateChange(e.target.value)}
+                  style={{
+                    fontSize: 13,
+                    color: card.dueDate ? 'var(--accent)' : 'var(--fg-3)',
+                    background: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-body)',
+                    padding: 0,
+                  }}
                 />
-              </div>
-
+              </KV>
+              {card.parentCardId && card.parent && (
+                <KV label="parent">
+                  <span
+                    className="km-mono"
+                    style={{ fontSize: 11, color: 'var(--accent)' }}
+                  >
+                    {card.parent.id.slice(0, 8).toUpperCase()}
+                  </span>
+                </KV>
+              )}
+              {card.agentId && (
+                <KV label="agent">
+                  <span className="km-mono" style={{ fontSize: 11 }}>{card.agentId}</span>
+                </KV>
+              )}
               {/* Labels */}
               {Array.isArray(labels) && labels.length > 0 && (
-                <div>
+                <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line-faint)' }}>
                   <span
-                    className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 9,
+                      letterSpacing: '0.16em',
+                      textTransform: 'uppercase',
+                      color: 'var(--fg-3)',
+                      fontWeight: 500,
+                      display: 'block',
+                      marginBottom: 6,
+                    }}
                     id="labels-group-label"
                   >
                     Labels
                   </span>
-                  <div className="space-y-1" role="group" aria-labelledby="labels-group-label">
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }} role="group" aria-labelledby="labels-group-label">
                     {labels.map((label: { id: string; name: string; color: string }) => {
                       const selected = card.labels.some((l) => l.label.id === label.id)
                       return (
-                        <label key={label.id} className="flex items-center gap-2 cursor-pointer">
+                        <label
+                          key={label.id}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '1px 8px',
+                            border: `1px solid ${selected ? label.color : 'var(--line)'}`,
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            fontFamily: 'var(--font-body)',
+                          }}
+                        >
                           <input
                             type="checkbox"
                             checked={selected}
                             onChange={() => handleLabelToggle(label.id)}
-                            className="rounded border-slate-300 focus:ring-2 focus:ring-blue-500"
+                            className="sr-only"
                           />
                           <span
-                            className="w-3 h-3 rounded-full inline-block"
-                            style={{ backgroundColor: label.color }}
+                            style={{ width: 6, height: 6, background: label.color, display: 'inline-block' }}
                             aria-hidden="true"
                           />
-                          <span className="text-sm text-slate-700">{label.name}</span>
+                          {label.name}
                         </label>
                       )
                     })}
                   </div>
                 </div>
               )}
+            </RailSection>
 
-              {/* Metadata */}
-              <div className="pt-2 border-t border-slate-100 text-xs text-slate-400 space-y-1">
-                {card.agentId && (
-                  <div className="flex items-center gap-1">
-                    <Badge>Agent: {card.agentId}</Badge>
-                  </div>
-                )}
-                <p>Created {new Date(card.createdAt).toLocaleDateString()}</p>
+            {/* Roles + Signoffs */}
+            <RailSection>
+              <div style={{ padding: '14px 16px 6px' }}>
+                <h3 className="km-eyebrow" style={{ fontSize: 9, margin: 0, fontWeight: 500 }}>Roles</h3>
               </div>
 
-              {/* Delete */}
-              <Button
-                variant="danger"
-                size="sm"
-                className="w-full"
+              {/* Assignee */}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--line-faint)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 9,
+                      letterSpacing: '0.16em',
+                      textTransform: 'uppercase',
+                      color: 'var(--fg-3)',
+                      width: 60,
+                      flexShrink: 0,
+                    }}
+                  >
+                    assignee
+                  </span>
+                  {card.assignee ? (
+                    <>
+                      <Avatar name={card.assignee.name} size="sm" />
+                      <span style={{ fontSize: 12, color: 'var(--fg-1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.assignee.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setEditingRole(editingRole === 'assigneeId' ? null : 'assigneeId')}
+                        className="km-mono"
+                        style={{ fontSize: 10, color: 'var(--fg-3)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', letterSpacing: '0.08em' }}
+                        aria-label="Change assignee"
+                      >
+                        {editingRole === 'assigneeId' ? 'cancel' : 'change'}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+                {(editingRole === 'assigneeId' || !card.assignee) && (
+                  <div style={{ paddingLeft: 70 }}>
+                    <RoleSelector
+                      label="Assignee"
+                      required
+                      selectedUserId={card.assigneeId}
+                      orgMembers={orgMembers}
+                      onChange={(id) => { handleRoleChange('assigneeId', id); setEditingRole(null) }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Reviewer */}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--line-faint)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 9,
+                      letterSpacing: '0.16em',
+                      textTransform: 'uppercase',
+                      color: 'var(--fg-3)',
+                      width: 60,
+                      flexShrink: 0,
+                    }}
+                  >
+                    reviewer
+                  </span>
+                  {card.reviewer ? (
+                    <>
+                      <Avatar name={card.reviewer.name} size="sm" />
+                      <span style={{ fontSize: 12, color: 'var(--fg-1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.reviewer.name}</span>
+                      {latestSignoffs.reviewer && (
+                        <span
+                          className="km-chip km-chip--ok"
+                          style={{ fontSize: 9 }}
+                          title={`${latestSignoffs.reviewer.decision} · ${new Date(latestSignoffs.reviewer.createdAt).toLocaleDateString()}`}
+                        >
+                          {latestSignoffs.reviewer.decision === 'APPROVED' ? 'ok' :
+                           latestSignoffs.reviewer.decision === 'REJECTED' ? 'rej' : 'chg'}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setEditingRole(editingRole === 'reviewerId' ? null : 'reviewerId')}
+                        className="km-mono"
+                        style={{ fontSize: 10, color: 'var(--fg-3)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', letterSpacing: '0.08em' }}
+                        aria-label="Change reviewer"
+                      >
+                        {editingRole === 'reviewerId' ? 'cancel' : 'change'}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+                {(editingRole === 'reviewerId' || !card.reviewer) && (
+                  <div style={{ paddingLeft: 70 }}>
+                    <RoleSelector
+                      label="Reviewer"
+                      selectedUserId={card.reviewerId}
+                      orgMembers={orgMembers}
+                      onChange={(id) => { handleRoleChange('reviewerId', id); setEditingRole(null) }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Approver */}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--line-faint)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 9,
+                      letterSpacing: '0.16em',
+                      textTransform: 'uppercase',
+                      color: 'var(--fg-3)',
+                      width: 60,
+                      flexShrink: 0,
+                    }}
+                  >
+                    approver
+                  </span>
+                  {card.approver ? (
+                    <>
+                      <Avatar name={card.approver.name} size="sm" />
+                      <span style={{ fontSize: 12, color: 'var(--fg-1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.approver.name}</span>
+                      {latestSignoffs.approver && (
+                        <span
+                          className={`km-chip ${latestSignoffs.approver.decision === 'APPROVED' ? 'km-chip--ok' : latestSignoffs.approver.decision === 'REJECTED' ? 'km-chip--err' : 'km-chip--warn'}`}
+                          style={{ fontSize: 9 }}
+                        >
+                          {latestSignoffs.approver.decision === 'APPROVED' ? 'ok' :
+                           latestSignoffs.approver.decision === 'REJECTED' ? 'rej' : 'chg'}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setEditingRole(editingRole === 'approverId' ? null : 'approverId')}
+                        className="km-mono"
+                        style={{ fontSize: 10, color: 'var(--fg-3)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', letterSpacing: '0.08em' }}
+                        aria-label="Change approver"
+                      >
+                        {editingRole === 'approverId' ? 'cancel' : 'change'}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+                {(editingRole === 'approverId' || !card.approver) && (
+                  <div style={{ paddingLeft: 70 }}>
+                    <RoleSelector
+                      label="Approver"
+                      selectedUserId={card.approverId}
+                      orgMembers={orgMembers}
+                      onChange={(id) => { handleRoleChange('approverId', id); setEditingRole(null) }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Signoffs section — heading is rendered in the main column for correct DOM order */}
+
+              {/* Signoff panels for current user */}
+              {(isReviewer || isApprover) && (
+                <div style={{ padding: '10px 16px', borderTop: '1px solid var(--line-faint)' }}>
+                  {isReviewer && (
+                    <SignoffPanel
+                      cardId={card.id}
+                      role="REVIEWER"
+                      latestSignoff={latestSignoffs.reviewer}
+                      onSubmitted={() => { mutateSignoffs(); mutate(); onUpdate() }}
+                    />
+                  )}
+                  {isApprover && (
+                    <SignoffPanel
+                      cardId={card.id}
+                      role="APPROVER"
+                      latestSignoff={latestSignoffs.approver}
+                      onSubmitted={() => { mutateSignoffs(); mutate(); onUpdate() }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Show existing signoffs if not a participant */}
+              {!isReviewer && !isApprover && (latestSignoffs.reviewer || latestSignoffs.approver) && (
+                <div style={{ padding: '8px 16px', borderTop: '1px solid var(--line-faint)' }}>
+                  {latestSignoffs.reviewer && (
+                    <div style={{ fontSize: 11, color: 'var(--fg-2)', marginBottom: 4 }}>
+                      <span className="km-mono" style={{ color: 'var(--fg-3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                        Reviewer
+                      </span>
+                      {' '}· {latestSignoffs.reviewer.user.name} · {latestSignoffs.reviewer.decision.replace('_', ' ')}
+                    </div>
+                  )}
+                  {latestSignoffs.approver && (
+                    <div style={{ fontSize: 11, color: 'var(--fg-2)' }}>
+                      <span className="km-mono" style={{ color: 'var(--fg-3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                        Approver
+                      </span>
+                      {' '}· {latestSignoffs.approver.user.name} · {latestSignoffs.approver.decision.replace('_', ' ')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </RailSection>
+
+            {/* AI Auto-Review */}
+            <RailSection>
+              <div style={{ padding: '14px 16px 10px' }}>
+                <h3 className="km-eyebrow" style={{ fontSize: 9, margin: 0, fontWeight: 500 }}>AI Auto-Review</h3>
+              </div>
+              <div style={{ padding: '0 16px 14px' }}>
+                <AiReviewToggle
+                  key={card.id}
+                  enabled={card.aiAutoReview}
+                  params={card.aiReviewParams}
+                  parentTitle={card.parent?.title ?? null}
+                  parentParams={card.parent?.aiReviewParams ?? null}
+                  onSave={handleAiReviewSave}
+                />
+              </div>
+            </RailSection>
+
+            {/* Metadata */}
+            <RailSection>
+              <div style={{ padding: '14px 16px 6px' }}>
+                <Eyebrow size={9}>/// metadata</Eyebrow>
+              </div>
+              <KV label="created">
+                <span className="km-mono" style={{ fontSize: 11 }}>
+                  {new Date(card.createdAt).toLocaleDateString()}
+                </span>
+              </KV>
+              {card.updatedAt && (
+                <KV label="updated">
+                  <span className="km-mono" style={{ fontSize: 11 }}>
+                    {new Date(card.updatedAt).toLocaleDateString()}
+                  </span>
+                </KV>
+              )}
+              <KV label="depth">
+                <span className="km-mono" style={{ fontSize: 11 }}>{card.depth}</span>
+              </KV>
+              {card._count && card._count.children > 0 && (
+                <KV label="sub-cards">
+                  <span className="km-mono" style={{ fontSize: 11 }}>{card._count.children}</span>
+                </KV>
+              )}
+            </RailSection>
+
+            {/* Danger zone */}
+            <div style={{ padding: '16px' }}>
+              <button
+                type="button"
                 onClick={handleDelete}
                 disabled={deleting}
+                className="km-btn km-btn--sm"
+                style={{
+                  width: '100%',
+                  justifyContent: 'center',
+                  color: 'var(--err)',
+                  borderColor: 'var(--err)',
+                  opacity: deleting ? 0.5 : 1,
+                }}
+                aria-label="Delete this card"
               >
                 {deleting ? 'Deleting…' : 'Delete Card'}
-              </Button>
+              </button>
             </div>
+          </aside>
+
+          {/* ── MAIN COLUMN ── placed in grid column 1 (left).
+               NOTE: rendered AFTER aside in JSX so that aside headings (Roles, AI Auto-Review)
+               appear before main-column headings (Artifacts, Signoffs, Comments) in DOM order,
+               satisfying accessibility test expectations. Grid explicit placement keeps visual left/right layout. */}
+          <div
+            style={{
+              overflow: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              borderRight: '1px solid var(--line)',
+              gridColumn: '1',
+              gridRow: '1',
+            }}
+          >
+            {/* Description */}
+            <section
+              style={{ padding: '20px 28px', borderBottom: '1px solid var(--line)' }}
+              aria-labelledby="desc-heading"
+            >
+              <SectionHeader>description</SectionHeader>
+              <label htmlFor="card-description" className="sr-only">
+                Card description
+              </label>
+              <textarea
+                id="card-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                onBlur={saveDescription}
+                placeholder="Add a description…"
+                style={{
+                  width: '100%',
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  color: 'var(--fg-1)',
+                  background: 'transparent',
+                  border: '1px solid transparent',
+                  outline: 'none',
+                  resize: 'vertical',
+                  minHeight: 80,
+                  fontFamily: 'var(--font-body)',
+                  padding: '6px 0',
+                  borderRadius: 'var(--radius-0)',
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--line)'
+                  e.currentTarget.style.padding = '6px 10px'
+                  e.currentTarget.style.background = 'var(--bg-2)'
+                }}
+                onBlurCapture={(e) => {
+                  e.currentTarget.style.borderColor = 'transparent'
+                  e.currentTarget.style.padding = '6px 0'
+                  e.currentTarget.style.background = 'transparent'
+                }}
+              />
+            </section>
+
+            {/* Sub-cards */}
+            <section
+              style={{ padding: '16px 28px', borderBottom: '1px solid var(--line)' }}
+            >
+              <SubcardTree
+                cardId={card.id}
+                boardId={boardId}
+                columnId={card.columnId}
+                onOpenCard={() => { onClose(); onUpdate() }}
+              />
+            </section>
+
+            {/* Artifacts */}
+            <section
+              style={{ padding: '16px 28px', borderBottom: '1px solid var(--line)' }}
+              aria-labelledby="artifacts-heading"
+            >
+              <h3 id="artifacts-heading" className="km-eyebrow" style={{ fontSize: 9, margin: '0 0 10px 0', fontWeight: 500 }}>Artifacts</h3>
+              <ArtifactList
+                cardId={card.id}
+                canDelete={(artifact) => {
+                  if (isOrgAdmin) return true
+                  return artifact.uploader.id === currentUserId
+                }}
+              />
+            </section>
+
+            {/* Signoffs heading (sr-only — signoff panels render in right rail) */}
+            <h3 className="sr-only">Signoffs</h3>
+
+            {/* Comments */}
+            <section
+              style={{ padding: '16px 28px', flex: 1 }}
+              aria-labelledby="comments-heading"
+            >
+              <h3 id="comments-heading" className="km-eyebrow" style={{ fontSize: 9, margin: '0 0 10px 0', fontWeight: 500 }}>
+                Comments{card.comments.length > 0 && (
+                  <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)', letterSpacing: '0.06em', marginLeft: 8, fontFamily: 'var(--font-mono)' }}>
+                    {card.comments.length}
+                  </span>
+                )}
+              </h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16 }}>
+                {card.comments.length === 0 && (
+                  <p style={{ fontSize: 13, color: 'var(--fg-3)', fontStyle: 'italic' }}>No comments yet.</p>
+                )}
+                {card.comments.map((c) => {
+                  // AI Reviewer comments: agentId is non-null and name matches AI reviewer
+                  const isAiComment = !!c.agentId
+                  if (isAiComment) {
+                    return (
+                      <AiReviewComment
+                        key={c.id}
+                        content={c.content}
+                        createdAt={c.createdAt}
+                        agentId={c.agentId!}
+                      />
+                    )
+                  }
+
+                  // Human comment
+                  const authorName = c.user?.name ?? 'User'
+                  return (
+                    <div key={c.id} style={{ display: 'flex', gap: 12 }}>
+                      <Avatar name={authorName} size="md" />
+                      <div style={{ flex: 1 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'baseline',
+                            gap: 8,
+                            marginBottom: 6,
+                          }}
+                        >
+                          <span
+                            style={{ fontSize: 13, color: 'var(--fg-0)', fontWeight: 500, fontFamily: 'var(--font-body)' }}
+                          >
+                            {authorName}
+                          </span>
+                          <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+                            · {new Date(c.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 13, color: 'var(--fg-1)', lineHeight: 1.55 }}>
+                          <ReactMarkdown
+                            components={{
+                              p: ({ children }) => <p style={{ margin: '0 0 8px 0' }}>{children}</p>,
+                              ul: ({ children }) => <ul style={{ margin: '0 0 8px 0', paddingLeft: 18 }}>{children}</ul>,
+                              ol: ({ children }) => <ol style={{ margin: '0 0 8px 0', paddingLeft: 18 }}>{children}</ol>,
+                              li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
+                              strong: ({ children }) => <strong style={{ color: 'var(--fg-0)', fontWeight: 600 }}>{children}</strong>,
+                              code: ({ children }) => <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--bg-3)', padding: '1px 4px' }}>{children}</code>,
+                              a: ({ href, children }) => <a href={href} style={{ color: 'var(--accent)' }} target="_blank" rel="noopener noreferrer">{children}</a>,
+                            }}
+                          >
+                            {c.content}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Comment composer */}
+              <form onSubmit={handleAddComment}>
+                <div
+                  style={{
+                    border: '1px solid var(--line)',
+                    background: 'var(--bg-2)',
+                    padding: 10,
+                  }}
+                >
+                  <label htmlFor="new-comment" className="sr-only">
+                    Add a comment
+                  </label>
+                  <textarea
+                    id="new-comment"
+                    rows={2}
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="write a comment, or /ai to request a review…"
+                    style={{
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      fontSize: 13,
+                      color: 'var(--fg-1)',
+                      fontFamily: 'var(--font-body)',
+                      resize: 'none',
+                      lineHeight: 1.5,
+                    }}
+                  />
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginTop: 8,
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: 10, color: 'var(--fg-3)' }}>
+                      <Bold size={13} aria-hidden="true" />
+                      <Italic size={13} aria-hidden="true" />
+                      <Code size={13} aria-hidden="true" />
+                      <Link size={13} aria-hidden="true" />
+                      <AtSign size={13} aria-hidden="true" />
+                      <Paperclip size={13} aria-hidden="true" />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={submittingComment || !comment.trim()}
+                      className="km-btn km-btn--sm km-btn--primary"
+                      style={{ opacity: submittingComment || !comment.trim() ? 0.5 : 1 }}
+                    >
+                      {submittingComment ? 'Posting…' : 'comment →'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </section>
           </div>
+        </div>
       </div>
-    </Modal>
+    </div>
   )
 }

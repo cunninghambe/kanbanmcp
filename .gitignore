@@ -1,7 +1,12 @@
 node_modules/
 .next/
 .env
+.env.bak.*
+.env.preserve
 *.db
+*.db.bak.*
+*.db-journal
+kanban.db.unused-*
 tsconfig.tsbuildinfo
 checkpoint-phase-*.json
 CLAUDE.md
@@ -19,4 +24,5 @@ playwright/.cache/
 .bughunter/runs/
 .bughunter/history.db
 .bughunter/*.lock
+.bughunter/suppressions*
 

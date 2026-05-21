@@ -153,10 +153,11 @@ model Card {
   parent    Card?       @relation("CardChildren", fields: [parentCardId], references: [id], onDelete: SetNull)
   children  Card[]      @relation("CardChildren")
   labels    CardLabel[]
-  comments  Comment[]
-  artifacts Artifact[]
-  signoffs  Signoff[]
-  aiReviews AiReview[]
+  comments   Comment[]
+  artifacts  Artifact[]
+  signoffs   Signoff[]
+  aiReviews  AiReview[]
+  executions CardExecution[]
 
   @@index([parentCardId])
   @@index([path])
@@ -361,4 +362,34 @@ model TicketActivity {
   user   User?  @relation(fields: [userId], references: [id])
 
   @@map("ticket_activity")
+}
+
+// ─── Card Execution (M2) ──────────────────────────────────────────────────────
+
+// CardExecutionState values: enqueued | running | done | failed | cancelled | interrupted
+// SQLite has no native enum type; Prisma client enforces valid values at runtime.
+
+model CardExecution {
+  id           String    @id @default(cuid())
+  cardId       String
+  card         Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  jobId        String?
+  // values: enqueued | running | done | failed | cancelled | interrupted
+  state        String
+
+  project      String
+  branch       String
+  spec         String
+
+  output       String?
+  errorMessage String?
+
+  enqueuedAt   DateTime  @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  @@index([cardId])
+  @@index([state])
+  @@map("card_executions")
 }

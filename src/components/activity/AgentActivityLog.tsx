@@ -2,8 +2,7 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
+import { Pip } from '@/components/design/Pip'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -24,6 +23,26 @@ interface ActivityResponse {
   limit: number
 }
 
+function pipToneForAction(action: string): 'ok' | 'warn' | 'err' | 'accent' | 'default' {
+  const a = action.toLowerCase()
+  if (a.includes('error') || a.includes('fail')) return 'err'
+  if (a.includes('warn')) return 'warn'
+  if (a.includes('create') || a.includes('done') || a.includes('complete')) return 'ok'
+  if (a.includes('move') || a.includes('update') || a.includes('toggle')) return 'accent'
+  return 'default'
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+/**
+ * Agent activity log — restyled to match the design system.
+ * Renders a scrollable list of mono entries with hairline row dividers,
+ * pip status indicators, and an optional agent-name filter.
+ * Pagination preserved; maximum 20 entries per page.
+ */
 export function AgentActivityLog() {
   const [agentFilter, setAgentFilter] = useState('')
   const [page, setPage] = useState(1)
@@ -35,7 +54,7 @@ export function AgentActivityLog() {
   const { data, isLoading } = useSWR<ActivityResponse>(
     `/api/activity?${query.toString()}`,
     fetcher,
-    { refreshInterval: 10000 }
+    { refreshInterval: 10_000 }
   )
 
   const activities = data?.activities ?? []
@@ -48,119 +67,147 @@ export function AgentActivityLog() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Filter */}
-      <div className="flex items-center gap-3">
+    <section style={{ border: '1px solid var(--line)', background: 'var(--bg-1)' }} aria-label="Agent activity log">
+      {/* header */}
+      <div
+        style={{
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--line)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          background: 'var(--bg-2)',
+        }}
+      >
+        <span className="km-eyebrow flex-1" style={{ fontSize: 10, color: 'var(--fg-1)' }}>
+          {'/// agent activity'}
+        </span>
+        <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+          {total} {total === 1 ? 'entry' : 'entries'}
+        </span>
+        {/* filter */}
         <input
           type="text"
           value={agentFilter}
           onChange={(e) => handleFilterChange(e.target.value)}
-          placeholder="Filter by agent name…"
-          className="px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
+          placeholder="filter agent…"
+          aria-label="Filter by agent name"
+          className="km-input"
+          style={{ width: 140, height: 26, fontSize: 11, padding: '0 8px' }}
         />
         {agentFilter && (
-          <Button size="sm" variant="ghost" onClick={() => handleFilterChange('')}>
-            Clear
-          </Button>
+          <button
+            className="km-btn km-btn--ghost km-btn--sm"
+            onClick={() => handleFilterChange('')}
+            aria-label="Clear filter"
+          >
+            ✕
+          </button>
         )}
-        <span className="text-sm text-slate-500 ml-auto">
-          {total} {total === 1 ? 'entry' : 'entries'}
-        </span>
       </div>
 
-      {/* Table */}
+      {/* entries */}
       {isLoading ? (
-        <div className="text-center py-10 text-slate-400 text-sm">Loading activity…</div>
+        <div className="km-mono" style={{ padding: '16px', fontSize: 11, color: 'var(--fg-3)' }}>
+          loading activity…
+        </div>
       ) : activities.length === 0 ? (
-        <div className="text-center py-10 text-slate-400 text-sm border border-dashed border-slate-300 rounded-lg">
-          {agentFilter ? `No activity from agent "${agentFilter}"` : 'No agent activity yet'}
+        <div className="km-mono" style={{ padding: '16px', fontSize: 11, color: 'var(--fg-3)' }}>
+          {agentFilter ? `no activity from "${agentFilter}"` : 'no agent activity yet'}
         </div>
       ) : (
-        <div className="overflow-hidden border border-slate-200 rounded-lg">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Agent</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Action</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Resource</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Resource ID</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Metadata</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Timestamp</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {activities.map((activity) => {
-                const metadataStr =
-                  typeof activity.metadata === 'object'
-                    ? JSON.stringify(activity.metadata)
-                    : String(activity.metadata ?? '')
-                const isExpanded = expandedId === activity.id
-                const isLong = metadataStr.length > 60
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.7 }}>
+          {activities.map((activity, i) => {
+            const metaStr =
+              typeof activity.metadata === 'object'
+                ? JSON.stringify(activity.metadata)
+                : String(activity.metadata ?? '')
+            const isExpanded = expandedId === activity.id
+            const isLong = metaStr.length > 60
 
-                return (
-                  <tr key={activity.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <Badge>{activity.agentName}</Badge>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-700">
-                      {activity.action}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">{activity.resourceType}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-500 max-w-[120px] truncate">
-                      {activity.resourceId}
-                    </td>
-                    <td className="px-4 py-3 max-w-[200px]">
-                      {isLong ? (
-                        <div>
-                          <code className="text-xs text-slate-600 font-mono">
-                            {isExpanded ? metadataStr : `${metadataStr.slice(0, 60)}…`}
-                          </code>
-                          <button
-                            onClick={() => setExpandedId(isExpanded ? null : activity.id)}
-                            className="block text-xs text-blue-600 hover:underline mt-0.5"
-                          >
-                            {isExpanded ? 'collapse' : 'expand'}
-                          </button>
-                        </div>
-                      ) : (
-                        <code className="text-xs text-slate-600 font-mono">{metadataStr}</code>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-xs">
-                      {new Date(activity.createdAt).toLocaleString()}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+            return (
+              <div
+                key={activity.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '8px 42px 90px 1fr 120px',
+                  alignItems: 'baseline',
+                  gap: 10,
+                  padding: '6px 16px',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--line-faint)',
+                  color: 'var(--fg-2)',
+                }}
+              >
+                <Pip tone={pipToneForAction(activity.action)} />
+                <span style={{ color: 'var(--fg-3)', letterSpacing: '0.04em' }}>
+                  {formatTime(activity.createdAt)}
+                </span>
+                <span style={{ color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {activity.agentName}
+                </span>
+                <span style={{ color: 'var(--fg-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {activity.action}
+                  {activity.resourceId && (
+                    <> → <span style={{ color: 'var(--fg-1)' }}>{activity.resourceId}</span></>
+                  )}
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  {isLong ? (
+                    <>
+                      <span style={{ color: 'var(--fg-3)' }}>
+                        {isExpanded ? metaStr : `${metaStr.slice(0, 40)}…`}
+                      </span>
+                      <button
+                        onClick={() => setExpandedId(isExpanded ? null : activity.id)}
+                        style={{ display: 'block', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase', padding: 0 }}
+                        aria-label={isExpanded ? 'Collapse metadata' : 'Expand metadata'}
+                      >
+                        {isExpanded ? '▲ less' : '▼ more'}
+                      </button>
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--fg-3)' }}>{metaStr}</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* Pagination */}
+      {/* pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-2">
-          <Button
-            size="sm"
-            variant="secondary"
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '8px 16px',
+            borderTop: '1px solid var(--line)',
+            background: 'var(--bg-2)',
+          }}
+        >
+          <button
+            className="km-btn km-btn--sm"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
+            aria-label="Previous page"
           >
-            Previous
-          </Button>
-          <span className="text-sm text-slate-500">
-            Page {page} of {totalPages}
+            ← prev
+          </button>
+          <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+            {page} / {totalPages}
           </span>
-          <Button
-            size="sm"
-            variant="secondary"
+          <button
+            className="km-btn km-btn--sm"
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
+            aria-label="Next page"
           >
-            Next
-          </Button>
+            next →
+          </button>
         </div>
       )}
-    </div>
+    </section>
   )
 }

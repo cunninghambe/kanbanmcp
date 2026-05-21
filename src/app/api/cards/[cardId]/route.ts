@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { aiReviewParamsSchema, roleMembershipCheck, decodeAiReviewParams } from '@/lib/cards'
 import { recomputeSubtreePathAndDepth } from '@/lib/tree'
+import { maybeStartExecutionDebounce } from '@/lib/card-execution/triggers'
 
 const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
 
@@ -39,7 +40,7 @@ const updateCardSchema = z.object({
 async function resolveCard(cardId: string, orgId: string) {
   const card = await prisma.card.findUnique({
     where: { id: cardId },
-    include: { board: { select: { orgId: true } } },
+    include: { board: { select: { orgId: true } }, column: { select: { name: true } } },
   })
   if (!card) {
     throw NextResponse.json({ error: 'Card not found' }, { status: 404 })
@@ -254,6 +255,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ cardId: s
         column: { select: { id: true, name: true } },
         sprint: { select: { id: true, name: true, status: true } },
       },
+    })
+
+    void maybeStartExecutionDebounce({
+      cardId: params.cardId,
+      prevColumnName: existingCard.column?.name ?? null,
+      newColumnName: card?.column?.name ?? existingCard.column?.name ?? '',
+      assigneeId: card?.assigneeId ?? null,
     })
 
     return NextResponse.json({

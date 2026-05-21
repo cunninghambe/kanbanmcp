@@ -44,18 +44,31 @@ export function RoleSelector({
     <div>
       <label
         htmlFor={id}
-        className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 9,
+          letterSpacing: '0.16em',
+          textTransform: 'uppercase',
+          color: 'var(--fg-3)',
+          fontWeight: 500,
+          display: 'block',
+          marginBottom: 4,
+        }}
       >
         {label}
         {required && (
-          <span className="text-red-500 ml-0.5" aria-hidden="true">
-            *
-          </span>
+          <span style={{ color: 'var(--err)', marginLeft: 2 }} aria-hidden="true">*</span>
         )}
       </label>
       <select
         id={id}
-        className="w-full px-2 py-1.5 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="km-input"
+        style={{
+          height: 28,
+          fontSize: 12,
+          opacity: disabled ? 0.5 : 1,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+        }}
         value={selectedUserId ?? ''}
         onChange={handleChange}
         disabled={disabled}

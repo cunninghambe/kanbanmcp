@@ -3,7 +3,6 @@
 import React, { useId, useState } from 'react'
 import { z } from 'zod'
 import type { AiReviewParams } from '@/lib/cards'
-import { Button } from '@/components/ui/Button'
 
 export const AI_REVIEW_MODELS = [
   'claude-opus-4-7',
@@ -69,7 +68,6 @@ export function AiReviewToggle({
     if (next) {
       setShowParams(true)
     }
-    // If toggling off, save immediately without params form
     if (!next) {
       setSaving(true)
       setSaveError(null)
@@ -131,17 +129,26 @@ export function AiReviewToggle({
 
   const inheritingFromParent = params === null && parentParams !== null && parentTitle
 
+  const labelStyle: React.CSSProperties = {
+    fontFamily: 'var(--font-mono)',
+    fontSize: 9,
+    letterSpacing: '0.16em',
+    textTransform: 'uppercase',
+    color: 'var(--fg-3)',
+    fontWeight: 500,
+    display: 'block',
+    marginBottom: 4,
+  }
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Toggle row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {/*
          * Toggle control uses two overlapping elements so both the browser
          * accessibility tree (checkbox role, for Playwright e2e tests) and
          * JSDOM's aria-query-based tree (switch role, for unit tests) can
          * find and interact with the control via their respective getByRole queries.
-         *
-         * - <input type="checkbox"> — implicit 'checkbox' role; found by Playwright
-         * - <span role="switch">   — explicit 'switch' role; found by unit tests
          */}
         <span style={{ position: 'relative', display: 'inline-block', width: '1rem', height: '1rem' }}>
           <input
@@ -150,7 +157,15 @@ export function AiReviewToggle({
             checked={localEnabled}
             onChange={handleToggle}
             disabled={saving}
-            style={{ position: 'absolute', inset: 0, opacity: 0.001, width: '100%', height: '100%', cursor: saving ? 'not-allowed' : 'pointer', margin: 0 }}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              opacity: 0.001,
+              width: '100%',
+              height: '100%',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              margin: 0,
+            }}
           />
           <span
             role="switch"
@@ -158,27 +173,56 @@ export function AiReviewToggle({
             aria-labelledby={`${toggleId}-label`}
             tabIndex={-1}
             onClick={saving ? undefined : handleToggle}
-            style={{ display: 'block', width: '100%', height: '100%', borderRadius: '0.125rem', border: '1px solid #cbd5e1', background: localEnabled ? '#2563eb' : '#fff', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1 }}
+            style={{
+              display: 'block',
+              width: '100%',
+              height: '100%',
+              border: '1px solid var(--line)',
+              background: localEnabled ? 'var(--accent)' : 'var(--bg-2)',
+              cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.5 : 1,
+            }}
           />
         </span>
-        <label id={`${toggleId}-label`} htmlFor={toggleId} className="text-sm font-medium text-slate-700 cursor-pointer">
-          AI Auto-Review
+        <label
+          id={`${toggleId}-label`}
+          htmlFor={toggleId}
+          style={{
+            fontSize: 13,
+            color: 'var(--fg-1)',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-body)',
+            fontWeight: 500,
+          }}
+        >
+          AI Auto-Review{' '}
+          <span
+            className="km-mono"
+            style={{
+              fontSize: 10,
+              color: localEnabled ? 'var(--ok)' : 'var(--fg-3)',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+            }}
+          >
+            {localEnabled ? '● ON' : '○ OFF'}
+          </span>
         </label>
         {saving && (
-          <span className="text-xs text-slate-400" aria-live="polite">
+          <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)' }} aria-live="polite">
             Saving…
           </span>
         )}
       </div>
 
       {saveError && (
-        <p className="text-xs text-red-600" role="alert">
+        <p style={{ fontSize: 12, color: 'var(--err)' }} role="alert">
           {saveError}
         </p>
       )}
 
       {inheritingFromParent && (
-        <p className="text-xs text-slate-500 italic">
+        <p className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)', fontStyle: 'italic' }}>
           Inheriting params from &ldquo;{parentTitle}&rdquo;
         </p>
       )}
@@ -186,20 +230,21 @@ export function AiReviewToggle({
       {showParams && (
         <form
           onSubmit={handleSaveParams}
-          className="border border-slate-200 rounded-md p-3 space-y-3 bg-slate-50"
+          style={{
+            border: '1px solid var(--line)',
+            background: 'var(--bg-2)',
+            padding: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
           aria-label="AI review parameters"
           noValidate
         >
           {/* Model */}
           <div>
-            <label
-              htmlFor={modelId}
-              className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
-            >
-              Model{' '}
-              <span className="text-red-500" aria-hidden="true">
-                *
-              </span>
+            <label htmlFor={modelId} style={labelStyle}>
+              Model <span style={{ color: 'var(--err)' }} aria-hidden="true">*</span>
             </label>
             <select
               id={modelId}
@@ -208,7 +253,8 @@ export function AiReviewToggle({
               disabled={saving}
               aria-invalid={!!errors.model}
               aria-describedby={errors.model ? `${modelId}-error` : undefined}
-              className="w-full px-2 py-1.5 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 bg-white"
+              className="km-input"
+              style={{ height: 28, fontSize: 12 }}
             >
               {AI_REVIEW_MODELS.map((m) => (
                 <option key={m} value={m}>
@@ -217,7 +263,7 @@ export function AiReviewToggle({
               ))}
             </select>
             {errors.model && (
-              <p id={`${modelId}-error`} className="text-xs text-red-600 mt-0.5" role="alert">
+              <p id={`${modelId}-error`} style={{ fontSize: 11, color: 'var(--err)', marginTop: 2 }} role="alert">
                 {errors.model}
               </p>
             )}
@@ -225,14 +271,8 @@ export function AiReviewToggle({
 
           {/* Rubric */}
           <div>
-            <label
-              htmlFor={rubricId}
-              className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
-            >
-              Rubric{' '}
-              <span className="text-red-500" aria-hidden="true">
-                *
-              </span>
+            <label htmlFor={rubricId} style={labelStyle}>
+              Rubric <span style={{ color: 'var(--err)' }} aria-hidden="true">*</span>
             </label>
             <textarea
               id={rubricId}
@@ -244,10 +284,25 @@ export function AiReviewToggle({
               placeholder="Describe what the AI reviewer should look for…"
               aria-invalid={!!errors.rubric}
               aria-describedby={errors.rubric ? `${rubricId}-error` : undefined}
-              className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[80px] disabled:opacity-50 bg-white"
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                border: '1px solid var(--line)',
+                background: 'var(--bg-2)',
+                color: 'var(--fg-1)',
+                fontFamily: 'var(--font-body)',
+                fontSize: 12,
+                resize: 'vertical',
+                minHeight: 80,
+                outline: 'none',
+                borderRadius: 'var(--radius-0)',
+                opacity: saving ? 0.5 : 1,
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--line)' }}
             />
             {errors.rubric && (
-              <p id={`${rubricId}-error`} className="text-xs text-red-600 mt-0.5" role="alert">
+              <p id={`${rubricId}-error`} style={{ fontSize: 11, color: 'var(--err)', marginTop: 2 }} role="alert">
                 {errors.rubric}
               </p>
             )}
@@ -255,12 +310,9 @@ export function AiReviewToggle({
 
           {/* Custom instructions */}
           <div>
-            <label
-              htmlFor={instructionsId}
-              className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block"
-            >
-              Custom Instructions
-              <span className="text-slate-400 font-normal normal-case tracking-normal ml-1">
+            <label htmlFor={instructionsId} style={labelStyle}>
+              Custom Instructions{' '}
+              <span style={{ color: 'var(--fg-3)', textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>
                 (optional)
               </span>
             </label>
@@ -274,22 +326,37 @@ export function AiReviewToggle({
               placeholder="Additional reviewer behaviour…"
               aria-invalid={!!errors.customInstructions}
               aria-describedby={errors.customInstructions ? `${instructionsId}-error` : undefined}
-              className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y disabled:opacity-50 bg-white"
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                border: '1px solid var(--line)',
+                background: 'var(--bg-2)',
+                color: 'var(--fg-1)',
+                fontFamily: 'var(--font-body)',
+                fontSize: 12,
+                resize: 'vertical',
+                outline: 'none',
+                borderRadius: 'var(--radius-0)',
+                opacity: saving ? 0.5 : 1,
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--line)' }}
             />
             {errors.customInstructions && (
-              <p
-                id={`${instructionsId}-error`}
-                className="text-xs text-red-600 mt-0.5"
-                role="alert"
-              >
+              <p id={`${instructionsId}-error`} style={{ fontSize: 11, color: 'var(--err)', marginTop: 2 }} role="alert">
                 {errors.customInstructions}
               </p>
             )}
           </div>
 
-          <Button type="submit" size="sm" disabled={saving}>
+          <button
+            type="submit"
+            disabled={saving}
+            className="km-btn km-btn--sm km-btn--primary"
+            style={{ alignSelf: 'flex-start', opacity: saving ? 0.5 : 1 }}
+          >
             {saving ? 'Saving…' : 'Save params'}
-          </Button>
+          </button>
         </form>
       )}
     </div>

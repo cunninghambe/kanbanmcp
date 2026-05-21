@@ -1,0 +1,286 @@
+/* ============================================================
+   KanbanMCP — Light-paper variant of Autogeny tokens
+   Cyber-brutalist softened: paper canvas, hairlines, signal red.
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  /* ============== COLOR — RAW (light/paper) ============== */
+  --bg-0: #F1ECE0;            /* paper canvas — warm off-white */
+  --bg-1: #FBF8F1;            /* raised surface */
+  --bg-2: #FFFFFF;            /* card / panel */
+  --bg-3: #ECE6D6;            /* hover surface */
+  --bg-inverse: #0A0A0A;
+
+  --line: #D9D2BF;            /* hairline default */
+  --line-strong: #B6AD93;     /* hairline strong */
+  --line-faint: #E5DFCE;
+
+  --fg-0: #0A0A0A;            /* headlines */
+  --fg-1: #1A1A1A;            /* primary text */
+  --fg-2: #5A574E;            /* secondary */
+  --fg-3: #8A8472;            /* tertiary / disabled */
+  --fg-4: #B6AD93;            /* faint */
+  --fg-inverse: #FFFFFF;
+
+  --accent: #E11D2B;          /* signal red — slightly deeper for paper contrast */
+  --accent-bright: #FF2D3D;
+  --accent-dim: #7A0E16;
+  --accent-tint: rgba(225, 29, 43, 0.08);
+
+  --ok: #1F8A5B;
+  --warn: #B87A00;
+  --err: #D11629;
+  --info: #2A6FDB;
+
+  /* priority color ramp (semantic on light paper) */
+  --p-critical: #C30B19;
+  --p-high: #E36A00;
+  --p-medium: #B87A00;
+  --p-low: #6E7A8A;
+  --p-none: #B6AD93;
+
+  /* ============== SEMANTIC ============== */
+  --color-bg: var(--bg-0);
+  --color-surface: var(--bg-1);
+  --color-surface-raised: var(--bg-2);
+  --color-surface-hover: var(--bg-3);
+  --color-text: var(--fg-1);
+  --color-text-strong: var(--fg-0);
+  --color-text-muted: var(--fg-2);
+  --color-text-faint: var(--fg-3);
+  --color-text-disabled: var(--fg-4);
+  --color-border: var(--line);
+  --color-border-strong: var(--line-strong);
+  --color-focus: var(--accent);
+  --color-link: var(--fg-0);
+  --color-link-hover: var(--fg-0);
+
+  /* ============== TYPE ============== */
+  --font-display: 'Space Grotesk', 'Neue Haas Grotesk Display Pro', 'Helvetica Neue', system-ui, sans-serif;
+  --font-body:    'Space Grotesk', 'Neue Haas Grotesk Display Pro', 'Helvetica Neue', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Berkeley Mono', 'SF Mono', 'IBM Plex Mono', ui-monospace, monospace;
+
+  --type-display-size: 5rem; --type-display-lh: 0.95; --type-display-tracking: -0.03em;
+  --type-h1-size: 3rem;      --type-h1-lh: 1.0;       --type-h1-tracking: -0.025em;
+  --type-h2-size: 2rem;      --type-h2-lh: 1.05;      --type-h2-tracking: -0.02em;
+  --type-h3-size: 1.375rem;  --type-h3-lh: 1.15;      --type-h3-tracking: -0.01em;
+  --type-h4-size: 1.125rem;  --type-h4-lh: 1.2;       --type-h4-tracking: -0.005em;
+  --type-body-size: 1rem;    --type-body-lh: 1.55;
+  --type-small-size: 0.875rem; --type-small-lh: 1.5;
+  --type-xs-size: 0.75rem;     --type-xs-lh: 1.4;
+  --type-label-size: 0.6875rem; --type-label-lh: 1.2; --type-label-tracking: 0.16em;
+  --type-mono-size: 0.8125rem;  --type-mono-lh: 1.45;
+
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ============== SPACING ============== */
+  --sp-0: 0; --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px; --sp-9: 96px; --sp-10: 128px;
+
+  /* ============== RADII (zero by default) ============== */
+  --radius-0: 0;
+  --radius-1: 2px;
+  --radius-pill: 9999px;
+
+  /* ============== BORDERS ============== */
+  --border-width: 1px;
+  --border: 1px solid var(--line);
+  --border-strong: 1px solid var(--line-strong);
+  --border-accent: 1px solid var(--accent);
+
+  /* ============== MOTION ============== */
+  --ease-out: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --ease-in: cubic-bezier(0.6, 0, 0.8, 0.4);
+  --ease-in-out: cubic-bezier(0.6, 0, 0.4, 1);
+  --dur-micro: 120ms; --dur-short: 240ms; --dur-page: 400ms;
+
+  /* ============== LAYOUT ============== */
+  --content-max: 1280px;
+  --gutter: 24px;
+  --nav-height: 56px;
+  --nav-height-app: 48px;
+  --statusbar-height: 24px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-lh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6, p { margin: 0; color: var(--color-text-strong); }
+
+::selection { background: var(--accent); color: #fff; }
+
+/* ============================================================
+   APP UTILITIES — reused across all KanbanMCP screens
+   ============================================================ */
+
+.mono   { font-family: var(--font-mono); }
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--type-label-size);
+  letter-spacing: var(--type-label-tracking);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+/* hairline */
+.hr { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+/* grain overlay (very faint on paper) */
+.grain { position: relative; }
+.grain::after {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: url('../assets/grain.svg');
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- mono status pip + chip ---- */
+.pip {
+  display: inline-block;
+  width: 7px; height: 7px;
+  background: var(--fg-3);
+  flex-shrink: 0;
+}
+.pip--ok   { background: var(--ok); }
+.pip--warn { background: var(--warn); }
+.pip--err  { background: var(--err); }
+.pip--accent { background: var(--accent); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  color: var(--fg-2);
+  font-weight: 500;
+  height: 20px;
+  white-space: nowrap;
+}
+.chip--ok    { color: var(--ok);    border-color: var(--ok); }
+.chip--warn  { color: var(--warn);  border-color: var(--warn); }
+.chip--err   { color: var(--err);   border-color: var(--err); }
+.chip--accent{ color: var(--accent);border-color: var(--accent); background: var(--accent-tint); }
+.chip--solid-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ---- buttons ---- */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 13px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  cursor: pointer;
+  height: 32px;
+  letter-spacing: -0.005em;
+}
+.btn:hover { background: var(--bg-3); border-color: var(--line-strong); }
+.btn--primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn--primary:hover { background: var(--accent-bright); border-color: var(--accent-bright); }
+.btn--ghost { background: transparent; border-color: transparent; }
+.btn--ghost:hover { background: var(--bg-3); }
+.btn--sm { height: 26px; padding: 4px 8px; font-size: 12px; }
+
+.icon { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+.icon--lg { width: 16px; height: 16px; }
+.icon--xl { width: 20px; height: 20px; }
+
+/* ---- avatar ---- */
+.avatar {
+  width: 24px; height: 24px;
+  background: #1A1A1A;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.avatar--sm { width: 18px; height: 18px; font-size: 8px; }
+.avatar--lg { width: 32px; height: 32px; font-size: 12px; }
+.avatar--ai { background: var(--accent); }
+.avatar--anon { background: var(--fg-4); }
+
+/* ---- input ---- */
+.input {
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  height: 32px;
+  width: 100%;
+}
+.input:focus { outline: 1px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+
+/* ---- kanban card visual language ---- */
+.kc {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  display: flex; flex-direction: column;
+  gap: 6px;
+  cursor: grab;
+  position: relative;
+}
+.kc:hover { border-color: var(--line-strong); background: var(--bg-1); }
+
+.kc__id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--fg-3);
+  text-transform: uppercase;
+}
+.kc__title {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--fg-0);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.kc__meta {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+.kc__meta-left { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; color: var(--fg-2); }
+
+/* priority bar — left edge (default) */
+.kc--prio-critical { box-shadow: inset 3px 0 0 var(--p-critical); }
+.kc--prio-high     { box-shadow: inset 3px 0 0 var(--p-high); }
+.kc--prio-medium   { box-shadow: inset 3px 0 0 var(--p-medium); }
+.kc--prio-low      { box-shadow: inset 3px 0 0 var(--p-low); }
+
+/* labels strip */
+.labels { display: flex; gap: 4px; }
+.label-bar { height: 3px; width: 28px; background: var(--p-low); }

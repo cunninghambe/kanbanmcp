@@ -1,13 +1,14 @@
 'use client'
 
 import { Draggable } from '@hello-pangea/dnd'
-import { Badge } from '@/components/ui/Badge'
+import { getPriorityClass } from '@/components/design/PriorityBar'
 import type { Card, Label, User } from '@/types'
 
 interface KanbanCardProps {
   card: Card & {
     labels?: { label: Label }[]
     assignee?: User | null
+    priority?: string
   }
   index: number
   onClick: () => void
@@ -21,48 +22,33 @@ function getRelativeDate(date: Date | string | null): { text: string; overdue: b
   const diffMs = d.getTime() - now.getTime()
   const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24))
   const overdue = diffDays < 0
-  if (diffDays === 0) return { text: 'Due today', overdue }
-  if (diffDays === -1) return { text: 'Yesterday', overdue: true }
-  if (diffDays === 1) return { text: 'Tomorrow', overdue: false }
+  if (diffDays === 0) return { text: 'due today', overdue }
+  if (diffDays === -1) return { text: 'yesterday', overdue: true }
+  if (diffDays === 1) return { text: 'tomorrow', overdue: false }
   if (diffDays < 0) return { text: `${Math.abs(diffDays)}d overdue`, overdue: true }
-  return { text: `Due in ${diffDays}d`, overdue: false }
+  return { text: `due in ${diffDays}d`, overdue: false }
 }
 
-type Priority = 'none' | 'low' | 'medium' | 'high' | 'critical'
-
-function getPriorityBadgeClasses(priority: string): string {
-  switch (priority as Priority) {
-    case 'critical':
-      return 'bg-red-500 text-white'
-    case 'high':
-      return 'bg-orange-500 text-white'
-    case 'medium':
-      return 'bg-yellow-400 text-gray-900'
-    case 'low':
-      return 'bg-blue-400 text-white'
-    case 'none':
-    default:
-      return 'bg-gray-200 text-gray-600'
-  }
+/** Derive a short display ID from a cuid-style card id */
+function displayId(id: string): string {
+  return `[${id.slice(0, 8).toUpperCase()}]`
 }
 
-function getPriorityLabel(priority: string): string {
-  if (!priority || priority === 'none') return ''
-  return priority.charAt(0).toUpperCase() + priority.slice(1)
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
 }
 
 export function KanbanCard({ card, index, onClick, onHover }: KanbanCardProps) {
-  const dueInfo = getRelativeDate(card.dueDate)
-  const initials =
-    card.assignee?.name
-      ?.split(' ')
-      .map((w) => w[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase() ?? null
-
-  const priority = (card as Card & { priority?: string }).priority ?? 'none'
-  const priorityLabel = getPriorityLabel(priority)
+  const dueInfo = getRelativeDate(card.dueDate ?? null)
+  const priority = card.priority ?? 'none'
+  const priorityCls = getPriorityClass(priority)
+  const initials = card.assignee?.name ? getInitials(card.assignee.name) : null
+  const isAgentCreated = Boolean(card.agentId)
 
   return (
     <Draggable draggableId={card.id} index={index}>
@@ -71,65 +57,105 @@ export function KanbanCard({ card, index, onClick, onHover }: KanbanCardProps) {
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
+          role="button"
+          tabIndex={0}
           onClick={onClick}
           onMouseEnter={onHover}
-          className={`
-            relative bg-white rounded-md border border-slate-200 p-3 cursor-pointer
-            hover:border-blue-300 hover:shadow-sm transition-all
-            ${snapshot.isDragging ? 'shadow-lg rotate-1 border-blue-400' : ''}
-          `}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
+          aria-label={`Card: ${card.title}`}
+          className={`km-kc ${priorityCls}${snapshot.isDragging ? ' km-kc--dragging' : ''}`}
         >
-          {/* Priority badge — top-right */}
-          {priorityLabel && (
-            <span
-              className={`absolute top-2 right-2 text-xs font-semibold px-1.5 py-0.5 rounded-full ${getPriorityBadgeClasses(priority)}`}
-            >
-              {priorityLabel}
-            </span>
-          )}
+          {/* Top row: ID + agent/ai badges */}
+          <div className="flex items-center justify-between gap-2">
+            <span className="km-kc__id">{displayId(card.id)}</span>
+            <div className="flex items-center gap-1">
+              {isAgentCreated && (
+                <span
+                  className="km-mono"
+                  style={{ fontSize: 9, letterSpacing: '0.12em', color: 'var(--fg-3)', textTransform: 'uppercase' }}
+                >
+                  [agent]
+                </span>
+              )}
+            </div>
+          </div>
 
-          {/* Labels */}
+          {/* Label bars */}
           {card.labels && card.labels.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-2">
+            <div className="km-labels">
               {card.labels.map((cl) => (
                 <span
                   key={cl.label.id}
-                  className="h-1.5 w-8 rounded-full"
-                  style={{ backgroundColor: cl.label.color }}
+                  className="km-label-bar"
+                  style={{ background: cl.label.color ?? 'var(--fg-3)' }}
                   title={cl.label.name}
                 />
               ))}
             </div>
           )}
 
-          {/* Title — leave room for badge on the right */}
-          <p
-            className={`text-sm text-slate-800 font-medium leading-snug ${priorityLabel ? 'pr-16' : ''}`}
-          >
-            {card.title}
-          </p>
+          {/* Title */}
+          <div className="km-kc__title">{card.title}</div>
 
-          <div className="flex items-center justify-between mt-2 gap-2">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Due date */}
+          {/* Footer meta row */}
+          <div className="km-kc__meta">
+            <div className="km-kc__meta-left">
               {dueInfo && (
                 <span
-                  className={`text-xs ${dueInfo.overdue ? 'text-red-600 font-medium' : 'text-slate-400'}`}
+                  style={{
+                    color: dueInfo.overdue ? 'var(--err)' : 'var(--fg-2)',
+                    fontWeight: dueInfo.overdue ? 600 : 400,
+                  }}
                 >
+                  {dueInfo.overdue && '✗ '}
                   {dueInfo.text}
                 </span>
               )}
-
-              {/* Agent-created indicator */}
-              {card.agentId && <Badge className="text-xs">Agent</Badge>}
             </div>
-
-            {/* Assignee avatar */}
-            {initials && (
-              <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                {initials}
-              </div>
-            )}
+            <div className="flex items-center gap-1">
+              {initials ? (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 18,
+                    height: 18,
+                    borderRadius: 'var(--radius-pill)',
+                    background: 'var(--fg-1)',
+                    color: 'var(--bg-0)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 8,
+                    fontWeight: 600,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    flexShrink: 0,
+                  }}
+                  title={card.assignee?.name ?? ''}
+                >
+                  {initials}
+                </span>
+              ) : (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 18,
+                    height: 18,
+                    borderRadius: 'var(--radius-pill)',
+                    background: 'var(--fg-4)',
+                    color: 'var(--bg-0)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 8,
+                    flexShrink: 0,
+                  }}
+                  title="Unassigned"
+                >
+                  ?
+                </span>
+              )}
+            </div>
           </div>
         </div>
       )}

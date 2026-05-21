@@ -188,7 +188,8 @@ describe('CardModal', () => {
     expect(signoffsIdx).toBeLessThan(commentsIdx)
   })
 
-  it('renders role selectors for Assignee, Reviewer, and Approver', () => {
+  it('renders role selectors for Assignee, Reviewer, and Approver', async () => {
+    const user = userEvent.setup()
     setupMocks()
 
     render(
@@ -201,10 +202,16 @@ describe('CardModal', () => {
       />
     )
 
-    // Within the Roles section — the Assignee label includes an asterisk for required
-    expect(screen.getAllByLabelText(/Assignee/)[0]).toBeInTheDocument()
-    expect(screen.getByLabelText('Reviewer')).toBeInTheDocument()
+    // Approver is null in the fixture, so its selector is visible immediately.
     expect(screen.getByLabelText('Approver')).toBeInTheDocument()
+
+    // Assignee + Reviewer are set; their selectors are hidden until "change" is clicked.
+    // Only one selector can be open at a time (single edit-state).
+    await user.click(screen.getByLabelText('Change assignee'))
+    expect(screen.getAllByLabelText(/Assignee/)[0]).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('Change reviewer'))
+    expect(screen.getByLabelText('Reviewer')).toBeInTheDocument()
   })
 
   it('calls PATCH with reviewerId when reviewer is changed', async () => {
@@ -221,6 +228,8 @@ describe('CardModal', () => {
       />
     )
 
+    // Reviewer is already set; click "change" to expose the selector
+    await user.click(screen.getByLabelText('Change reviewer'))
     const reviewerSelect = screen.getByLabelText('Reviewer')
     await user.selectOptions(reviewerSelect, 'user-1')
 

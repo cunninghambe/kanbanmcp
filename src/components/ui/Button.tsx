@@ -1,4 +1,4 @@
-import { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
@@ -6,20 +6,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode
 }
 
-const variants = {
-  primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
-  secondary:
-    'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-500',
-  danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-  ghost: 'text-slate-600 hover:bg-slate-100 focus:ring-slate-500',
-}
-
-const sizes = {
-  sm: 'px-2.5 py-1.5 text-xs',
-  md: 'px-4 py-2 text-sm',
-  lg: 'px-6 py-3 text-base',
-}
-
+/**
+ * Base button using design-token classes.
+ * Public API is unchanged from before (variant + size props).
+ * Maps legacy variants to km-btn token classes.
+ */
 export function Button({
   variant = 'primary',
   size = 'md',
@@ -28,17 +19,17 @@ export function Button({
   disabled,
   ...props
 }: ButtonProps) {
+  const variantClass =
+    variant === 'primary' ? 'km-btn km-btn--primary'
+    : variant === 'ghost' ? 'km-btn km-btn--ghost'
+    : variant === 'danger' ? 'km-btn km-btn--primary'   // danger maps to primary (accent = red)
+    : 'km-btn'                                           // secondary
+
+  const sizeClass = size === 'sm' ? 'km-btn--sm' : ''
+
   return (
     <button
-      className={`
-        inline-flex items-center justify-center font-medium rounded-md
-        focus:outline-none focus:ring-2 focus:ring-offset-2
-        transition-colors
-        disabled:opacity-50 disabled:cursor-not-allowed
-        ${variants[variant]}
-        ${sizes[size]}
-        ${className}
-      `}
+      className={`${variantClass} ${sizeClass} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`.trim()}
       disabled={disabled}
       {...props}
     >

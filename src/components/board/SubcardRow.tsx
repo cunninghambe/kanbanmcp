@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
+import { ChevronRight, MoreHorizontal, ArrowUpToLine } from 'lucide-react'
 import type { SubtreeNode } from '@/lib/tree'
 
 export interface SubcardRowProps {
@@ -20,36 +21,28 @@ const SIGNOFF_DECISION_LABEL: Record<string, string> = {
   REQUESTED_CHANGES: 'Changes',
 }
 
-const SIGNOFF_DECISION_CLASS: Record<string, string> = {
-  APPROVED: 'bg-green-100 text-green-700',
-  REJECTED: 'bg-red-100 text-red-600',
-  REQUESTED_CHANGES: 'bg-yellow-100 text-yellow-700',
+// Status to chip color mapping using design tokens
+function getStatusStyle(status: string | null): React.CSSProperties {
+  switch (status) {
+    case 'done':
+      return { color: 'var(--ok)', borderColor: 'var(--ok)' }
+    case 'review':
+      return { color: 'var(--warn)', borderColor: 'var(--warn)' }
+    case 'doing':
+    case 'in_progress':
+    case 'IN_PROGRESS':
+      return { color: 'var(--accent)', borderColor: 'var(--accent)' }
+    default:
+      return { color: 'var(--fg-3)', borderColor: 'var(--line)' }
+  }
 }
 
-function SignoffBadge({ role, decision }: { role: string; decision: string }) {
-  const label = SIGNOFF_DECISION_LABEL[decision] ?? decision
-  const cls = SIGNOFF_DECISION_CLASS[decision] ?? 'bg-slate-100 text-slate-600'
-  const prefix = role === 'REVIEWER' ? 'R' : 'A'
-  return (
-    <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${cls}`}
-      title={`${role === 'REVIEWER' ? 'Reviewer' : 'Approver'}: ${label}`}
-    >
-      {prefix}: {label}
-    </span>
-  )
-}
-
-function Avatar({ name }: { name: string }) {
-  return (
-    <span
-      className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-600 text-xs font-bold flex-shrink-0"
-      aria-hidden="true"
-      title={name}
-    >
-      {name.charAt(0).toUpperCase()}
-    </span>
-  )
+function statusLabel(columnId: string | null | undefined, status: string | null): string {
+  // We don't have a column status field directly — use a short label from the node's column context
+  // The node has no explicit status field, so we approximate from signoffs
+  void columnId
+  void status
+  return 'todo'
 }
 
 // ---- PromoteConfirmDialog ---------------------------------------------------
@@ -63,12 +56,10 @@ interface PromoteConfirmDialogProps {
 function PromoteConfirmDialog({ cardTitle, onConfirm, onCancel }: PromoteConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
 
-  // Focus cancel button on mount
   useEffect(() => {
     cancelRef.current?.focus()
   }, [])
 
-  // Close on Escape
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onCancel()
@@ -84,27 +75,46 @@ function PromoteConfirmDialog({ cardTitle, onConfirm, onCancel }: PromoteConfirm
         open
         aria-modal="true"
         aria-labelledby="promote-dialog-title"
-        className="relative bg-white rounded-lg shadow-xl w-full max-w-sm p-6 m-0"
+        style={{
+          position: 'relative',
+          background: 'var(--bg-2)',
+          border: '1px solid var(--line-strong)',
+          borderRadius: 'var(--radius-0)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.15)',
+          width: '100%',
+          maxWidth: 380,
+          padding: 24,
+          margin: 0,
+        }}
       >
-        <h2 id="promote-dialog-title" className="text-base font-semibold text-slate-900 mb-2">
+        <h2
+          id="promote-dialog-title"
+          style={{
+            fontSize: 15,
+            fontWeight: 600,
+            color: 'var(--fg-0)',
+            marginBottom: 8,
+            fontFamily: 'var(--font-body)',
+          }}
+        >
           Promote to top-level card?
         </h2>
-        <p className="text-sm text-slate-600 mb-5">
+        <p style={{ fontSize: 13, color: 'var(--fg-2)', marginBottom: 20, lineHeight: 1.5 }}>
           &ldquo;{cardTitle}&rdquo; will be moved out of its parent and become a top-level card.
         </p>
-        <div className="flex justify-end gap-2">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button
             ref={cancelRef}
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-sm font-medium text-slate-600 border border-slate-300 bg-white rounded-md hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-colors"
+            className="km-btn km-btn--sm"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+            className="km-btn km-btn--sm km-btn--primary"
           >
             Promote
           </button>
@@ -134,11 +144,27 @@ export function SubcardRow({
 
   const childrenListId = `children-${node.id}`
 
-  const indentStyle = {
-    paddingLeft: `${depth * 20}px`,
-  } as React.CSSProperties
+  // Derive a simple status string from the node (signoffs give us some signal)
+  const hasDoneSignoff =
+    node.signoffs.reviewer?.decision === 'APPROVED' &&
+    node.signoffs.approver?.decision === 'APPROVED'
+  const hasReviewSignoff =
+    node.signoffs.reviewer?.decision === 'APPROVED' && !node.signoffs.approver
+  const nodeStatus = hasDoneSignoff ? 'done' : hasReviewSignoff ? 'review' : null
+  const chipStyle: React.CSSProperties = {
+    fontFamily: 'var(--font-mono)',
+    fontSize: 9,
+    letterSpacing: '0.12em',
+    textTransform: 'uppercase',
+    padding: '1px 6px',
+    border: '1px solid',
+    minWidth: 38,
+    textAlign: 'center',
+    flexShrink: 0,
+    ...getStatusStyle(nodeStatus),
+  }
+  const chipLabel = nodeStatus === 'done' ? 'done' : nodeStatus === 'review' ? 'rev' : 'todo'
 
-  // Click-outside-to-close for action menu
   useEffect(() => {
     if (!menuOpen) return
     function handleMouseDown(e: MouseEvent) {
@@ -155,7 +181,6 @@ export function SubcardRow({
     setPromoting(true)
     setPromoteError(null)
     setMenuOpen(false)
-
     try {
       await onPromote()
     } catch {
@@ -169,6 +194,9 @@ export function SubcardRow({
     if (e.key === 'Escape') setMenuOpen(false)
   }
 
+  // Build the indent guide column spans
+  const guides = Array.from({ length: depth })
+
   return (
     <>
       {showPromoteDialog && (
@@ -178,136 +206,309 @@ export function SubcardRow({
           onCancel={() => setShowPromoteDialog(false)}
         />
       )}
-      <li className="text-sm">
+      <li style={{ listStyle: 'none' }}>
         <div
-          className="flex items-center gap-2 py-1 pr-2 rounded hover:bg-slate-50 group"
-          style={indentStyle}
+          style={{
+            display: 'flex',
+            alignItems: 'stretch',
+            borderTop: depth === 0 ? '1px solid var(--line-faint)' : 0,
+          }}
         >
-          {/* Disclosure chevron — only when the node has children */}
-          {hasChildren ? (
-            <button
-              type="button"
-              aria-expanded={isExpanded}
-              aria-controls={childrenListId}
-              aria-label={
-                isExpanded
-                  ? `Collapse sub-cards of ${node.title}`
-                  : `Expand sub-cards of ${node.title}`
-              }
-              onClick={onToggleExpand}
-              disabled={isLoading}
-              className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded disabled:opacity-50"
-            >
-              <svg
-                className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+          {/* Indent guide columns */}
+          {guides.map((_, i) => (
+            <div
+              key={i}
+              style={{
+                width: 20,
+                borderRight: '1px solid var(--line-faint)',
+                flexShrink: 0,
+              }}
+              aria-hidden="true"
+            />
+          ))}
+
+          {/* Row content */}
+          <div
+            style={{
+              flex: 1,
+              padding: '8px 12px 8px 8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              borderTop: depth > 0 ? '1px solid var(--line-faint)' : 0,
+              background: 'var(--bg-2)',
+            }}
+          >
+            {/* Tree elbow glyph */}
+            {depth > 0 && (
+              <span
+                className="km-mono"
+                style={{ color: 'var(--fg-4)', fontSize: 12, marginLeft: -2, flexShrink: 0 }}
                 aria-hidden="true"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
+                └
+              </span>
+            )}
+
+            {/* Expand/collapse chevron */}
+            {hasChildren ? (
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                aria-controls={childrenListId}
+                aria-label={
+                  isExpanded
+                    ? `Collapse sub-cards of ${node.title}`
+                    : `Expand sub-cards of ${node.title}`
+                }
+                onClick={onToggleExpand}
+                disabled={isLoading}
+                style={{
+                  flexShrink: 0,
+                  width: 16,
+                  height: 16,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--fg-3)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
+                  opacity: isLoading ? 0.5 : 1,
+                  padding: 0,
+                }}
+              >
+                <ChevronRight
+                  size={12}
+                  style={{
+                    transform: isExpanded ? 'rotate(90deg)' : undefined,
+                    transition: 'transform 120ms ease',
+                  }}
                 />
-              </svg>
-            </button>
-          ) : (
-            <span className="flex-shrink-0 w-5" aria-hidden="true" />
-          )}
+              </button>
+            ) : (
+              <span style={{ flexShrink: 0, width: 16 }} aria-hidden="true" />
+            )}
 
-          {/* Card title — opens the sub-card in the panel */}
-          <button
-            type="button"
-            className="flex-1 text-left text-slate-800 font-medium truncate hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
-            onClick={() => onOpen(node.id)}
-          >
-            {node.title}
-          </button>
-
-          {/* Assignee avatar */}
-          {node.assignee && <Avatar name={node.assignee.name} />}
-
-          {/* Reviewer chip */}
-          {node.reviewer && (
+            {/* Mono card ID */}
             <span
-              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 flex-shrink-0"
-              title={`Reviewer: ${node.reviewer.name}`}
+              className="km-mono"
+              style={{
+                fontSize: 10,
+                color: 'var(--fg-3)',
+                letterSpacing: '0.06em',
+                minWidth: 56,
+                flexShrink: 0,
+              }}
             >
-              R
+              {node.id.slice(0, 8).toUpperCase()}
             </span>
-          )}
 
-          {/* Approver chip */}
-          {node.approver && (
-            <span
-              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600 flex-shrink-0"
-              title={`Approver: ${node.approver.name}`}
-            >
-              A
-            </span>
-          )}
+            {/* Status chip */}
+            <span style={chipStyle}>{chipLabel}</span>
 
-          {/* Signoff badges */}
-          {node.signoffs.reviewer && (
-            <SignoffBadge role="REVIEWER" decision={node.signoffs.reviewer.decision} />
-          )}
-          {node.signoffs.approver && (
-            <SignoffBadge role="APPROVER" decision={node.signoffs.approver.decision} />
-          )}
-
-          {/* AI review indicator */}
-          {node.aiAutoReview && (
-            <span
-              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 flex-shrink-0"
-              title="AI auto-review enabled"
-            >
-              AI
-            </span>
-          )}
-
-          {/* Action menu */}
-          <div ref={menuContainerRef} className="relative flex-shrink-0">
+            {/* Title button */}
             <button
               type="button"
-              aria-label={`Actions for ${node.title}`}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((o) => !o)}
-              onKeyDown={handleMenuKeyDown}
-              className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+              onClick={() => onOpen(node.id)}
+              style={{
+                flex: 1,
+                textAlign: 'left',
+                fontSize: 13,
+                color: 'var(--fg-1)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                padding: 0,
+                letterSpacing: '-0.005em',
+                fontFamily: 'var(--font-body)',
+              }}
+              title={node.title}
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="5" cy="12" r="1.5" />
-                <circle cx="12" cy="12" r="1.5" />
-                <circle cx="19" cy="12" r="1.5" />
-              </svg>
+              {node.title}
             </button>
-            {menuOpen && (
-              <div
-                role="menu"
-                className="absolute right-0 top-7 z-10 bg-white border border-slate-200 rounded-md shadow-lg py-1 min-w-[180px]"
+
+            {/* AI indicator */}
+            {node.aiAutoReview && (
+              <span
+                className="km-mono"
+                style={{
+                  fontSize: 9,
+                  letterSpacing: '0.1em',
+                  color: 'var(--accent)',
+                  padding: '0 4px',
+                  border: '1px solid var(--accent)',
+                  flexShrink: 0,
+                }}
+                title="AI auto-review enabled"
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={promoting}
-                  onClick={() => {
-                    setMenuOpen(false)
-                    setShowPromoteDialog(true)
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 focus:bg-slate-100 focus:outline-none disabled:opacity-50"
-                >
-                  {promoting ? 'Promoting…' : 'Promote to top-level'}
-                </button>
-              </div>
+                AI
+              </span>
             )}
+
+            {/* Assignee avatar */}
+            {node.assignee && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 18,
+                  height: 18,
+                  background: 'var(--fg-1)',
+                  color: 'var(--bg-0)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 8,
+                  fontWeight: 600,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  borderRadius: 'var(--radius-pill)',
+                  flexShrink: 0,
+                }}
+                title={node.assignee.name}
+                aria-hidden="true"
+              >
+                {node.assignee.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+
+            {/* Signoff badges */}
+            {node.signoffs.reviewer && (
+              <span
+                className="km-mono"
+                style={{
+                  fontSize: 8,
+                  padding: '1px 4px',
+                  border: '1px solid',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  flexShrink: 0,
+                  color:
+                    node.signoffs.reviewer.decision === 'APPROVED'
+                      ? 'var(--ok)'
+                      : node.signoffs.reviewer.decision === 'REJECTED'
+                      ? 'var(--err)'
+                      : 'var(--warn)',
+                  borderColor:
+                    node.signoffs.reviewer.decision === 'APPROVED'
+                      ? 'var(--ok)'
+                      : node.signoffs.reviewer.decision === 'REJECTED'
+                      ? 'var(--err)'
+                      : 'var(--warn)',
+                }}
+                title={`Reviewer: ${SIGNOFF_DECISION_LABEL[node.signoffs.reviewer.decision] ?? node.signoffs.reviewer.decision}`}
+              >
+                R
+              </span>
+            )}
+            {node.signoffs.approver && (
+              <span
+                className="km-mono"
+                style={{
+                  fontSize: 8,
+                  padding: '1px 4px',
+                  border: '1px solid',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  flexShrink: 0,
+                  color:
+                    node.signoffs.approver.decision === 'APPROVED'
+                      ? 'var(--ok)'
+                      : node.signoffs.approver.decision === 'REJECTED'
+                      ? 'var(--err)'
+                      : 'var(--warn)',
+                  borderColor:
+                    node.signoffs.approver.decision === 'APPROVED'
+                      ? 'var(--ok)'
+                      : node.signoffs.approver.decision === 'REJECTED'
+                      ? 'var(--err)'
+                      : 'var(--warn)',
+                }}
+                title={`Approver: ${SIGNOFF_DECISION_LABEL[node.signoffs.approver.decision] ?? node.signoffs.approver.decision}`}
+              >
+                A
+              </span>
+            )}
+
+            {/* Action menu */}
+            <div ref={menuContainerRef} style={{ position: 'relative', flexShrink: 0 }}>
+              <button
+                type="button"
+                aria-label={`Actions for ${node.title}`}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((o) => !o)}
+                onKeyDown={handleMenuKeyDown}
+                style={{
+                  width: 24,
+                  height: 24,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--fg-3)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+                className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
+                <MoreHorizontal size={14} />
+              </button>
+              {menuOpen && (
+                <div
+                  role="menu"
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 28,
+                    zIndex: 10,
+                    background: 'var(--bg-2)',
+                    border: '1px solid var(--line-strong)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    minWidth: 180,
+                  }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={promoting}
+                    onClick={() => {
+                      setMenuOpen(false)
+                      setShowPromoteDialog(true)
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 12px',
+                      fontSize: 13,
+                      color: 'var(--fg-1)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontFamily: 'var(--font-body)',
+                    }}
+                  >
+                    <ArrowUpToLine size={13} />
+                    {promoting ? 'Promoting…' : 'Promote to top-level'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         {promoteError && (
-          <p className="text-xs text-red-600 mt-0.5" style={indentStyle} role="alert">
+          <p
+            style={{ fontSize: 12, color: 'var(--err)', marginTop: 2, paddingLeft: depth * 20 + 8 }}
+            role="alert"
+          >
             {promoteError}
           </p>
         )}

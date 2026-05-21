@@ -2,7 +2,8 @@
 
 import React, { useId, useRef, useState } from 'react'
 import useSWR from 'swr'
-import { Button } from '@/components/ui/Button'
+import { FileText, Image, File, Upload, X } from 'lucide-react'
+import { Pip } from '@/components/design/Pip'
 import type { ArtifactResponse, AiReviewSummary } from '@/lib/artifacts'
 
 type ArtifactStatus = AiReviewSummary['status']
@@ -10,33 +11,10 @@ type ArtifactStatus = AiReviewSummary['status']
 const ALLOWED_ACCEPT =
   'application/pdf,text/*,image/png,image/jpeg,image/webp,application/json,application/x-yaml,text/markdown'
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Pending',
-  running: 'Running',
-  done: 'Done',
-  failed: 'Failed',
-  skipped: 'Skipped',
-}
-
-const STATUS_CLASS: Record<string, string> = {
-  pending: 'bg-slate-100 text-slate-600',
-  running: 'bg-yellow-100 text-yellow-700',
-  done: 'bg-green-100 text-green-700',
-  failed: 'bg-red-100 text-red-600',
-  skipped: 'bg-slate-100 text-slate-500 line-through',
-}
-
-function AiStatusBadge({ review }: { review: AiReviewSummary }) {
-  const label = STATUS_LABEL[review.status] ?? review.status
-  const cls = STATUS_CLASS[review.status] ?? 'bg-slate-100 text-slate-600'
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}`}
-      aria-label={`AI review status: ${label}`}
-    >
-      {label}
-    </span>
-  )
+function mimeIcon(mime: string) {
+  if (mime.startsWith('image/')) return <Image size={14} color="var(--fg-3)" />
+  if (mime === 'application/pdf' || mime.startsWith('text/')) return <FileText size={14} color="var(--fg-3)" />
+  return <File size={14} color="var(--fg-3)" />
 }
 
 function formatBytes(bytes: number): string {
@@ -48,6 +26,112 @@ function formatBytes(bytes: number): string {
 function hasActiveReview(artifacts: ArtifactResponse[]): boolean {
   return artifacts.some((a) =>
     a.reviews.some((r) => r.status === 'pending' || r.status === 'running')
+  )
+}
+
+const STATUS_DISPLAY: Record<string, string> = {
+  pending: 'Pending',
+  running: 'Running',
+  done: 'Done',
+  failed: 'Failed',
+  skipped: 'Skipped',
+}
+
+function ReviewStatusCell({ review }: { review: AiReviewSummary }) {
+  const status: ArtifactStatus = review.status
+  const displayLabel = STATUS_DISPLAY[status] ?? status
+
+  if (status === 'done') {
+    return (
+      <span
+        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+        aria-label={`AI review status: ${displayLabel}`}
+      >
+        <Pip tone="ok" />
+        <span
+          className="km-mono"
+          style={{
+            fontSize: 10,
+            color: 'var(--ok)',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+          }}
+        >
+          ai review · pass
+        </span>
+        <a
+          href={`/api/reviews/${review.id}`}
+          target="_blank"
+          rel="noreferrer"
+          className="km-mono"
+          style={{ fontSize: 9, color: 'var(--fg-3)', textDecoration: 'underline' }}
+        >
+          View review
+        </a>
+      </span>
+    )
+  }
+  if (status === 'running' || status === 'pending') {
+    return (
+      <span
+        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+        aria-label={`AI review status: ${displayLabel}`}
+      >
+        <Pip tone="accent" />
+        <span
+          className="km-mono"
+          style={{
+            fontSize: 10,
+            color: 'var(--accent)',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+          }}
+        >
+          ai review · {status} [•••]
+        </span>
+      </span>
+    )
+  }
+  if (status === 'failed') {
+    return (
+      <span
+        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+        aria-label={`AI review status: ${displayLabel}`}
+      >
+        <Pip tone="err" />
+        <span
+          className="km-mono"
+          style={{
+            fontSize: 10,
+            color: 'var(--err)',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+          }}
+        >
+          ai review · failed
+        </span>
+      </span>
+    )
+  }
+  // skipped / unknown
+  return (
+    <span
+      style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+      aria-label={`AI review status: ${displayLabel}`}
+    >
+      <Pip />
+      <span
+        className="km-mono"
+        style={{
+          fontSize: 10,
+          color: 'var(--fg-3)',
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+        }}
+      >
+        skipped
+      </span>
+    </span>
   )
 }
 
@@ -99,9 +183,7 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
       })
 
       if (res.status === 415) {
-        setUploadError(
-          'File type not supported. Allowed: PDF, text, images (PNG/JPEG/WebP), JSON, YAML, Markdown.'
-        )
+        setUploadError('File type not supported. Allowed: PDF, text, images (PNG/JPEG/WebP), JSON, YAML, Markdown.')
         return
       }
       if (res.status === 413) {
@@ -114,7 +196,6 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
         return
       }
 
-      // Reset file input
       if (fileInputRef.current) fileInputRef.current.value = ''
       await mutate()
     } catch {
@@ -128,11 +209,8 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
     if (!confirm('Delete this artifact?')) return
     setDeletingId(artifactId)
     try {
-      const res = await fetch(`/api/artifacts/${artifactId}`, {
-        method: 'DELETE',
-      })
+      const res = await fetch(`/api/artifacts/${artifactId}`, { method: 'DELETE' })
       if (!res.ok) {
-        // silently keep UI in place if delete fails
         console.error('Artifact delete failed:', res.status)
       }
       await mutate()
@@ -142,9 +220,13 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <div>
       {/* Upload form */}
-      <form onSubmit={handleUpload} className="flex gap-2 items-center flex-wrap" noValidate>
+      <form
+        onSubmit={handleUpload}
+        style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}
+        noValidate
+      >
         <label htmlFor={fileInputId} className="sr-only">
           Choose file to upload
         </label>
@@ -154,27 +236,44 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
           type="file"
           accept={ALLOWED_ACCEPT}
           disabled={uploading}
-          className="text-sm text-slate-700 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border file:border-slate-300 file:text-sm file:font-medium file:bg-white file:text-slate-700 hover:file:bg-slate-50 file:cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-md disabled:opacity-50"
+          className="km-mono"
+          style={{
+            fontSize: 11,
+            color: 'var(--fg-2)',
+            flex: 1,
+            minWidth: 0,
+          }}
           aria-label="Choose file to upload"
         />
-        <Button type="submit" size="sm" variant="secondary" disabled={uploading}>
-          {uploading ? 'Uploading…' : 'Upload artifact'}
-        </Button>
+        <button
+          type="submit"
+          disabled={uploading}
+          className="km-btn km-btn--sm"
+          style={{ opacity: uploading ? 0.5 : 1, flexShrink: 0 }}
+          aria-label="Upload artifact"
+        >
+          <Upload size={11} />
+          {uploading ? 'Uploading…' : 'Upload'}
+        </button>
       </form>
 
       {uploadError && (
-        <p className="text-xs text-red-600" role="alert" aria-live="assertive">
+        <p style={{ fontSize: 12, color: 'var(--err)', marginBottom: 8 }} role="alert" aria-live="assertive">
           {uploadError}
         </p>
       )}
 
-      {/* Artifact list */}
+      {/* Loading skeleton */}
       {isLoading && (
-        <div className="space-y-2" aria-label="Loading artifacts" aria-busy="true">
+        <div style={{ border: '1px solid var(--line)', background: 'var(--bg-2)' }} aria-label="Loading artifacts" aria-busy="true">
           {[1, 2].map((i) => (
             <div
               key={i}
-              className="h-10 bg-slate-100 animate-pulse rounded-md"
+              style={{
+                height: 40,
+                background: 'var(--bg-3)',
+                borderTop: i > 1 ? '1px solid var(--line-faint)' : undefined,
+              }}
               aria-hidden="true"
             />
           ))}
@@ -182,12 +281,20 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
       )}
 
       {error && (
-        <div className="flex items-center gap-3 text-sm text-red-600">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: 'var(--err)' }}>
           <span>Could not load artifacts.</span>
           <button
             type="button"
             onClick={() => mutate()}
-            className="underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+            style={{
+              fontSize: 12,
+              color: 'var(--accent)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              padding: 0,
+            }}
           >
             Retry
           </button>
@@ -195,83 +302,98 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
       )}
 
       {!isLoading && !error && artifacts.length === 0 && (
-        <p className="text-sm text-slate-400 italic">
-          No artifacts yet. Upload a file to attach it.
+        <p style={{ fontSize: 13, color: 'var(--fg-3)', fontStyle: 'italic' }}>
+          No artifacts yet.
         </p>
       )}
 
       {!isLoading && !error && artifacts.length > 0 && (
-        <ul className="space-y-2" aria-label="Uploaded artifacts">
-          {artifacts.map((artifact) => {
+        <ul
+          style={{ border: '1px solid var(--line)', background: 'var(--bg-2)', listStyle: 'none', margin: 0, padding: 0 }}
+          aria-label="Uploaded artifacts"
+        >
+          {artifacts.map((artifact, i) => {
             const latestReview = artifact.reviews[0] ?? null
             const isDeletable = canDelete({ uploader: artifact.uploader })
 
             return (
               <li
                 key={artifact.id}
-                className="flex items-start gap-3 p-2 border border-slate-100 rounded-md bg-white text-sm"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '20px 1fr 70px 110px 1fr 24px',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 14px',
+                  borderTop: i === 0 ? 0 : '1px solid var(--line-faint)',
+                }}
               >
-                <div className="flex-1 min-w-0 space-y-0.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <a
-                      href={`/api/artifacts/${artifact.id}/download`}
-                      className="font-medium text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded truncate max-w-xs"
-                      download={artifact.filename}
-                    >
-                      {artifact.filename}
-                    </a>
-                    <span className="text-xs text-slate-400">
-                      {formatBytes(artifact.sizeBytes)}
-                    </span>
-                    {latestReview && (
-                      <>
-                        <AiStatusBadge review={latestReview} />
-                        {latestReview.status === 'done' && (
-                          <a
-                            href={`/api/reviews/${latestReview.id}`}
-                            className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            View review
-                          </a>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    Uploaded by {artifact.uploader.name} &middot;{' '}
-                    {new Date(artifact.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
+                {/* File type icon */}
+                <span aria-hidden="true">{mimeIcon(artifact.mimeType)}</span>
 
-                {isDeletable && (
+                {/* Filename */}
+                <a
+                  href={`/api/artifacts/${artifact.id}/download`}
+                  download={artifact.filename}
+                  className="km-mono"
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--fg-1)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    textDecoration: 'none',
+                  }}
+                  title={artifact.filename}
+                >
+                  {artifact.filename}
+                </a>
+
+                {/* Size */}
+                <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)', letterSpacing: '0.06em' }}>
+                  {formatBytes(artifact.sizeBytes)}
+                </span>
+
+                {/* Uploader + date */}
+                <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)' }}>
+                  {artifact.uploader.name} · {new Date(artifact.createdAt).toLocaleDateString()}
+                </span>
+
+                {/* Review status */}
+                {latestReview ? (
+                  <ReviewStatusCell review={latestReview} />
+                ) : (
+                  <span />
+                )}
+
+                {/* Delete button */}
+                {isDeletable ? (
                   <button
                     type="button"
                     onClick={() => handleDelete(artifact.id)}
                     disabled={deletingId === artifact.id}
                     aria-label={`Delete ${artifact.filename}`}
-                    className="text-slate-400 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 rounded disabled:opacity-50 flex-shrink-0 transition-colors"
+                    style={{
+                      color: 'var(--fg-3)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 0,
+                      opacity: deletingId === artifact.id ? 0.5 : 1,
+                      flexShrink: 0,
+                    }}
                   >
                     {deletingId === artifact.id ? (
-                      <span className="text-xs">Deleting…</span>
+                      <span className="km-mono" style={{ fontSize: 9 }}>…</span>
                     ) : (
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
+                      <X size={13} />
                     )}
                   </button>
+                ) : (
+                  <span />
                 )}
               </li>
             )

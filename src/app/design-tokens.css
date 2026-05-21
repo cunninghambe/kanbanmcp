@@ -1,0 +1,323 @@
+/* ============================================================
+   KanbanMCP — Light-paper variant of Autogeny tokens
+   Cyber-brutalist softened: paper canvas, hairlines, signal red.
+   Font import removed — loaded via next/font/google in layout.tsx
+   Grain utility removed — Phase 1 does not use grain texture.
+   ============================================================ */
+
+:root {
+  /* ============== COLOR — RAW (light/paper) ============== */
+  --bg-0: #F1ECE0;            /* paper canvas — warm off-white */
+  --bg-1: #FBF8F1;            /* raised surface */
+  --bg-2: #FFFFFF;            /* card / panel */
+  --bg-3: #ECE6D6;            /* hover surface */
+  --bg-inverse: #0A0A0A;
+
+  --line: #D9D2BF;            /* hairline default */
+  --line-strong: #B6AD93;     /* hairline strong */
+  --line-faint: #E5DFCE;
+
+  --fg-0: #0A0A0A;            /* headlines */
+  --fg-1: #1A1A1A;            /* primary text */
+  --fg-2: #5A574E;            /* secondary */
+  --fg-3: #8A8472;            /* tertiary / disabled */
+  --fg-4: #B6AD93;            /* faint */
+  --fg-inverse: #FFFFFF;
+
+  --accent: #E11D2B;          /* signal red — slightly deeper for paper contrast */
+  --accent-bright: #FF2D3D;
+  --accent-dim: #7A0E16;
+  --accent-tint: rgba(225, 29, 43, 0.08);
+
+  --ok: #1F8A5B;
+  --warn: #B87A00;
+  --err: #D11629;
+  --info: #2A6FDB;
+
+  /* priority color ramp (semantic on light paper) */
+  --p-critical: #C30B19;
+  --p-high: #E36A00;
+  --p-medium: #B87A00;
+  --p-low: #6E7A8A;
+  --p-none: #B6AD93;
+
+  /* ============== SEMANTIC ============== */
+  --color-bg: var(--bg-0);
+  --color-surface: var(--bg-1);
+  --color-surface-raised: var(--bg-2);
+  --color-surface-hover: var(--bg-3);
+  --color-text: var(--fg-1);
+  --color-text-strong: var(--fg-0);
+  --color-text-muted: var(--fg-2);
+  --color-text-faint: var(--fg-3);
+  --color-text-disabled: var(--fg-4);
+  --color-border: var(--line);
+  --color-border-strong: var(--line-strong);
+  --color-focus: var(--accent);
+  --color-link: var(--fg-0);
+  --color-link-hover: var(--fg-0);
+
+  /* ============== TYPE ============== */
+  /* --font-display and --font-mono are CSS variables set by next/font/google in layout.tsx */
+  /* --font-body aliases --font-display (both Space Grotesk) */
+  --font-body: var(--font-display);
+
+  --type-display-size: 5rem; --type-display-lh: 0.95; --type-display-tracking: -0.03em;
+  --type-h1-size: 3rem;      --type-h1-lh: 1.0;       --type-h1-tracking: -0.025em;
+  --type-h2-size: 2rem;      --type-h2-lh: 1.05;      --type-h2-tracking: -0.02em;
+  --type-h3-size: 1.375rem;  --type-h3-lh: 1.15;      --type-h3-tracking: -0.01em;
+  --type-h4-size: 1.125rem;  --type-h4-lh: 1.2;       --type-h4-tracking: -0.005em;
+  --type-body-size: 1rem;    --type-body-lh: 1.55;
+  --type-small-size: 0.875rem; --type-small-lh: 1.5;
+  --type-xs-size: 0.75rem;     --type-xs-lh: 1.4;
+  --type-label-size: 0.6875rem; --type-label-lh: 1.2; --type-label-tracking: 0.16em;
+  --type-mono-size: 0.8125rem;  --type-mono-lh: 1.45;
+
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ============== SPACING ============== */
+  --sp-0: 0; --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px; --sp-9: 96px; --sp-10: 128px;
+
+  /* ============== RADII (zero by default) ============== */
+  --radius-0: 0;
+  --radius-1: 2px;
+  --radius-pill: 9999px;
+
+  /* ============== BORDERS ============== */
+  --border-width: 1px;
+  --border: 1px solid var(--line);
+  --border-strong: 1px solid var(--line-strong);
+  --border-accent: 1px solid var(--accent);
+
+  /* ============== MOTION ============== */
+  --ease-out: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --ease-in: cubic-bezier(0.6, 0, 0.8, 0.4);
+  --ease-in-out: cubic-bezier(0.6, 0, 0.4, 1);
+  --dur-micro: 120ms; --dur-short: 240ms; --dur-page: 400ms;
+
+  /* ============== LAYOUT ============== */
+  --content-max: 1280px;
+  --gutter: 24px;
+  --nav-height: 56px;
+  --nav-height-app: 48px;
+  --statusbar-height: 24px;
+}
+
+/* ============================================================
+   DARK VARIANT — explicit user choice via data-theme="dark"
+   ============================================================ */
+
+[data-theme="dark"] {
+  --bg-0: #0A0A0A;
+  --bg-1: #141414;
+  --bg-2: #1C1C1C;
+  --bg-3: #262626;
+  --bg-inverse: #FFFFFF;
+
+  --line: #2A2A2A;
+  --line-strong: #4A4A4A;
+  --line-faint: #1F1F1F;
+
+  --fg-0: #FFFFFF;
+  --fg-1: #EAEAEA;
+  --fg-2: #A0A0A0;
+  --fg-3: #6F6F6F;
+  --fg-4: #4A4A4A;
+  --fg-inverse: #0A0A0A;
+
+  --accent: #FF2D3D;
+  --accent-bright: #FF4555;
+  --accent-dim: #B0141F;
+  --accent-tint: rgba(255, 45, 61, 0.12);
+
+  --ok: #2EBC76;
+  --warn: #D89C2E;
+  --err: #F03A4A;
+  --info: #4A8EFA;
+
+  --p-critical: #FF3D4A;
+  --p-high: #FF8A2E;
+  --p-medium: #D89C2E;
+  --p-low: #8A93A4;
+  --p-none: #4A4A4A;
+}
+
+/* OS preference dark — only when user has NOT explicitly chosen light */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-0: #0A0A0A;
+    --bg-1: #141414;
+    --bg-2: #1C1C1C;
+    --bg-3: #262626;
+    --bg-inverse: #FFFFFF;
+
+    --line: #2A2A2A;
+    --line-strong: #4A4A4A;
+    --line-faint: #1F1F1F;
+
+    --fg-0: #FFFFFF;
+    --fg-1: #EAEAEA;
+    --fg-2: #A0A0A0;
+    --fg-3: #6F6F6F;
+    --fg-4: #4A4A4A;
+    --fg-inverse: #0A0A0A;
+
+    --accent: #FF2D3D;
+    --accent-bright: #FF4555;
+    --accent-dim: #B0141F;
+    --accent-tint: rgba(255, 45, 61, 0.12);
+
+    --ok: #2EBC76;
+    --warn: #D89C2E;
+    --err: #F03A4A;
+    --info: #4A8EFA;
+
+    --p-critical: #FF3D4A;
+    --p-high: #FF8A2E;
+    --p-medium: #D89C2E;
+    --p-low: #8A93A4;
+    --p-none: #4A4A4A;
+  }
+}
+
+/* ============================================================
+   APP UTILITIES — reused across all KanbanMCP screens
+   ============================================================ */
+
+.km-mono   { font-family: var(--font-mono); }
+.km-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--type-label-size);
+  letter-spacing: var(--type-label-tracking);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+/* hairline */
+.km-hr { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+/* ---- mono status pip + chip ---- */
+.km-pip {
+  display: inline-block;
+  width: 7px; height: 7px;
+  background: var(--fg-3);
+  flex-shrink: 0;
+}
+.km-pip--ok   { background: var(--ok); }
+.km-pip--warn { background: var(--warn); }
+.km-pip--err  { background: var(--err); }
+.km-pip--accent { background: var(--accent); }
+
+.km-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  color: var(--fg-2);
+  font-weight: 500;
+  height: 20px;
+  white-space: nowrap;
+  border-radius: var(--radius-0);
+}
+.km-chip--ok    { color: var(--ok);    border-color: var(--ok); }
+.km-chip--warn  { color: var(--warn);  border-color: var(--warn); }
+.km-chip--err   { color: var(--err);   border-color: var(--err); }
+.km-chip--accent{ color: var(--accent);border-color: var(--accent); background: var(--accent-tint); }
+.km-chip--solid-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ---- buttons ---- */
+.km-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 13px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  cursor: pointer;
+  height: 32px;
+  letter-spacing: -0.005em;
+  border-radius: var(--radius-0);
+  text-decoration: none;
+}
+.km-btn:hover { background: var(--bg-3); border-color: var(--line-strong); }
+.km-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.km-btn--primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.km-btn--primary:hover { background: var(--accent-bright); border-color: var(--accent-bright); }
+.km-btn--ghost { background: transparent; border-color: transparent; }
+.km-btn--ghost:hover { background: var(--bg-3); }
+.km-btn--sm { height: 26px; padding: 4px 8px; font-size: 12px; }
+
+/* ---- input ---- */
+.km-input {
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--fg-1);
+  height: 32px;
+  width: 100%;
+  border-radius: var(--radius-0);
+  outline: none;
+}
+.km-input:focus { outline: 1px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+
+/* ---- kanban card ---- */
+.km-kc {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  display: flex; flex-direction: column;
+  gap: 6px;
+  cursor: grab;
+  position: relative;
+  border-radius: var(--radius-0);
+}
+.km-kc:hover { border-color: var(--line-strong); background: var(--bg-1); }
+.km-kc--dragging { box-shadow: 0 4px 16px rgba(0,0,0,0.12); cursor: grabbing; }
+
+.km-kc__id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--fg-3);
+  text-transform: uppercase;
+}
+.km-kc__title {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--fg-0);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.km-kc__meta {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+.km-kc__meta-left {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--fg-2);
+}
+
+/* priority bar — inset left edge */
+.km-kc--prio-critical { box-shadow: inset 3px 0 0 var(--p-critical); }
+.km-kc--prio-high     { box-shadow: inset 3px 0 0 var(--p-high); }
+.km-kc--prio-medium   { box-shadow: inset 3px 0 0 var(--p-medium); }
+.km-kc--prio-low      { box-shadow: inset 3px 0 0 var(--p-low); }
+
+/* labels strip */
+.km-labels { display: flex; gap: 4px; }
+.km-label-bar { height: 3px; width: 28px; background: var(--p-low); border-radius: 0; }

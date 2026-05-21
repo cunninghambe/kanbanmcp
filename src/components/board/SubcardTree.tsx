@@ -152,13 +152,25 @@ function TreeList({
         )
       })}
       {hiddenCount > 0 && (
-        <li>
+        <li style={{ listStyle: 'none', borderTop: '1px solid var(--line-faint)' }}>
           <button
             type="button"
-            className="ml-5 mt-1 text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
             onClick={() => onShowMore(parentId, shownCount)}
+            style={{
+              display: 'block',
+              width: '100%',
+              textAlign: 'left',
+              padding: '8px 12px',
+              fontSize: 12,
+              color: 'var(--accent)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.06em',
+            }}
           >
-            Show {hiddenCount} more
+            + show {hiddenCount} more
           </button>
         </li>
       )}
@@ -229,7 +241,7 @@ function AddSubcardForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-wrap items-center gap-2 mt-2 mb-3"
+      style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 8, marginBottom: 12 }}
       aria-label="Add sub-card"
     >
       <label htmlFor="new-subcard-title" className="sr-only">
@@ -238,7 +250,8 @@ function AddSubcardForm({
       <input
         id="new-subcard-title"
         type="text"
-        className="flex-1 min-w-0 px-2 py-1 border border-slate-200 rounded-md text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="km-input"
+        style={{ flex: 1, minWidth: 0, height: 26, fontSize: 12 }}
         placeholder="Sub-card title…"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -248,7 +261,8 @@ function AddSubcardForm({
       <button
         type="submit"
         disabled={submitting || !title.trim()}
-        className="px-2.5 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="km-btn km-btn--sm km-btn--primary"
+        style={{ opacity: submitting || !title.trim() ? 0.5 : 1 }}
       >
         {submitting ? 'Adding…' : 'Add'}
       </button>
@@ -256,12 +270,13 @@ function AddSubcardForm({
         type="button"
         onClick={onCancel}
         disabled={submitting}
-        className="px-2.5 py-1.5 text-xs font-medium text-slate-600 border border-slate-300 bg-white rounded-md hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:opacity-50 transition-colors"
+        className="km-btn km-btn--sm"
+        style={{ opacity: submitting ? 0.5 : 1 }}
       >
         Cancel
       </button>
       {formError && (
-        <p className="w-full text-xs text-red-600 mt-0.5" role="alert">
+        <p style={{ width: '100%', fontSize: 12, color: 'var(--err)', marginTop: 2 }} role="alert">
           {formError}
         </p>
       )}
@@ -387,15 +402,25 @@ export function SubcardTree({ cardId, boardId, columnId, onOpenCard }: SubcardTr
   if (isLoading) {
     return (
       <section aria-labelledby="subcards-heading" aria-busy="true">
-        <h3
-          id="subcards-heading"
-          className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3"
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}
         >
-          Sub-cards
-        </h3>
-        <div className="space-y-2" aria-label="Loading sub-cards">
+          <h3 id="subcards-heading" className="km-eyebrow" style={{ fontSize: 9, margin: 0, fontWeight: 500 }}>
+            Sub-cards
+          </h3>
+        </div>
+        <div style={{ border: '1px solid var(--line)', background: 'var(--bg-2)' }} aria-label="Loading sub-cards">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-7 bg-slate-100 animate-pulse rounded-md" aria-hidden="true" />
+            <div
+              key={i}
+              style={{
+                height: 33,
+                background: 'var(--bg-3)',
+                borderTop: i > 1 ? '1px solid var(--line-faint)' : undefined,
+                animation: 'pulse 1.5s ease-in-out infinite',
+              }}
+              aria-hidden="true"
+            />
           ))}
         </div>
       </section>
@@ -406,18 +431,23 @@ export function SubcardTree({ cardId, boardId, columnId, onOpenCard }: SubcardTr
   if (error) {
     return (
       <section aria-labelledby="subcards-heading">
-        <h3
-          id="subcards-heading"
-          className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3"
-        >
+        <h3 id="subcards-heading" className="km-eyebrow" style={{ fontSize: 9, display: 'block', marginBottom: 10, fontWeight: 500, margin: '0 0 10px 0' }}>
           Sub-cards
         </h3>
-        <div className="flex items-center gap-3 text-sm text-red-600">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: 'var(--err)' }}>
           <span>Couldn&apos;t load sub-cards.</span>
           <button
             type="button"
             onClick={() => void refresh()}
-            className="underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+            style={{
+              fontSize: 12,
+              color: 'var(--accent)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              padding: 0,
+            }}
           >
             Retry
           </button>
@@ -428,24 +458,23 @@ export function SubcardTree({ cardId, boardId, columnId, onOpenCard }: SubcardTr
 
   return (
     <section aria-labelledby="subcards-heading">
-      <div className="flex items-center justify-between mb-3">
-        <h3
-          id="subcards-heading"
-          className="text-xs font-semibold text-slate-500 uppercase tracking-wide"
-        >
-          Sub-cards
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h3 id="subcards-heading" className="km-eyebrow" style={{ fontSize: 9, margin: 0, fontWeight: 500 }}>
+            Sub-cards
+          </h3>
           {descendants.length > 0 && (
-            <span className="ml-1.5 text-slate-400 font-normal normal-case">
-              ({descendants.length})
+            <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)', letterSpacing: '0.06em' }}>
+              {descendants.length}
             </span>
           )}
-        </h3>
+        </div>
         {root && (
           <button
             type="button"
             onClick={() => setShowAddForm((v) => !v)}
             aria-expanded={showAddForm}
-            className="text-xs text-blue-600 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+            className="km-btn km-btn--sm"
           >
             {showAddForm ? 'Cancel' : '+ Add sub-card'}
           </button>
@@ -467,24 +496,26 @@ export function SubcardTree({ cardId, boardId, columnId, onOpenCard }: SubcardTr
       )}
 
       {descendants.length === 0 && !showAddForm && (
-        <p className="text-sm text-slate-400 italic">
-          No sub-cards yet. Break this card into smaller pieces by adding sub-cards.
+        <p style={{ fontSize: 13, color: 'var(--fg-3)', fontStyle: 'italic' }}>
+          No sub-cards yet.
         </p>
       )}
 
       {descendants.length > 0 && (
-        <TreeList
-          parentId={cardId}
-          childMap={childMap}
-          rootDepth={rootDepth}
-          isNodeExpanded={isNodeExpanded}
-          loadingIds={loadingIds}
-          onToggleExpand={handleToggleExpand}
-          onPromote={handlePromote}
-          onOpenCard={onOpenCard}
-          shownCountMap={shownCountMap}
-          onShowMore={handleShowMore}
-        />
+        <div style={{ border: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+          <TreeList
+            parentId={cardId}
+            childMap={childMap}
+            rootDepth={rootDepth}
+            isNodeExpanded={isNodeExpanded}
+            loadingIds={loadingIds}
+            onToggleExpand={handleToggleExpand}
+            onPromote={handlePromote}
+            onOpenCard={onOpenCard}
+            shownCountMap={shownCountMap}
+            onShowMore={handleShowMore}
+          />
+        </div>
       )}
     </section>
   )

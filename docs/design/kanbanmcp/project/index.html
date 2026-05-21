@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>KanbanMCP — Design System</title>
+<link rel="stylesheet" href="styles/tokens.css">
+<style>
+  /* Canvas background gets a touch darker to give the paper artboards definition */
+  body { background: #1A1A1A; }
+
+  /* design-canvas chrome restyling so it matches the system */
+  .dc-toolbar, .dc-section-title { font-family: var(--font-mono) !important; letter-spacing: 0.14em !important; text-transform: uppercase !important; }
+</style>
+
+<!-- Lucide for ALL functional UI icons -->
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <!-- our component scripts -->
+  <script type="text/babel" src="design-canvas.jsx"></script>
+  <script type="text/babel" src="screens/shared.jsx"></script>
+  <script type="text/babel" src="screens/board.jsx"></script>
+  <script type="text/babel" src="screens/card-modal.jsx"></script>
+  <script type="text/babel" src="screens/dashboard.jsx"></script>
+  <script type="text/babel" src="screens/helpdesk.jsx"></script>
+  <script type="text/babel" src="variations/priority.jsx"></script>
+  <script type="text/babel" src="variations/subtree.jsx"></script>
+  <script type="text/babel" src="variations/ai-comment.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
+</body>
+</html>

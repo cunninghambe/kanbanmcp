@@ -11,7 +11,8 @@ const DEFAULT_COLUMNS = [
   { name: 'Backlog', position: 0 },
   { name: 'In Progress', position: 1 },
   { name: 'Review', position: 2 },
-  { name: 'Done', position: 3 },
+  { name: 'Blocked', position: 3 },
+  { name: 'Done', position: 4 },
 ]
 
 // GET /api/orgs/[orgId]/boards
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ orgId: stri
 }
 
 // POST /api/orgs/[orgId]/boards
-// Creates a new board and auto-creates 4 default columns. Requires ADMIN role.
+// Creates a new board and auto-creates 5 default columns. Requires ADMIN role.
 export async function POST(req: NextRequest, ctx: { params: Promise<{ orgId: string }> }) {
   const params = await ctx.params
   try {

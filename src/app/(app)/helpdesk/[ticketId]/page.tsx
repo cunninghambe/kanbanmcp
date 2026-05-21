@@ -3,74 +3,20 @@
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { Header } from '@/components/layout/Header'
+import { GitPullRequestArrow, ChevronLeft } from 'lucide-react'
+import { Topbar } from '@/components/design/Topbar'
+import { PriorityBar } from '@/components/design/PriorityBar'
+import { TicketTimeline } from '@/components/design/TicketTimeline'
+import { TicketRail } from '@/components/design/TicketRail'
 import { Button } from '@/components/ui/Button'
+import type { TimelineComment, TimelineActivity } from '@/components/design/TicketTimeline'
+import type { TicketRailData } from '@/components/design/TicketRail'
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json())
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
-const STATUS_OPTIONS = [
-  { value: 'open', label: 'Open' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'waiting', label: 'Waiting' },
-  { value: 'resolved', label: 'Resolved' },
-  { value: 'closed', label: 'Closed' },
-]
-
-const PRIORITY_OPTIONS = [
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'urgent', label: 'Urgent' },
-]
-
-const STATUS_COLORS: Record<string, string> = {
-  open: 'bg-blue-100 text-blue-800 border-blue-200',
-  in_progress: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  waiting: 'bg-purple-100 text-purple-800 border-purple-200',
-  resolved: 'bg-green-100 text-green-800 border-green-200',
-  closed: 'bg-slate-100 text-slate-600 border-slate-200',
-}
-
-const PRIORITY_COLORS: Record<string, string> = {
-  low: 'bg-slate-100 text-slate-600',
-  medium: 'bg-blue-100 text-blue-700',
-  high: 'bg-orange-100 text-orange-700',
-  urgent: 'bg-red-100 text-red-700',
-}
-
-const ACTION_LABELS: Record<string, string> = {
-  created: 'created this ticket',
-  status_changed: 'changed status',
-  priority_changed: 'changed priority',
-  title_changed: 'changed title',
-  assigned: 'changed assignee',
-  commented: 'left a comment',
-}
-
-interface TicketUser {
-  id: string
-  name: string
-  email: string
-}
-
-interface TicketComment {
-  id: string
-  content: string
-  internal: boolean
-  agentName: string | null
-  createdAt: string
-  user: TicketUser | null
-}
-
-interface TicketActivityEntry {
-  id: string
-  action: string
-  fromValue: string | null
-  toValue: string | null
-  agentName: string | null
-  createdAt: string
-  user: TicketUser | null
-}
+interface TicketUser { id: string; name: string; email: string }
 
 interface TicketDetail {
   id: string
@@ -86,33 +32,55 @@ interface TicketDetail {
   closedAt: string | null
   reporter: TicketUser | null
   assignee: TicketUser | null
-  comments: TicketComment[]
-  activity: TicketActivityEntry[]
+  comments: TimelineComment[]
+  activity: TimelineActivity[]
 }
 
-function AuthorLabel({ user, agentName }: { user: TicketUser | null; agentName: string | null }) {
-  if (user) return <span className="font-medium">{user.name}</span>
-  if (agentName) return <span className="font-medium text-purple-700">{agentName} (agent)</span>
-  return <span className="font-medium text-slate-400">Unknown</span>
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const fetcher = (url: string) =>
+  fetch(url).then((r) => {
+    if (!r.ok) throw new Error(String(r.status))
+    return r.json()
+  })
+
+function fmt(iso: string) {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
 }
+
+const STATUS_BORDER: Record<string, string> = {
+  open: 'var(--accent)', in_progress: 'var(--warn)', waiting: 'var(--fg-3)',
+  resolved: 'var(--ok)', closed: 'var(--fg-4)',
+}
+const STATUS_COLOR: Record<string, string> = {
+  open: 'var(--accent)', in_progress: 'var(--warn)', waiting: 'var(--fg-2)',
+  resolved: 'var(--ok)', closed: 'var(--fg-4)',
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function TicketDetailPage() {
   const params = useParams()
   const router = useRouter()
   const ticketId = params.ticketId as string
 
-  const { data, mutate, isLoading } = useSWR(`/api/tickets/${ticketId}`, fetcher)
-  const ticket: TicketDetail | null = data?.ticket ?? null
+  const { data, mutate, isLoading } = useSWR<{ ticket: TicketDetail }>(
+    `/api/tickets/${ticketId}`,
+    fetcher
+  )
+  const ticket = data?.ticket ?? null
 
-  const [commentText, setCommentText] = useState('')
-  const [commentInternal, setCommentInternal] = useState(false)
-  const [submittingComment, setSubmittingComment] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const [editingDesc, setEditingDesc] = useState(false)
   const [descDraft, setDescDraft] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState(false)
 
   async function patch(body: Record<string, unknown>) {
     setSaving(true)
@@ -128,24 +96,13 @@ export default function TicketDetailPage() {
     }
   }
 
-  async function submitComment(e: React.FormEvent) {
-    e.preventDefault()
-    if (!commentText.trim()) return
-    setSubmittingComment(true)
-    try {
-      const res = await fetch(`/api/tickets/${ticketId}/comments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: commentText.trim(), internal: commentInternal }),
-      })
-      if (res.ok) {
-        setCommentText('')
-        setCommentInternal(false)
-        await mutate()
-      }
-    } finally {
-      setSubmittingComment(false)
-    }
+  async function handlePostComment(content: string, internal: boolean) {
+    await fetch(`/api/tickets/${ticketId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, internal }),
+    })
+    await mutate()
   }
 
   async function handleDelete() {
@@ -154,9 +111,7 @@ export default function TicketDetailPage() {
   }
 
   async function saveTitle() {
-    if (titleDraft.trim() && titleDraft !== ticket?.title) {
-      await patch({ title: titleDraft.trim() })
-    }
+    if (titleDraft.trim() && titleDraft !== ticket?.title) await patch({ title: titleDraft.trim() })
     setEditingTitle(false)
   }
 
@@ -165,389 +120,215 @@ export default function TicketDetailPage() {
     setEditingDesc(false)
   }
 
+  // Loading state
   if (isLoading) {
     return (
       <>
-        <Header breadcrumbs={[{ label: 'Helpdesk', href: '/helpdesk' }, { label: 'Loading…' }]} />
-        <main className="flex-1 p-6 flex items-center justify-center text-slate-500">Loading…</main>
+        <Topbar
+          breadcrumb="manage / helpdesk / …"
+          title="loading…"
+          right={
+            <button className="km-btn km-btn--sm" onClick={() => router.push('/helpdesk')}>
+              <ChevronLeft size={13} /> helpdesk
+            </button>
+          }
+        />
+        <div className="km-mono" style={{ padding: '48px 24px', fontSize: 12, color: 'var(--fg-3)', textAlign: 'center' }}>
+          loading…
+        </div>
       </>
     )
   }
 
+  // Not found state
   if (!ticket) {
     return (
       <>
-        <Header breadcrumbs={[{ label: 'Helpdesk', href: '/helpdesk' }, { label: 'Not found' }]} />
-        <main className="flex-1 p-6">
-          <div className="max-w-4xl mx-auto text-center py-16 text-slate-500">
-            <p className="text-lg">Ticket not found.</p>
-            <Button className="mt-4" onClick={() => router.push('/helpdesk')}>
-              Back to Helpdesk
-            </Button>
-          </div>
-        </main>
+        <Topbar
+          breadcrumb="manage / helpdesk"
+          title="ticket not found"
+          right={
+            <button className="km-btn km-btn--sm" onClick={() => router.push('/helpdesk')}>
+              <ChevronLeft size={13} /> helpdesk
+            </button>
+          }
+        />
+        <div className="km-mono" style={{ padding: '48px 24px', fontSize: 12, color: 'var(--fg-3)', textAlign: 'center' }}>
+          ticket not found
+        </div>
       </>
     )
   }
 
-  const allEvents: Array<{
-    type: 'comment' | 'activity'
-    createdAt: string
-    data: TicketComment | TicketActivityEntry
-  }> = [
-    ...ticket.comments.map((c) => ({ type: 'comment' as const, createdAt: c.createdAt, data: c })),
-    ...ticket.activity.map((a) => ({ type: 'activity' as const, createdAt: a.createdAt, data: a })),
-  ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  const statusBorder = STATUS_BORDER[ticket.status] ?? 'var(--line)'
+  const statusColor = STATUS_COLOR[ticket.status] ?? 'var(--fg-3)'
+
+  const railData: TicketRailData = {
+    status: ticket.status,
+    priority: ticket.priority,
+    reporter: ticket.reporter,
+    assignee: ticket.assignee,
+    agentName: ticket.agentName,
+    createdAt: ticket.createdAt,
+    resolvedAt: ticket.resolvedAt,
+    closedAt: ticket.closedAt,
+  }
+
+  const topbarRight = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button className="km-btn km-btn--sm" onClick={() => router.push('/helpdesk')}>
+        <ChevronLeft size={13} /> helpdesk
+      </button>
+      <div style={{ width: 1, height: 20, background: 'var(--line)' }} />
+      <button
+        className="km-btn km-btn--sm km-btn--primary"
+        disabled
+        title="Promote to board — requires board integration"
+        style={{ opacity: 0.5, cursor: 'not-allowed' }}
+        aria-label="Promote to board (not yet available)"
+      >
+        <GitPullRequestArrow size={11} /> promote to board
+      </button>
+    </div>
+  )
 
   return (
     <>
-      <Header
-        breadcrumbs={[
-          { label: 'Helpdesk', href: '/helpdesk' },
-          { label: `#${ticket.number} ${ticket.title}` },
-        ]}
+      <Topbar
+        breadcrumb={`manage / helpdesk / #${ticket.number}`}
+        title={ticket.title}
+        right={topbarRight}
       />
-      <main className="flex-1 p-6">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex gap-6">
-            {/* Main column */}
-            <div className="flex-1 min-w-0 space-y-6">
-              {/* Title */}
-              <div>
-                {editingTitle ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      autoFocus
-                      value={titleDraft}
-                      onChange={(e) => setTitleDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveTitle()
-                        if (e.key === 'Escape') setEditingTitle(false)
-                      }}
-                      className="flex-1 text-2xl font-bold text-slate-900 border-b-2 border-blue-500 focus:outline-none bg-transparent"
-                    />
-                    <Button size="sm" onClick={saveTitle} disabled={saving}>
-                      Save
-                    </Button>
-                    <Button size="sm" variant="secondary" onClick={() => setEditingTitle(false)}>
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <h1
-                    className="text-2xl font-bold text-slate-900 cursor-pointer hover:text-blue-700 transition-colors"
-                    onClick={() => {
-                      setTitleDraft(ticket.title)
-                      setEditingTitle(true)
-                    }}
-                    title="Click to edit"
-                  >
-                    #{ticket.number} {ticket.title}
-                  </h1>
-                )}
-                <p className="text-sm text-slate-500 mt-1">
-                  Opened {new Date(ticket.createdAt).toLocaleString()} by{' '}
-                  {ticket.reporter
-                    ? ticket.reporter.name
-                    : ticket.agentName
-                      ? `${ticket.agentName} (agent)`
-                      : 'Unknown'}
-                </p>
-              </div>
 
-              {/* Description */}
-              <div className="bg-white rounded-lg border border-slate-200 p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold text-slate-700">Description</h2>
-                  {!editingDesc && (
-                    <button
-                      onClick={() => {
-                        setDescDraft(ticket.description ?? '')
-                        setEditingDesc(true)
-                      }}
-                      className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
-                    >
-                      Edit
-                    </button>
-                  )}
-                </div>
-                {editingDesc ? (
-                  <div className="space-y-2">
-                    <textarea
-                      autoFocus
-                      value={descDraft}
-                      onChange={(e) => setDescDraft(e.target.value)}
-                      rows={6}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y text-sm"
-                    />
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={saveDesc} disabled={saving}>
-                        Save
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => setEditingDesc(false)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : ticket.description ? (
-                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{ticket.description}</p>
-                ) : (
-                  <p className="text-sm text-slate-400 italic">No description provided.</p>
-                )}
-              </div>
-
-              {/* Activity + Comments timeline */}
-              <div className="bg-white rounded-lg border border-slate-200">
-                <div className="px-5 py-3 border-b border-slate-100">
-                  <h2 className="text-sm font-semibold text-slate-700">Activity</h2>
-                </div>
-                <div className="divide-y divide-slate-50">
-                  {allEvents.length === 0 ? (
-                    <p className="text-sm text-slate-400 px-5 py-4 italic">No activity yet.</p>
-                  ) : (
-                    allEvents.map((event) => {
-                      if (event.type === 'comment') {
-                        const c = event.data as TicketComment
-                        return (
-                          <div
-                            key={`c-${c.id}`}
-                            className={`px-5 py-4 ${c.internal ? 'bg-amber-50' : ''}`}
-                          >
-                            <div className="flex items-center gap-2 mb-1.5 text-xs text-slate-500">
-                              <AuthorLabel user={c.user} agentName={c.agentName} />
-                              <span>commented</span>
-                              {c.internal && (
-                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">
-                                  internal
-                                </span>
-                              )}
-                              <span>{new Date(c.createdAt).toLocaleString()}</span>
-                            </div>
-                            <p className="text-sm text-slate-800 whitespace-pre-wrap">
-                              {c.content}
-                            </p>
-                          </div>
-                        )
-                      }
-
-                      const a = event.data as TicketActivityEntry
-                      if (a.action === 'created') return null // Skip — shown in title area
-                      return (
-                        <div
-                          key={`a-${a.id}`}
-                          className="px-5 py-2 flex items-center gap-1.5 text-xs text-slate-500"
-                        >
-                          <AuthorLabel user={a.user} agentName={a.agentName} />
-                          <span>{ACTION_LABELS[a.action] ?? a.action}</span>
-                          {a.fromValue && (
-                            <span>
-                              from <span className="font-medium text-slate-700">{a.fromValue}</span>
-                            </span>
-                          )}
-                          {a.toValue && (
-                            <span>
-                              to{' '}
-                              <span className="font-medium text-slate-700">
-                                {a.toValue ?? 'unassigned'}
-                              </span>
-                            </span>
-                          )}
-                          <span className="ml-auto">{new Date(a.createdAt).toLocaleString()}</span>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-
-                {/* Comment box */}
-                <div className="px-5 py-4 border-t border-slate-100">
-                  <form onSubmit={submitComment} className="space-y-2">
-                    <textarea
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      placeholder="Leave a comment…"
-                      rows={3}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-                    />
-                    <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={commentInternal}
-                          onChange={(e) => setCommentInternal(e.target.checked)}
-                          className="rounded border-slate-300"
-                        />
-                        Internal note
-                      </label>
-                      <Button
-                        type="submit"
-                        size="sm"
-                        disabled={submittingComment || !commentText.trim()}
-                      >
-                        {submittingComment ? 'Posting…' : 'Post Comment'}
-                      </Button>
-                    </div>
-                  </form>
-                </div>
-              </div>
+      <main
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          display: 'grid',
+          gridTemplateColumns: '1fr 280px',
+          alignItems: 'start',
+        }}
+      >
+        {/* Main column */}
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+          {/* Ticket header */}
+          <div style={{ border: '1px solid var(--line)', background: 'var(--bg-1)' }}>
+            <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
+              <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>/// ticket</span>
             </div>
+            <div style={{ padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <span
+                  className="km-mono"
+                  style={{
+                    fontSize: 9, letterSpacing: '0.14em', textTransform: 'uppercase',
+                    padding: '2px 7px', border: `1px solid ${statusBorder}`, color: statusColor,
+                  }}
+                >
+                  {ticket.status.replace('_', ' ')}
+                </span>
+                <PriorityBar level={ticket.priority} />
+                <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)', letterSpacing: '0.06em' }}>
+                  #{ticket.number}
+                </span>
+              </div>
 
-            {/* Sidebar */}
-            <div className="w-64 shrink-0 space-y-4">
-              {/* Status */}
-              <div className="bg-white rounded-lg border border-slate-200 p-4">
-                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-                  Details
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Status</label>
-                    <select
-                      value={ticket.status}
-                      onChange={(e) => patch({ status: e.target.value })}
-                      disabled={saving}
-                      className={`w-full px-2 py-1.5 text-sm rounded-md border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${STATUS_COLORS[ticket.status] ?? 'bg-white text-slate-700 border-slate-300'}`}
-                    >
-                      {STATUS_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Priority</label>
-                    <select
-                      value={ticket.priority}
-                      onChange={(e) => patch({ priority: e.target.value })}
-                      disabled={saving}
-                      className={`w-full px-2 py-1.5 text-sm rounded-md border font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 ${PRIORITY_COLORS[ticket.priority] ?? 'bg-white text-slate-700'} border-slate-300`}
-                    >
-                      {PRIORITY_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Reporter</label>
-                    <p className="text-sm text-slate-700">
-                      {ticket.reporter?.name ?? ticket.agentName ?? 'Unknown'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Assignee</label>
-                    <p className="text-sm text-slate-700">
-                      {ticket.assignee?.name ?? (
-                        <span className="text-slate-400 italic">Unassigned</span>
-                      )}
-                    </p>
-                  </div>
-                  {ticket.resolvedAt && (
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Resolved</label>
-                      <p className="text-sm text-slate-700">
-                        {new Date(ticket.resolvedAt).toLocaleString()}
-                      </p>
-                    </div>
-                  )}
-                  {ticket.closedAt && (
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Closed</label>
-                      <p className="text-sm text-slate-700">
-                        {new Date(ticket.closedAt).toLocaleString()}
-                      </p>
-                    </div>
-                  )}
+              {editingTitle ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                  <input
+                    autoFocus
+                    className="km-input"
+                    value={titleDraft}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitleDraft(e.target.value)}
+                    onKeyDown={(e: React.KeyboardEvent) => {
+                      if (e.key === 'Enter') saveTitle()
+                      if (e.key === 'Escape') setEditingTitle(false)
+                    }}
+                    style={{ flex: 1, height: 36, fontSize: 16 }}
+                    aria-label="Edit ticket title"
+                  />
+                  <Button size="sm" onClick={saveTitle} disabled={saving}>save</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEditingTitle(false)}>cancel</Button>
                 </div>
-              </div>
-
-              {/* Quick actions */}
-              <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-2">
-                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
-                  Quick Actions
-                </h3>
-                {ticket.status !== 'in_progress' && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => patch({ status: 'in_progress' })}
-                    disabled={saving}
-                  >
-                    Mark In Progress
-                  </Button>
-                )}
-                {ticket.status !== 'resolved' && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => patch({ status: 'resolved' })}
-                    disabled={saving}
-                  >
-                    Mark Resolved
-                  </Button>
-                )}
-                {ticket.status !== 'closed' && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => patch({ status: 'closed' })}
-                    disabled={saving}
-                  >
-                    Close Ticket
-                  </Button>
-                )}
-                {(ticket.status === 'resolved' || ticket.status === 'closed') && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => patch({ status: 'open' })}
-                    disabled={saving}
-                  >
-                    Re-open
-                  </Button>
-                )}
-              </div>
-
-              {/* Danger zone */}
-              <div className="bg-white rounded-lg border border-red-100 p-4">
-                <h3 className="text-xs font-semibold text-red-500 uppercase tracking-wider mb-3">
-                  Danger Zone
-                </h3>
-                {deleteConfirm ? (
-                  <div className="space-y-2">
-                    <p className="text-xs text-red-600">This cannot be undone.</p>
-                    <Button variant="danger" size="sm" className="w-full" onClick={handleDelete}>
-                      Confirm Delete
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => setDeleteConfirm(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => setDeleteConfirm(true)}
-                  >
-                    Delete Ticket
-                  </Button>
-                )}
+              ) : (
+                <h1
+                  style={{
+                    fontSize: 20, fontWeight: 600, letterSpacing: '-0.015em', color: 'var(--fg-0)',
+                    lineHeight: 1.3, marginBottom: 8, cursor: 'pointer', fontFamily: 'var(--font-display)',
+                  }}
+                  onClick={() => { setTitleDraft(ticket.title); setEditingTitle(true) }}
+                  title="Click to edit title"
+                >
+                  {ticket.title}
+                </h1>
+              )}
+              <div className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)', letterSpacing: '0.04em' }}>
+                opened {fmt(ticket.createdAt)}{' by '}
+                {ticket.reporter?.name ?? ticket.agentName ?? 'unknown'}
               </div>
             </div>
           </div>
+
+          {/* Description */}
+          <div style={{ border: '1px solid var(--line)', background: 'var(--bg-1)' }}>
+            <div style={{
+              padding: '10px 16px', borderBottom: '1px solid var(--line)',
+              background: 'var(--bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            }}>
+              <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>/// description</span>
+              {!editingDesc && (
+                <button
+                  className="km-btn km-btn--sm km-btn--ghost"
+                  onClick={() => { setDescDraft(ticket.description ?? ''); setEditingDesc(true) }}
+                  aria-label="Edit description"
+                  style={{ fontSize: 11, height: 22 }}
+                >
+                  edit
+                </button>
+              )}
+            </div>
+            <div style={{ padding: '14px 16px' }}>
+              {editingDesc ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <textarea
+                    autoFocus
+                    className="km-input"
+                    value={descDraft}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescDraft(e.target.value)}
+                    rows={6}
+                    style={{ height: 'auto', resize: 'vertical', fontSize: 13 }}
+                    aria-label="Edit description"
+                  />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button size="sm" onClick={saveDesc} disabled={saving}>save</Button>
+                    <Button size="sm" variant="secondary" onClick={() => setEditingDesc(false)}>cancel</Button>
+                  </div>
+                </div>
+              ) : ticket.description ? (
+                <p style={{ fontSize: 13, color: 'var(--fg-1)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                  {ticket.description}
+                </p>
+              ) : (
+                <p className="km-mono" style={{ fontSize: 12, color: 'var(--fg-4)' }}>no description provided.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Activity timeline */}
+          <TicketTimeline
+            comments={ticket.comments}
+            activity={ticket.activity}
+            onPostComment={handlePostComment}
+          />
         </div>
+
+        {/* Right rail */}
+        <TicketRail
+          ticket={railData}
+          saving={saving}
+          onPatch={patch}
+          onDelete={handleDelete}
+        />
       </main>
     </>
   )
