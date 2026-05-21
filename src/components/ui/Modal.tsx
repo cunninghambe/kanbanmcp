@@ -32,19 +32,28 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
       <div
-        className={`relative bg-white rounded-lg shadow-xl w-full ${sizes[size]} max-h-[90vh] overflow-y-auto`}
+        className={`relative w-full ${sizes[size]} max-h-[90vh] overflow-y-auto`}
+        style={{
+          background: 'var(--bg-2)',
+          border: '1px solid var(--line)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.24)',
+        }}
         role="dialog"
         aria-modal="true"
       >
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-            <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <div
+            className="flex items-center justify-between px-6 py-4"
+            style={{ borderBottom: '1px solid var(--line)' }}
+          >
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--fg-0)' }}>{title}</h2>
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-slate-600 transition-colors"
+              className="km-btn km-btn--ghost km-btn--sm"
               aria-label="Close"
+              style={{ padding: '4px 6px' }}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"

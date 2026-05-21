@@ -5,7 +5,8 @@ import useSWR from 'swr'
 import { Header } from '@/components/layout/Header'
 import { WebhookManager } from '@/components/settings/WebhookManager'
 import { useSession } from '@/hooks/useSession'
-import { Badge } from '@/components/ui/Badge'
+import { Eyebrow } from '@/components/design/Eyebrow'
+import { Chip } from '@/components/design/Chip'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -21,6 +22,12 @@ interface OrgMember {
 }
 
 const ROLE_OPTIONS: Array<'ADMIN' | 'MEMBER' | 'AGENT_ONLY'> = ['ADMIN', 'MEMBER', 'AGENT_ONLY']
+
+function roleChipTone(role: string): 'ok' | 'warn' | 'err' | 'accent' | undefined {
+  if (role === 'ADMIN') return 'accent'
+  if (role === 'AGENT_ONLY') return 'warn'
+  return undefined
+}
 
 export default function SettingsPage() {
   const { org, orgMemberships, user } = useSession()
@@ -58,54 +65,89 @@ export default function SettingsPage() {
         <div className="max-w-3xl mx-auto space-y-10">
           {/* Org info */}
           <section>
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Organization</h2>
-            <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
+            <h2
+              className="text-lg font-semibold mb-4"
+              style={{ color: 'var(--fg-0)' }}
+            >
+              Organization
+            </h2>
+            <div
+              style={{
+                background: 'var(--bg-2)',
+                border: '1px solid var(--line)',
+                padding: '20px',
+              }}
+              className="space-y-3"
+            >
               <div>
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  Name
-                </span>
-                <p className="text-slate-900 mt-0.5">{org?.name ?? '—'}</p>
+                <Eyebrow size={10}>Name</Eyebrow>
+                <p className="mt-1" style={{ color: 'var(--fg-0)' }}>{org?.name ?? '—'}</p>
               </div>
               <div>
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  Slug
-                </span>
-                <p className="text-slate-900 font-mono text-sm mt-0.5">{org?.slug ?? '—'}</p>
+                <Eyebrow size={10}>Slug</Eyebrow>
+                <p className="km-mono text-sm mt-1" style={{ color: 'var(--fg-0)' }}>
+                  {org?.slug ?? '—'}
+                </p>
               </div>
             </div>
           </section>
 
           {/* Members */}
           <section>
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">
+            <h2
+              className="text-lg font-semibold mb-4"
+              style={{ color: 'var(--fg-0)' }}
+            >
               Members ({members.length})
             </h2>
             {members.length === 0 ? (
-              <div className="text-slate-400 text-sm text-center py-8 border border-dashed border-slate-300 rounded-lg">
+              <div
+                className="text-sm text-center py-8"
+                style={{
+                  color: 'var(--fg-3)',
+                  border: '1px dashed var(--line-strong)',
+                }}
+              >
                 No members found
               </div>
             ) : (
-              <div className="overflow-hidden border border-slate-200 rounded-lg">
+              <div style={{ border: '1px solid var(--line)', overflow: 'hidden' }}>
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+                  <thead style={{ background: 'var(--bg-2)', borderBottom: '1px solid var(--line)' }}>
                     <tr>
-                      <th className="text-left px-4 py-3 font-medium text-slate-600">Name</th>
-                      <th className="text-left px-4 py-3 font-medium text-slate-600">Email</th>
-                      <th className="text-left px-4 py-3 font-medium text-slate-600">Role</th>
+                      <th className="text-left px-4 py-3">
+                        <Eyebrow size={10}>Name</Eyebrow>
+                      </th>
+                      <th className="text-left px-4 py-3">
+                        <Eyebrow size={10}>Email</Eyebrow>
+                      </th>
+                      <th className="text-left px-4 py-3">
+                        <Eyebrow size={10}>Role</Eyebrow>
+                      </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {members.map((member) => {
+                  <tbody>
+                    {members.map((member, i) => {
                       const isCurrentUser = member.user.id === user?.id
                       return (
-                        <tr key={member.userId} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 font-medium text-slate-800">
+                        <tr
+                          key={member.userId}
+                          style={{
+                            borderTop: i === 0 ? 'none' : '1px solid var(--line)',
+                            background: 'var(--bg-1)',
+                          }}
+                        >
+                          <td className="px-4 py-3 font-medium" style={{ color: 'var(--fg-0)' }}>
                             {member.user.name}
                             {isCurrentUser && (
-                              <span className="ml-2 text-xs text-slate-400">(you)</span>
+                              <span className="ml-2 text-xs" style={{ color: 'var(--fg-3)' }}>
+                                (you)
+                              </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-slate-500">{member.user.email}</td>
+                          <td className="px-4 py-3" style={{ color: 'var(--fg-2)' }}>
+                            {member.user.email}
+                          </td>
                           <td className="px-4 py-3">
                             {isAdmin && !isCurrentUser ? (
                               <select
@@ -117,7 +159,8 @@ export default function SettingsPage() {
                                   )
                                 }
                                 disabled={updatingRole === member.userId}
-                                className="px-2 py-1 border border-slate-300 rounded text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="km-input"
+                                style={{ height: 28, fontSize: 12, width: 'auto', padding: '2px 8px' }}
                               >
                                 {ROLE_OPTIONS.map((r) => (
                                   <option key={r} value={r}>
@@ -126,7 +169,7 @@ export default function SettingsPage() {
                                 ))}
                               </select>
                             ) : (
-                              <Badge>{member.role}</Badge>
+                              <Chip tone={roleChipTone(member.role)}>{member.role}</Chip>
                             )}
                           </td>
                         </tr>

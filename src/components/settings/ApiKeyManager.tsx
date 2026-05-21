@@ -4,7 +4,8 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { Badge } from '@/components/ui/Badge'
+import { Chip } from '@/components/design/Chip'
+import { Eyebrow } from '@/components/design/Eyebrow'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -81,49 +82,70 @@ export function ApiKeyManager() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-slate-900">API Keys</h2>
+        <h2 className="text-lg font-semibold" style={{ color: 'var(--fg-0)' }}>API Keys</h2>
         <Button onClick={() => setShowCreate(true)}>New API Key</Button>
       </div>
 
       {/* Keys table */}
       {!keys || keys.length === 0 ? (
-        <div className="text-center py-10 text-slate-400 text-sm border border-dashed border-slate-300 rounded-lg">
+        <div
+          className="text-center py-10 text-sm"
+          style={{ color: 'var(--fg-3)', border: '1px dashed var(--line-strong)' }}
+        >
           No API keys yet. Create one to grant agents access.
         </div>
       ) : (
-        <div className="overflow-hidden border border-slate-200 rounded-lg">
+        <div style={{ border: '1px solid var(--line)', overflow: 'hidden' }}>
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead style={{ background: 'var(--bg-2)', borderBottom: '1px solid var(--line)' }}>
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Agent Name</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Permissions</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Last Used</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Created</th>
-                <th className="text-right px-4 py-3 font-medium text-slate-600">Actions</th>
+                <th className="text-left px-4 py-3">
+                  <Eyebrow size={10}>Agent Name</Eyebrow>
+                </th>
+                <th className="text-left px-4 py-3">
+                  <Eyebrow size={10}>Permissions</Eyebrow>
+                </th>
+                <th className="text-left px-4 py-3">
+                  <Eyebrow size={10}>Last Used</Eyebrow>
+                </th>
+                <th className="text-left px-4 py-3">
+                  <Eyebrow size={10}>Created</Eyebrow>
+                </th>
+                <th className="text-right px-4 py-3">
+                  <Eyebrow size={10}>Actions</Eyebrow>
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {(Array.isArray(keys) ? keys : []).map((key) => (
-                <tr key={key.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-800">{key.agentName}</td>
+            <tbody>
+              {(Array.isArray(keys) ? keys : []).map((key, i) => (
+                <tr
+                  key={key.id}
+                  style={{
+                    borderTop: i === 0 ? 'none' : '1px solid var(--line)',
+                    background: 'var(--bg-1)',
+                  }}
+                >
+                  <td className="px-4 py-3 font-medium" style={{ color: 'var(--fg-0)' }}>
+                    {key.agentName}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {(key.permissions ?? []).map((p) => (
-                        <Badge key={p}>{p}</Badge>
+                        <Chip key={p}>{p}</Chip>
                       ))}
                       {(key.permissions ?? []).length === 0 && (
-                        <span className="text-slate-400 text-xs">none</span>
+                        <span style={{ color: 'var(--fg-3)', fontSize: 12 }}>none</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">
+                  <td className="px-4 py-3 km-mono" style={{ color: 'var(--fg-2)', fontSize: 12 }}>
                     {key.lastUsedAt ? (
                       new Date(key.lastUsedAt).toLocaleDateString()
                     ) : (
-                      <span className="text-slate-300">Never</span>
+                      <span style={{ color: 'var(--fg-4)' }}>Never</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-500">
+                  <td className="px-4 py-3 km-mono" style={{ color: 'var(--fg-2)', fontSize: 12 }}>
                     {new Date(key.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3 text-right">
@@ -156,7 +178,9 @@ export function ApiKeyManager() {
       >
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Agent Name</label>
+            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--fg-1)' }}>
+              Agent Name
+            </label>
             <input
               type="text"
               value={agentName}
@@ -164,11 +188,13 @@ export function ApiKeyManager() {
               placeholder="e.g. ci-agent"
               autoFocus
               required
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="km-input"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Permissions</label>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--fg-1)' }}>
+              Permissions
+            </label>
             <div className="space-y-2">
               {PERMISSION_OPTIONS.map((perm) => (
                 <label key={perm} className="flex items-center gap-2 cursor-pointer">
@@ -176,9 +202,9 @@ export function ApiKeyManager() {
                     type="checkbox"
                     checked={selectedPerms.includes(perm)}
                     onChange={() => togglePerm(perm)}
-                    className="rounded border-slate-300"
+                    style={{ accentColor: 'var(--accent)' }}
                   />
-                  <span className="text-sm text-slate-700 capitalize">{perm}</span>
+                  <span className="text-sm capitalize" style={{ color: 'var(--fg-1)' }}>{perm}</span>
                 </label>
               ))}
             </div>
@@ -214,17 +240,32 @@ export function ApiKeyManager() {
       >
         {newKeyResult && (
           <div className="space-y-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
-              <p className="text-sm font-medium text-amber-800">
+            <div
+              style={{
+                border: '1px solid var(--warn)',
+                padding: '12px',
+              }}
+            >
+              <p className="text-sm font-medium" style={{ color: 'var(--warn)' }}>
                 This key will only be shown once. Copy it now — you cannot retrieve it later.
               </p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+              <label
+                className="block text-xs font-medium uppercase tracking-wide mb-1"
+                style={{ color: 'var(--fg-2)' }}
+              >
                 Agent: {newKeyResult.agentName}
               </label>
               <div className="flex items-center gap-2">
-                <code className="flex-1 bg-slate-100 px-3 py-2 rounded-md text-xs text-slate-800 font-mono break-all">
+                <code
+                  className="flex-1 km-mono text-xs break-all px-3 py-2"
+                  style={{
+                    background: 'var(--bg-3)',
+                    color: 'var(--fg-0)',
+                    border: '1px solid var(--line)',
+                  }}
+                >
                   {newKeyResult.key}
                 </code>
                 <Button size="sm" variant="secondary" onClick={copyKey}>

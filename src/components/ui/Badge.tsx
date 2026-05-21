@@ -11,7 +11,7 @@ export function Badge({ children, color, variant = 'default', className = '' }: 
   if (variant === 'colored' && color) {
     return (
       <span
-        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white ${className}`}
+        className={`inline-flex items-center px-2 py-0.5 text-xs font-medium text-white ${className}`}
         style={{ backgroundColor: color }}
       >
         {children}
@@ -21,7 +21,12 @@ export function Badge({ children, color, variant = 'default', className = '' }: 
 
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 ${className}`}
+      className={`inline-flex items-center px-2 py-0.5 text-xs font-medium ${className}`}
+      style={{
+        background: 'var(--bg-3)',
+        color: 'var(--fg-1)',
+        border: '1px solid var(--line)',
+      }}
     >
       {children}
     </span>

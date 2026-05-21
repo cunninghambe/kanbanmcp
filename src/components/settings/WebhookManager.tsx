@@ -4,7 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { Badge } from '@/components/ui/Badge'
+import { Chip } from '@/components/design/Chip'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -98,36 +98,50 @@ export function WebhookManager() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-slate-900">Webhooks</h2>
+        <h2 className="text-lg font-semibold" style={{ color: 'var(--fg-0)' }}>Webhooks</h2>
         <Button onClick={() => setShowCreate(true)}>Add Webhook</Button>
       </div>
 
       {!webhooks || webhooks.length === 0 ? (
-        <div className="text-center py-10 text-slate-400 text-sm border border-dashed border-slate-300 rounded-lg">
+        <div
+          className="text-center py-10 text-sm"
+          style={{ color: 'var(--fg-3)', border: '1px dashed var(--line-strong)' }}
+        >
           No webhooks registered yet.
         </div>
       ) : (
         <div className="space-y-3">
           {(Array.isArray(webhooks) ? webhooks : []).map((wh) => (
-            <div key={wh.id} className="border border-slate-200 rounded-lg p-4 bg-white">
+            <div
+              key={wh.id}
+              style={{
+                border: '1px solid var(--line)',
+                background: 'var(--bg-2)',
+                padding: '16px',
+              }}
+            >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 truncate">{wh.url}</p>
+                  <p className="text-sm font-medium truncate" style={{ color: 'var(--fg-0)' }}>
+                    {wh.url}
+                  </p>
                   <div className="flex flex-wrap gap-1 mt-2">
                     {(wh.events ?? []).map((evt) => (
-                      <Badge key={evt}>{evt}</Badge>
+                      <Chip key={evt}>{evt}</Chip>
                     ))}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span
-                    className={`text-xs font-medium ${wh.active ? 'text-green-600' : 'text-slate-400'}`}
+                    className="text-xs font-medium"
+                    style={{ color: wh.active ? 'var(--ok)' : 'var(--fg-3)' }}
                   >
                     {wh.active ? 'Active' : 'Inactive'}
                   </span>
                   {pingResult?.id === wh.id && (
                     <span
-                      className={`text-xs font-medium ${pingResult.ok ? 'text-green-600' : 'text-red-600'}`}
+                      className="text-xs font-medium"
+                      style={{ color: pingResult.ok ? 'var(--ok)' : 'var(--err)' }}
                     >
                       {pingResult.ok ? 'Ping OK' : 'Ping failed'}
                     </span>
@@ -170,12 +184,24 @@ export function WebhookManager() {
       >
         <form onSubmit={handleCreate} className="space-y-4">
           {createError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+            <div
+              style={{
+                border: '1px solid var(--err)',
+                color: 'var(--err)',
+                padding: '8px 12px',
+                fontSize: 13,
+              }}
+            >
               {createError}
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Endpoint URL</label>
+            <label
+              className="block text-sm font-medium mb-1"
+              style={{ color: 'var(--fg-1)' }}
+            >
+              Endpoint URL
+            </label>
             <input
               type="url"
               value={url}
@@ -183,22 +209,32 @@ export function WebhookManager() {
               placeholder="https://example.com/webhook"
               autoFocus
               required
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="km-input"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Secret</label>
+            <label
+              className="block text-sm font-medium mb-1"
+              style={{ color: 'var(--fg-1)' }}
+            >
+              Secret
+            </label>
             <input
               type="text"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
               placeholder="Shared secret for HMAC signature verification"
               required
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="km-input"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Events</label>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: 'var(--fg-1)' }}
+            >
+              Events
+            </label>
             <div className="space-y-2">
               {ALLOWED_EVENTS.map((evt) => (
                 <label key={evt} className="flex items-center gap-2 cursor-pointer">
@@ -206,14 +242,16 @@ export function WebhookManager() {
                     type="checkbox"
                     checked={selectedEvents.includes(evt)}
                     onChange={() => toggleEvent(evt)}
-                    className="rounded border-slate-300"
+                    style={{ accentColor: 'var(--accent)' }}
                   />
-                  <span className="text-sm text-slate-700 font-mono">{evt}</span>
+                  <span className="text-sm km-mono" style={{ color: 'var(--fg-1)' }}>{evt}</span>
                 </label>
               ))}
             </div>
             {selectedEvents.length === 0 && (
-              <p className="text-xs text-red-600 mt-1">Select at least one event</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--err)' }}>
+                Select at least one event
+              </p>
             )}
           </div>
           <div className="flex justify-end gap-2">
