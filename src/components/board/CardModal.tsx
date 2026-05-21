@@ -615,13 +615,32 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
                 </select>
               </KV>
               <KV label="due">
-                <Calendar size={12} color="var(--fg-3)" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('card-due-date') as HTMLInputElement | null
+                    el?.showPicker?.()
+                    el?.focus()
+                  }}
+                  aria-label="Open due-date picker"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Calendar size={12} color="var(--fg-3)" aria-hidden="true" />
+                </button>
                 <label htmlFor="card-due-date" className="sr-only">Due date</label>
                 <input
                   id="card-due-date"
                   type="date"
                   value={card.dueDate ? new Date(card.dueDate).toISOString().split('T')[0] : ''}
                   onChange={(e) => handleDueDateChange(e.target.value)}
+                  onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
                   style={{
                     fontSize: 13,
                     color: card.dueDate ? 'var(--accent)' : 'var(--fg-3)',
@@ -631,6 +650,7 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
                     cursor: 'pointer',
                     fontFamily: 'var(--font-body)',
                     padding: 0,
+                    colorScheme: 'light dark',
                   }}
                 />
               </KV>
