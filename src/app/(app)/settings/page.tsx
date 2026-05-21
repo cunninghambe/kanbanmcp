@@ -4,6 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { Header } from '@/components/layout/Header'
 import { WebhookManager } from '@/components/settings/WebhookManager'
+import { AiBackendManager } from '@/components/settings/AiBackendManager'
 import { useSession } from '@/hooks/useSession'
 import { Eyebrow } from '@/components/design/Eyebrow'
 import { Chip } from '@/components/design/Chip'
@@ -180,6 +181,13 @@ export default function SettingsPage() {
               </div>
             )}
           </section>
+
+          {/* AI Backend */}
+          {org && (
+            <section>
+              <AiBackendManager orgId={org.id} isAdmin={isAdmin} />
+            </section>
+          )}
 
           {/* Webhooks */}
           <section>

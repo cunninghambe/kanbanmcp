@@ -38,7 +38,8 @@ async function getReviewerUserId(): Promise<string | null> {
 type ClaudeClientFn = (
   params: AiReviewParams,
   content: ExtractedContent,
-  filename: string
+  filename: string,
+  orgId?: string
 ) => Promise<ClaudeReviewResult>
 
 let claudeClientOverride: ClaudeClientFn | null = null
@@ -178,9 +179,15 @@ async function runReview(reviewId: string): Promise<void> {
     ? 'card description'
     : (review.artifact?.filename ?? 'unknown')
 
+  const cardForOrg = await prisma.card.findUnique({
+    where: { id: review.cardId },
+    select: { board: { select: { orgId: true } } },
+  })
+  const orgId = cardForOrg?.board?.orgId
+
   let result: ClaudeReviewResult
   try {
-    result = await (claudeClientOverride ?? runClaudeReview)(params, content, filename)
+    result = await (claudeClientOverride ?? runClaudeReview)(params, content, filename, orgId)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     await prisma.aiReview.update({

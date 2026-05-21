@@ -45,8 +45,21 @@ model Organization {
   activities AgentActivity[]
   webhooks   Webhook[]
   tickets    Ticket[]
+  aiSettings OrgAiSettings?
 
   @@map("organizations")
+}
+
+model OrgAiSettings {
+  id                       String       @id @default(cuid())
+  orgId                    String       @unique
+  org                      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  anthropicApiKeyEncrypted String?
+  anthropicApiKeyLastFour  String?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  @@map("org_ai_settings")
 }
 
 model OrgMember {

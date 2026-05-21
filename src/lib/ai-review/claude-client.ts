@@ -1,4 +1,6 @@
 import Anthropic, { APIError, RateLimitError } from '@anthropic-ai/sdk'
+import { prisma } from '@/lib/db'
+import { decryptSecret } from '@/lib/secrets'
 import type { ExtractedContent } from './extractors'
 import type { AiReviewParams } from '@/lib/cards'
 
@@ -62,7 +64,20 @@ function getClaudeMCPConfig(): { url: string; project: string } | null {
   return { url, project }
 }
 
-function getAnthropicAuth(): { kind: 'oauth'; token: string } | { kind: 'apikey'; key: string } | null {
+type AnthropicAuth = { kind: 'oauth'; token: string } | { kind: 'apikey'; key: string }
+
+async function getAnthropicAuth(orgId?: string): Promise<AnthropicAuth | null> {
+  if (orgId) {
+    try {
+      const settings = await prisma.orgAiSettings.findUnique({ where: { orgId } })
+      if (settings?.anthropicApiKeyEncrypted) {
+        const key = decryptSecret(settings.anthropicApiKeyEncrypted)
+        return { kind: 'apikey', key }
+      }
+    } catch (err) {
+      console.warn('[ai-review] Failed to load org AI settings, falling through:', err instanceof Error ? err.message : String(err))
+    }
+  }
   const authToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim()
   if (authToken) return { kind: 'oauth', token: authToken }
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim()
@@ -208,10 +223,11 @@ async function runViaAnthropic(
 export async function runClaudeReview(
   params: AiReviewParams,
   content: ExtractedContent,
-  filename: string
+  filename: string,
+  orgId?: string
 ): Promise<ClaudeReviewResult> {
   const mcp = getClaudeMCPConfig()
-  const anthropic = getAnthropicAuth()
+  const anthropic = await getAnthropicAuth(orgId)
 
   // Image content can't traverse ClaudeMCP (no multimodal pass-through) — must use the API.
   if (content.kind === 'image') {
