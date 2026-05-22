@@ -129,6 +129,11 @@ export async function attachDeliverableArtifact(
   projectPath: string,
   deliverableRepoPath: string,
 ): Promise<{ artifactId: string; filename: string } | { skipped: string }> {
+  // Defense in depth: assert path safety here too. Callers (worker.ts) already
+  // assert before invoking, but that contract is fragile — any future caller
+  // that forgets would silently allow path escape via `path.join('/x', '../y')`.
+  assertSafeDeliverablePath(deliverableRepoPath)
+
   const fullPath = path.join(projectPath, deliverableRepoPath)
 
   let stats: Awaited<ReturnType<typeof fsp.stat>>
