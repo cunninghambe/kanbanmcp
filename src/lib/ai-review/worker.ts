@@ -64,10 +64,19 @@ async function processJob(reviewId: string): Promise<void> {
 }
 
 async function fetchAndExtract(artifact: {
+  id: string
+  source: string
   storageKey: string
   mimeType: string
   filename: string
+  uploaderId: string
 }): Promise<{ content: ExtractedContent } | { skipped: string }> {
+  const GOOGLE_SOURCES = new Set(['GOOGLE_DOC', 'GOOGLE_SHEET', 'GOOGLE_SLIDE', 'GOOGLE_FOLDER', 'URL'])
+  if (GOOGLE_SOURCES.has(artifact.source)) {
+    const content = await extractContent({ artifact })
+    return { content }
+  }
+
   let bytes: Buffer
   try {
     const storage = getStorageDriver()
@@ -82,7 +91,7 @@ async function fetchAndExtract(artifact: {
     return { skipped: 'Artifact deleted before review' }
   }
 
-  const content = await extractContent(bytes, artifact.mimeType, artifact.filename)
+  const content = await extractContent({ artifact, bytes })
   return { content }
 }
 
