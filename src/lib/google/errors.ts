@@ -40,3 +40,27 @@ export class GoogleHttpError extends Error {
     this.name = 'GoogleHttpError'
   }
 }
+
+export class DriveNotFoundError extends Error {
+  readonly code = 'DRIVE_NOT_FOUND' as const
+  constructor(message = 'Drive file not found') {
+    super(message)
+    this.name = 'DriveNotFoundError'
+  }
+}
+
+export class DriveForbiddenError extends Error {
+  readonly code = 'DRIVE_FORBIDDEN' as const
+  constructor(message = 'Drive access forbidden') {
+    super(message)
+    this.name = 'DriveForbiddenError'
+  }
+}
+
+export class DriveTrashedError extends Error {
+  readonly code = 'DRIVE_TRASHED' as const
+  constructor(message = 'Drive file is in trash') {
+    super(message)
+    this.name = 'DriveTrashedError'
+  }
+}
