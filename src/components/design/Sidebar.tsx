@@ -299,10 +299,20 @@ export function DesignSidebar() {
           <Activity size={14} />
           <span style={{ flex: 1 }}>activity</span>
         </Link>
-        <Link href="/settings" style={navStyle(isActive('/settings'))}>
+        <Link href="/settings" style={navStyle(pathname === '/settings')}>
           <Settings2 size={14} />
           <span style={{ flex: 1 }}>settings</span>
         </Link>
+        {isActive('/settings') && (
+          <>
+            <Link href="/settings/api-keys" style={{ ...navStyle(isActive('/settings/api-keys')), paddingLeft: 30 }}>
+              <span style={{ flex: 1, fontSize: 12 }}>api keys</span>
+            </Link>
+            <Link href="/settings/integrations" style={{ ...navStyle(isActive('/settings/integrations')), paddingLeft: 30 }}>
+              <span style={{ flex: 1, fontSize: 12 }}>integrations</span>
+            </Link>
+          </>
+        )}
       </div>
 
       {/* MCP status + user footer */}
