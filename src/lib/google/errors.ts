@@ -64,3 +64,11 @@ export class DriveTrashedError extends Error {
     this.name = 'DriveTrashedError'
   }
 }
+
+export class RateLimitExceededError extends Error {
+  readonly code = 'RATE_LIMIT_EXCEEDED' as const
+  constructor(message = 'Rate limit exceeded: request would exceed maxWaitMs') {
+    super(message)
+    this.name = 'RateLimitExceededError'
+  }
+}

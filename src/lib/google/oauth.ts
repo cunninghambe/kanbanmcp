@@ -109,7 +109,7 @@ export async function exchangeCode(code: string): Promise<ExchangeResult> {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
-  })
+  }, { retry: true })
 
   if (!tokenRes.ok) {
     const text = await tokenRes.text()
@@ -125,7 +125,7 @@ export async function exchangeCode(code: string): Promise<ExchangeResult> {
 
   const userRes = await googleFetch(USERINFO_ENDPOINT, {
     headers: { Authorization: `Bearer ${tokenData.access_token}` },
-  })
+  }, { retry: true })
   const userInfo = await userRes.json()
   if (!isUserinfoResponse(userInfo)) throw new GoogleHttpError(userRes.status, 'Unexpected userinfo shape')
 
@@ -157,7 +157,7 @@ export async function refreshAccessToken(userId: string): Promise<string> {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
-  })
+  }, { userId, retry: true })
 
   if (!res.ok) {
     const raw = await res.json().catch(() => null)
@@ -202,7 +202,7 @@ export async function revokeRefreshToken(userId: string): Promise<void> {
   try {
     const refreshToken = decryptSecret(cred.refreshTokenEncrypted)
     const url = `${REVOKE_ENDPOINT}?token=${encodeURIComponent(refreshToken)}`
-    await googleFetch(url, { method: 'POST' })
+    await googleFetch(url, { method: 'POST' }, { userId, retry: true })
   } catch {
     // Best-effort: Google returns 400 for already-invalid tokens, which is the same desired state.
   }

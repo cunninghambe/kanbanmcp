@@ -5,7 +5,7 @@ import { DriveForbiddenError, DriveNotFoundError, GoogleHttpError } from './erro
 export async function exportDocAsMarkdown(userId: string, fileId: string): Promise<string> {
   const token = await ensureFreshAccessToken(userId)
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text%2Fmarkdown`
-  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } }, { userId, retry: true })
 
   if (res.status === 404) throw new DriveNotFoundError()
   if (res.status === 403) throw new DriveForbiddenError()

@@ -116,10 +116,10 @@ function shapeFileMeta(resource: DriveFileResource): DriveFileMeta {
   }
 }
 
-async function fetchFileResource(fileId: string, token: string): Promise<DriveFileResource> {
+async function fetchFileResource(fileId: string, token: string, userId: string): Promise<DriveFileResource> {
   const fields = 'id,name,mimeType,modifiedTime,size,trashed,shortcutDetails'
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=${fields}&supportsAllDrives=true`
-  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } }, { userId, retry: true })
 
   if (res.status === 404) throw new DriveNotFoundError()
   if (res.status === 403) throw new DriveForbiddenError()
@@ -130,7 +130,7 @@ async function fetchFileResource(fileId: string, token: string): Promise<DriveFi
 
 export async function getFileMeta(userId: string, fileId: string): Promise<DriveFileMeta> {
   const token = await ensureFreshAccessToken(userId)
-  const resource = await fetchFileResource(fileId, token)
+  const resource = await fetchFileResource(fileId, token, userId)
 
   if (resource.trashed) throw new DriveTrashedError()
 
@@ -138,7 +138,7 @@ export async function getFileMeta(userId: string, fileId: string): Promise<Drive
     const targetId = resource.shortcutDetails?.targetId
     if (!targetId) throw new GoogleHttpError(0, 'NESTED_SHORTCUT')
 
-    const target = await fetchFileResource(targetId, token)
+    const target = await fetchFileResource(targetId, token, userId)
     if (target.mimeType === 'application/vnd.google-apps.shortcut') {
       throw new GoogleHttpError(0, 'NESTED_SHORTCUT')
     }
@@ -153,6 +153,7 @@ export async function getFileMeta(userId: string, fileId: string): Promise<Drive
 async function fetchFolderPage(
   folderId: string,
   token: string,
+  userId: string,
   pageToken?: string,
 ): Promise<DriveListResponse> {
   const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`)
@@ -160,7 +161,7 @@ async function fetchFolderPage(
   let url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&pageSize=100&orderBy=name`
   if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`
 
-  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } }, { userId, retry: true })
   if (res.status === 403) throw new DriveForbiddenError()
   if (!res.ok) throw new GoogleHttpError(res.status, await res.text())
 
@@ -170,12 +171,13 @@ async function fetchFolderPage(
 async function fetchAllChildren(
   folderId: string,
   token: string,
+  userId: string,
 ): Promise<DriveFileResource[]> {
   const all: DriveFileResource[] = []
   let pageToken: string | undefined
 
   do {
-    const page = await fetchFolderPage(folderId, token, pageToken)
+    const page = await fetchFolderPage(folderId, token, userId, pageToken)
     all.push(...page.files)
     pageToken = page.nextPageToken
   } while (pageToken)
@@ -201,7 +203,7 @@ export async function listFolderRecursive(
     let children: DriveFileResource[]
 
     try {
-      children = await fetchAllChildren(entry.folderId, token)
+      children = await fetchAllChildren(entry.folderId, token, userId)
     } catch (err) {
       if (err instanceof DriveForbiddenError) {
         result.rejected.push({ id: entry.folderId, reason: 'FORBIDDEN_CHILD' })

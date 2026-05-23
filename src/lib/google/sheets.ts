@@ -39,18 +39,18 @@ function throwOnError(status: number, body: () => Promise<string>): void | Promi
   if (status < 200 || status >= 300) return body().then((b) => { throw new GoogleHttpError(status, b) })
 }
 
-async function fetchMeta(fileId: string, token: string): Promise<SpreadsheetsMetaResponse> {
+async function fetchMeta(fileId: string, token: string, userId: string): Promise<SpreadsheetsMetaResponse> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${fileId}?fields=sheets.properties(title,gridProperties)`
-  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } }, { userId, retry: true })
   const maybeThrow = throwOnError(res.status, () => res.text())
   if (maybeThrow) await maybeThrow
   return res.json() as Promise<SpreadsheetsMetaResponse>
 }
 
-async function fetchValues(fileId: string, title: string, token: string): Promise<ValuesResponse> {
+async function fetchValues(fileId: string, title: string, token: string, userId: string): Promise<ValuesResponse> {
   const encoded = encodeURIComponent(title)
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${encoded}?majorDimension=ROWS`
-  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } }, { userId, retry: true })
   const maybeThrow = throwOnError(res.status, () => res.text())
   if (maybeThrow) await maybeThrow
   return res.json() as Promise<ValuesResponse>
@@ -73,14 +73,14 @@ function buildTabCsv(rows: string[][], totalRows: number): string {
 
 export async function exportSheetAsCsv(userId: string, fileId: string): Promise<string> {
   const token = await ensureFreshAccessToken(userId)
-  const meta = await fetchMeta(fileId, token)
+  const meta = await fetchMeta(fileId, token, userId)
 
   const parts: string[] = []
 
   for (const sheet of meta.sheets) {
     const title = sheet.properties.title
     const totalRows = sheet.properties.gridProperties?.rowCount ?? 0
-    const valuesRes = await fetchValues(fileId, title, token)
+    const valuesRes = await fetchValues(fileId, title, token, userId)
     const rawRows = (valuesRes.values ?? []).slice(0, SHEETS_MAX_ROWS)
     const csv = buildTabCsv(rawRows, totalRows)
     parts.push(`## Sheet: ${title}\n${csv}`)
