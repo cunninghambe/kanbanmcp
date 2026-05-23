@@ -2,7 +2,7 @@
 
 import React, { useId, useRef, useState } from 'react'
 import useSWR from 'swr'
-import { FileText, Image, File, Upload, X } from 'lucide-react'
+import { FileText, Image, File, Upload, X, Cloud } from 'lucide-react'
 import { Pip } from '@/components/design/Pip'
 import type { ArtifactResponse, AiReviewSummary } from '@/lib/artifacts'
 
@@ -328,8 +328,17 @@ export function ArtifactList({ cardId, canDelete }: ArtifactListProps) {
                   borderTop: i === 0 ? 0 : '1px solid var(--line-faint)',
                 }}
               >
-                {/* File type icon */}
-                <span aria-hidden="true">{mimeIcon(artifact.mimeType)}</span>
+                {/* File type icon (+ Google source indicator) */}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <span aria-hidden="true">{mimeIcon(artifact.mimeType)}</span>
+                  {artifact.source !== 'UPLOAD' && (
+                    <Cloud
+                      size={10}
+                      color="var(--fg-3)"
+                      aria-label={`Google ${artifact.source.toLowerCase().replace('google_', '')}`}
+                    />
+                  )}
+                </span>
 
                 {/* Filename */}
                 <a
