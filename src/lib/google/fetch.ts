@@ -1,7 +1,7 @@
 export type GoogleFetch = (
   url: string,
   init?: { method?: string; headers?: Record<string, string>; body?: string },
-) => Promise<{ status: number; ok: boolean; text: () => Promise<string>; json: () => Promise<unknown> }>
+) => Promise<{ status: number; ok: boolean; text: () => Promise<string>; json: () => Promise<unknown>; arrayBuffer?: () => Promise<ArrayBufferLike> }>
 
 let impl: GoogleFetch | null = null
 
