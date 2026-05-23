@@ -838,7 +838,7 @@ describe('AC-13: Disconnect preserves prior reviews; re-trigger fails', () => {
   // than updating it to 'failed'. Fix: wrap fetchAndExtract calls for GOOGLE_* sources in
   // a try-catch in runReview that converts known Google auth errors to status='failed'.
   // Bug discovered by AC-13 integration test in Task 10.
-  it.skip('prior AiReview is intact after disconnect; re-trigger produces failed row', async () => {
+  it('prior AiReview is intact after disconnect; re-trigger produces failed row', async () => {
     const ctx = await seedTestData()
     currentOrgId = ctx.orgId
     mockSession.userId = ctx.userId

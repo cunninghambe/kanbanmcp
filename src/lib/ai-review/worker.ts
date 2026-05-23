@@ -4,9 +4,42 @@ import { AI_REVIEWER_EMAIL, ensureAiReviewerUser } from '../../../prisma/seed-ai
 import { resolveEffectiveAiReviewParams } from './inheritance'
 import { extractContent, PDF_SIZE_CAP } from './extractors'
 import { runClaudeReview } from './claude-client'
+import {
+  GoogleAuthExpiredError,
+  TokenRevokedError,
+  InsufficientScopesError,
+  GoogleHttpError,
+  DriveNotFoundError,
+  DriveForbiddenError,
+  DriveTrashedError,
+  RateLimitExceededError,
+} from '@/lib/google/errors'
 import type { ExtractedContent } from './extractors'
 import type { AiReviewParams } from '@/lib/cards'
 import type { ClaudeReviewResult } from './claude-client'
+
+type GoogleError =
+  | GoogleAuthExpiredError
+  | TokenRevokedError
+  | InsufficientScopesError
+  | GoogleHttpError
+  | DriveNotFoundError
+  | DriveForbiddenError
+  | DriveTrashedError
+  | RateLimitExceededError
+
+function isGoogleError(err: unknown): err is GoogleError {
+  return (
+    err instanceof GoogleAuthExpiredError ||
+    err instanceof TokenRevokedError ||
+    err instanceof InsufficientScopesError ||
+    err instanceof GoogleHttpError ||
+    err instanceof DriveNotFoundError ||
+    err instanceof DriveForbiddenError ||
+    err instanceof DriveTrashedError ||
+    err instanceof RateLimitExceededError
+  )
+}
 
 // Cached AI Reviewer user id, resolved once at runtime.
 let cachedReviewerUserId: string | null = null
@@ -157,7 +190,17 @@ async function runReview(reviewId: string): Promise<void> {
       })
       return
     }
-    fetchResult = await fetchAndExtract(artifact)
+    try {
+      fetchResult = await fetchAndExtract(artifact)
+    } catch (err) {
+      if (!isGoogleError(err)) throw err
+      const msg = err instanceof Error ? err.message : String(err)
+      await prisma.aiReview.update({
+        where: { id: reviewId },
+        data: { status: 'failed', errorMessage: msg.slice(0, 1000), finishedAt: now() },
+      })
+      return
+    }
   }
 
   if ('skipped' in fetchResult) {
