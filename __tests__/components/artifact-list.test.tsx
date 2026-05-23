@@ -25,6 +25,7 @@ const baseArtifact: ArtifactResponse = {
   mimeType: 'application/pdf',
   sizeBytes: 102400,
   source: 'UPLOAD',
+  parentArtifactId: null,
   createdAt: new Date('2026-01-01T12:00:00Z').toISOString(),
   uploader: { id: 'user-1', name: 'Alice', email: 'alice@example.com' },
   reviews: [],
