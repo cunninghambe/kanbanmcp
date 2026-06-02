@@ -58,7 +58,7 @@ async function fetchSlideImages(
 
 export async function extractSlides(userId: string, fileId: string): Promise<SlideContent[]> {
   const token = await ensureFreshAccessToken(userId)
-  const url = `https://slides.googleapis.com/v1/presentations/${fileId}`
+  const url = `https://slides.googleapis.com/v1/presentations/${encodeURIComponent(fileId)}`
   const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } }, { userId, retry: true })
 
   if (res.status === 404) throw new DriveNotFoundError()

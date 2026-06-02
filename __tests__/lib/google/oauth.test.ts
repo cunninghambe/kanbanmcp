@@ -223,12 +223,15 @@ describe('refreshAccessToken', () => {
 
     const token = await refreshAccessToken('user-1')
 
+    // Returned token is the live plaintext value for immediate use…
     expect(token).toBe('fresh-access-token')
+    // …but it is encrypted at rest before being persisted (mirrors refresh token).
+    expect(mockEncrypt).toHaveBeenCalledWith('fresh-access-token')
     expect(mockPrisma.googleCredential.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: 'user-1' },
         data: expect.objectContaining({
-          accessToken: 'fresh-access-token',
+          accessToken: 'enc:fresh-access-token',
           lastUsedAt: expect.any(Date),
         }),
       }),
@@ -292,11 +295,11 @@ describe('refreshAccessToken', () => {
 // ─── ensureFreshAccessToken (E15) ─────────────────────────────────────────────
 
 describe('ensureFreshAccessToken', () => {
-  it('returns existing token when it expires in 10 minutes (no fetch)', async () => {
+  it('decrypts the encrypted access token at rest before returning it (no fetch)', async () => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
     mockPrisma.googleCredential.findUnique.mockResolvedValue({
       userId: 'user-1',
-      accessToken: 'valid-access-token',
+      accessToken: 'enc:valid-access-token', // stored encrypted (mock: enc:<plaintext>)
       accessTokenExpiresAt: expiresAt,
       refreshTokenEncrypted: 'enc:refresh',
     })
@@ -306,7 +309,28 @@ describe('ensureFreshAccessToken', () => {
 
     const token = await ensureFreshAccessToken('user-1')
 
-    expect(token).toBe('valid-access-token')
+    expect(token).toBe('valid-access-token') // decrypted
+    expect(mockDecrypt).toHaveBeenCalledWith('enc:valid-access-token')
+    expect(mockFn).not.toHaveBeenCalled()
+  })
+
+  it('tolerates a legacy plaintext access token (decrypt fails → returned as-is)', async () => {
+    // Rows written before encryption-at-rest hold plaintext. The mock decrypt
+    // throws on non-"enc:" values, exactly like GCM auth failure on plaintext.
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+    mockPrisma.googleCredential.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      accessToken: 'legacy-plaintext-token',
+      accessTokenExpiresAt: expiresAt,
+      refreshTokenEncrypted: 'enc:refresh',
+    })
+
+    const mockFn = makeFetch([])
+    __setGoogleFetchForTests(mockFn)
+
+    const token = await ensureFreshAccessToken('user-1')
+
+    expect(token).toBe('legacy-plaintext-token') // fallback, no crash
     expect(mockFn).not.toHaveBeenCalled()
   })
 

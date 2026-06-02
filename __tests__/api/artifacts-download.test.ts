@@ -86,6 +86,44 @@ describe('GET /api/artifacts/[artifactId]/download', () => {
     expect(res.status).toBe(404)
   })
 
+  it('returns a defined 409 (not 500) for a Google-source artifact', async () => {
+    mockPrisma.artifact.findUnique.mockResolvedValue({
+      ...baseArtifact,
+      source: 'GOOGLE_DOC',
+      storageKey: 'gdrive://abc123',
+    })
+    const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
+    const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.error).toBe('Artifact is not directly downloadable')
+    // Must short-circuit before touching storage (which would throw on the gdrive:// key).
+    expect(mockStorage.getStream).not.toHaveBeenCalled()
+  })
+
+  it('returns 409 when storageKey has gdrive:// prefix even if source is unset', async () => {
+    mockPrisma.artifact.findUnique.mockResolvedValue({
+      ...baseArtifact,
+      source: 'UPLOAD',
+      storageKey: 'gdrive://xyz789',
+    })
+    const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
+    const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
+    expect(res.status).toBe(409)
+    expect(mockStorage.getStream).not.toHaveBeenCalled()
+  })
+
+  it('still downloads a normal UPLOAD artifact (negative / false-positive boundary)', async () => {
+    // baseArtifact is source UPLOAD with a safe key — must NOT be treated as Google.
+    const { GET } = await import('../../src/app/api/artifacts/[artifactId]/download/route')
+    const req = new NextRequest('http://localhost/api/artifacts/art-1/download')
+    const res = await GET(req, { params: Promise.resolve({ artifactId: 'art-1' }) })
+    expect(res.status).toBe(200)
+    expect(mockStorage.getStream).toHaveBeenCalledWith('art-1')
+  })
+
   it('returns 410 when file is missing from storage (ENOENT)', async () => {
     const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
     mockStorage.getStream.mockResolvedValue(makeNodeStream('pdf bytes'))

@@ -111,9 +111,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ orgId: str
         await reloadClaudeMcp()
         claudeRegistration = { ok: true, project: slug, path: result.data.repoPath }
       } catch (regErr) {
-        const msg = regErr instanceof Error ? regErr.message : String(regErr)
-        console.error('POST /api/orgs/[orgId]/boards: claude registration failed:', msg)
-        claudeRegistration = { ok: false, error: msg }
+        // Log the raw error server-side, but do not leak filesystem / git
+        // internals to the client — return a generic message instead.
+        console.error('POST /api/orgs/[orgId]/boards: claude registration failed:', regErr)
+        claudeRegistration = { ok: false, error: 'Claude project registration failed' }
       }
     }
 

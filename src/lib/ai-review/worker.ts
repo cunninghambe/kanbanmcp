@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db'
 import { getStorageDriver } from '@/lib/storage'
+import { withKeyedLock } from '@/lib/keyed-mutex'
 import { AI_REVIEWER_EMAIL, ensureAiReviewerUser } from '../../../prisma/seed-ai-reviewer'
 import { resolveEffectiveAiReviewParams } from './inheritance'
 import { extractContent, PDF_SIZE_CAP } from './extractors'
@@ -300,43 +301,48 @@ export async function enqueueAiReview(artifactId: string): Promise<boolean> {
   })
   if (!artifact) return false
 
-  const existing = await prisma.aiReview.findFirst({
-    where: { artifactId, status: { in: ['pending', 'running'] } },
-    select: { id: true },
-  })
-  if (existing) return false
+  // Serialize the dedup check + row creation per artifact so two concurrent
+  // enqueues cannot both pass the "no pending/running review" check and create
+  // duplicate review rows (→ duplicate Claude spend + duplicate comments).
+  return withKeyedLock(`ai-review:${artifactId}`, async () => {
+    const existing = await prisma.aiReview.findFirst({
+      where: { artifactId, status: { in: ['pending', 'running'] } },
+      select: { id: true },
+    })
+    if (existing) return false
 
-  const params = await resolveEffectiveAiReviewParams(prisma, artifact.cardId)
+    const params = await resolveEffectiveAiReviewParams(prisma, artifact.cardId)
 
-  if (!params) {
-    await prisma.aiReview.create({
+    if (!params) {
+      await prisma.aiReview.create({
+        data: {
+          artifactId,
+          cardId: artifact.cardId,
+          status: 'failed',
+          model: 'unknown',
+          rubricSnapshot: '',
+          errorMessage: 'No review params configured',
+        },
+      })
+      return true
+    }
+
+    const review = await prisma.aiReview.create({
       data: {
         artifactId,
         cardId: artifact.cardId,
-        status: 'failed',
-        model: 'unknown',
-        rubricSnapshot: '',
-        errorMessage: 'No review params configured',
+        status: 'pending',
+        model: params.model,
+        rubricSnapshot: params.rubric,
+        instructions: params.customInstructions ?? null,
       },
     })
+
+    if (inFlightIds.has(review.id)) return true
+    inFlightIds.add(review.id)
+    queueTail = queueTail.then(() => processJob(review.id))
     return true
-  }
-
-  const review = await prisma.aiReview.create({
-    data: {
-      artifactId,
-      cardId: artifact.cardId,
-      status: 'pending',
-      model: params.model,
-      rubricSnapshot: params.rubric,
-      instructions: params.customInstructions ?? null,
-    },
   })
-
-  if (inFlightIds.has(review.id)) return true
-  inFlightIds.add(review.id)
-  queueTail = queueTail.then(() => processJob(review.id))
-  return true
 }
 
 /**
@@ -352,43 +358,48 @@ export async function enqueueCardDescriptionReview(cardId: string): Promise<bool
   })
   if (!card) return false
 
-  const existing = await prisma.aiReview.findFirst({
-    where: { cardId, artifactId: null, status: { in: ['pending', 'running'] } },
-    select: { id: true },
-  })
-  if (existing) return false
+  // Serialize the dedup check + row creation per card (description reviews have
+  // no artifactId, so the dedup identity is the card) to prevent two concurrent
+  // enqueues from both creating a pending description review.
+  return withKeyedLock(`ai-review:card:${cardId}`, async () => {
+    const existing = await prisma.aiReview.findFirst({
+      where: { cardId, artifactId: null, status: { in: ['pending', 'running'] } },
+      select: { id: true },
+    })
+    if (existing) return false
 
-  const params = await resolveEffectiveAiReviewParams(prisma, cardId)
+    const params = await resolveEffectiveAiReviewParams(prisma, cardId)
 
-  if (!params) {
-    await prisma.aiReview.create({
+    if (!params) {
+      await prisma.aiReview.create({
+        data: {
+          artifactId: null,
+          cardId,
+          status: 'failed',
+          model: 'unknown',
+          rubricSnapshot: '',
+          errorMessage: 'No review params configured',
+        },
+      })
+      return true
+    }
+
+    const review = await prisma.aiReview.create({
       data: {
         artifactId: null,
         cardId,
-        status: 'failed',
-        model: 'unknown',
-        rubricSnapshot: '',
-        errorMessage: 'No review params configured',
+        status: 'pending',
+        model: params.model,
+        rubricSnapshot: params.rubric,
+        instructions: params.customInstructions ?? null,
       },
     })
+
+    if (inFlightIds.has(review.id)) return true
+    inFlightIds.add(review.id)
+    queueTail = queueTail.then(() => processJob(review.id))
     return true
-  }
-
-  const review = await prisma.aiReview.create({
-    data: {
-      artifactId: null,
-      cardId,
-      status: 'pending',
-      model: params.model,
-      rubricSnapshot: params.rubric,
-      instructions: params.customInstructions ?? null,
-    },
   })
-
-  if (inFlightIds.has(review.id)) return true
-  inFlightIds.add(review.id)
-  queueTail = queueTail.then(() => processJob(review.id))
-  return true
 }
 
 /** For tests: returns when all queued jobs have drained. */

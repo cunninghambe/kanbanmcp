@@ -131,30 +131,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ cardId: s
       siblingPositions,
     } = result.data
 
-    // Determine new position when moving to a different column
-    let resolvedPosition: number | undefined = position
+    // Determine new position when moving to a different column.
+    // The max-position read is deferred into the write transaction (below) so the
+    // read-then-write is atomic; otherwise two concurrent moves into the same
+    // column can both read the same max and collide on the same position.
     const isChangingColumn = columnId !== undefined && columnId !== existingCard.columnId
-
-    if (isChangingColumn && siblingPositions === undefined) {
-      // Append to end of target column
-      const maxRecord = await prisma.card.findFirst({
-        where: { columnId: columnId! },
-        orderBy: { position: 'desc' },
-        select: { position: true },
-      })
-      resolvedPosition = maxRecord ? maxRecord.position + 1 : 0
-    }
-
-    // When changing column WITH siblingPositions, the caller must supply position
-    // for the moved card. If they didn't, fall back to append-to-end.
-    if (isChangingColumn && siblingPositions !== undefined && resolvedPosition === undefined) {
-      const maxRecord = await prisma.card.findFirst({
-        where: { columnId: columnId! },
-        orderBy: { position: 'desc' },
-        select: { position: true },
-      })
-      resolvedPosition = maxRecord ? maxRecord.position + 1 : 0
-    }
+    // Whether we must append to the end of the target column (no explicit position):
+    //  - changing column without siblingPositions, or
+    //  - changing column WITH siblingPositions but no explicit position supplied.
+    const needsAppendPosition = isChangingColumn && position === undefined
 
     // Validate that any sibling card IDs belong to the same board (security check)
     if (siblingPositions && siblingPositions.length > 0) {
@@ -168,6 +153,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ cardId: s
           { error: 'One or more sibling card IDs do not belong to this board' },
           { status: 400 }
         )
+      }
+    }
+
+    // Validate that any label IDs belong to this card's board (cross-board attachment guard)
+    if (labels && labels.length > 0) {
+      const uniqueLabelIds = [...new Set(labels)]
+      const validLabels = await prisma.label.findMany({
+        where: { id: { in: uniqueLabelIds }, boardId: existingCard.boardId },
+        select: { id: true },
+      })
+      if (validLabels.length !== uniqueLabelIds.length) {
+        return apiError(400, 'One or more labels do not belong to this board')
       }
     }
 
@@ -193,6 +190,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ cardId: s
     }
 
     await prisma.$transaction(async (tx) => {
+      // Resolve the move position inside the transaction so the max-position read
+      // and the card write are consistent under concurrent moves.
+      let resolvedPosition: number | undefined = position
+      if (needsAppendPosition) {
+        const maxRecord = await tx.card.findFirst({
+          where: { columnId: columnId! },
+          orderBy: { position: 'desc' },
+          select: { position: true },
+        })
+        resolvedPosition = maxRecord ? maxRecord.position + 1 : 0
+      }
+
       // Bulk-update sibling positions if provided
       if (siblingPositions && siblingPositions.length > 0) {
         for (const sibling of siblingPositions) {

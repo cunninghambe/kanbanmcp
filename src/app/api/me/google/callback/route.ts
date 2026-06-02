@@ -78,7 +78,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     where: { userId: session.userId },
     create: {
       userId: session.userId,
-      accessToken: result.accessToken,
+      accessToken: encryptSecret(result.accessToken),
       refreshTokenEncrypted: encryptSecret(result.refreshToken),
       accessTokenExpiresAt: result.expiresAt,
       googleEmail: result.email,
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       lastUsedAt: null,
     },
     update: {
-      accessToken: result.accessToken,
+      accessToken: encryptSecret(result.accessToken),
       refreshTokenEncrypted: encryptSecret(result.refreshToken),
       accessTokenExpiresAt: result.expiresAt,
       googleEmail: result.email,

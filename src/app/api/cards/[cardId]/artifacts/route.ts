@@ -5,6 +5,42 @@ import { getStorageDriver } from '@/lib/storage'
 import { MAX_ARTIFACT_BYTES, isAllowedMime, shapeArtifact } from '@/lib/artifacts'
 import { enqueueAiReview } from '@/lib/ai-review/queue'
 
+/**
+ * Reads a request body stream into a single Buffer, aborting once the
+ * cumulative byte count exceeds `maxBytes`.
+ *
+ * Returns `{ overLimit: true }` as soon as the cap is exceeded — WITHOUT
+ * buffering the rest of the stream — so a chunked-encoded (no Content-Length)
+ * payload cannot force unbounded in-memory buffering before formData() runs.
+ * Returns `{ overLimit: false, bytes }` when the whole body fits within the cap.
+ */
+async function readBodyWithLimit(
+  body: ReadableStream<Uint8Array>,
+  maxBytes: number
+): Promise<{ overLimit: true } | { overLimit: false; bytes: Buffer }> {
+  const reader = body.getReader()
+  const chunks: Buffer[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value) continue
+      total += value.byteLength
+      if (total > maxBytes) {
+        // Stop pulling immediately; release the stream so the producer is not
+        // kept buffering on our behalf.
+        await reader.cancel().catch(() => {})
+        return { overLimit: true }
+      }
+      chunks.push(Buffer.from(value))
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  return { overLimit: false, bytes: Buffer.concat(chunks, total) }
+}
+
 async function resolveCard(cardId: string, orgId: string) {
   const card = await prisma.card.findUnique({
     where: { id: cardId },
@@ -22,6 +58,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ cardId: st
   try {
     const session = await requireSession(req)
 
+    // Fast-path rejection when an honest Content-Length already exceeds the cap.
     const cl = req.headers.get('content-length')
     if (cl && parseInt(cl, 10) > MAX_ARTIFACT_BYTES) {
       return apiError(413, 'Payload Too Large')
@@ -29,6 +66,31 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ cardId: st
 
     const card = await resolveCard(params.cardId, session.orgId)
     await requireOrgRole(session, session.orgId, 'MEMBER')
+
+    // Enforce the size cap by counting ACTUAL bytes streamed off the wire.
+    // The Content-Length header is advisory and bypassable via chunked
+    // transfer-encoding, so we must not trust it (and must not treat a missing
+    // Content-Length as "proceed"). Buffer the body ourselves, aborting with
+    // 413 the moment the cap is exceeded — before calling formData(), which
+    // would otherwise buffer the whole (possibly unbounded) payload in memory.
+    if (!req.body) {
+      return apiError(400, 'Missing request body')
+    }
+    const read = await readBodyWithLimit(req.body, MAX_ARTIFACT_BYTES)
+    if (read.overLimit) {
+      return apiError(413, 'Payload Too Large')
+    }
+
+    // Re-wrap the bounded bytes in a Request so the platform multipart parser
+    // (formData) can decode the within-limit payload. Content-Type carries the
+    // multipart boundary and must be preserved.
+    const parseRequest = new Request(req.url, {
+      method: 'POST',
+      headers: { 'content-type': req.headers.get('content-type') ?? '' },
+      // Buffer → Uint8Array: a Node Buffer works at runtime but is not a typed
+      // BodyInit; Uint8Array is a valid BufferSource. Payload is already capped.
+      body: new Uint8Array(read.bytes),
+    })
 
     // For API key auth, resolve to the first org admin as the uploader.
     let uploaderId = session.userId
@@ -42,7 +104,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ cardId: st
       uploaderId = orgAdmin.userId
     }
 
-    const formData = await req.formData()
+    const formData = await parseRequest.formData()
     const file = formData.get('file')
 
     if (!(file instanceof File)) return apiError(400, 'Missing file field')

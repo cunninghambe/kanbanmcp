@@ -76,25 +76,32 @@ const FOLDER_PATTERNS: RegExp[] = [
 
 const OPEN_PATTERN = /^https:\/\/drive\.google\.com\/open\?/i
 
+// Google Drive file/folder IDs are limited to this charset. Validating here is
+// the primary defense against URL injection: an id is interpolated into
+// googleapis.com paths carrying the user's OAuth Bearer token, so an id such as
+// "../../tokeninfo" (reachable via the open?id= branch, which reads an arbitrary
+// query param) could traverse to a different endpoint. Reject anything else.
+const DRIVE_ID = /^[A-Za-z0-9_-]+$/
+
 export function parseDriveUrl(url: string): ParsedDriveUrl | null {
   const trimmed = url.trim()
   if (!trimmed) return null
 
   for (const pattern of FILE_PATTERNS) {
     const match = pattern.exec(trimmed)
-    if (match) return { kind: 'file', id: match[1] }
+    if (match) return DRIVE_ID.test(match[1]) ? { kind: 'file', id: match[1] } : null
   }
 
   for (const pattern of FOLDER_PATTERNS) {
     const match = pattern.exec(trimmed)
-    if (match) return { kind: 'folder', id: match[1] }
+    if (match) return DRIVE_ID.test(match[1]) ? { kind: 'folder', id: match[1] } : null
   }
 
   if (OPEN_PATTERN.test(trimmed)) {
     try {
       const parsed = new URL(trimmed)
       const id = parsed.searchParams.get('id')
-      if (id) return { kind: 'file', id }
+      if (id && DRIVE_ID.test(id)) return { kind: 'file', id }
     } catch {
       return null
     }
@@ -118,7 +125,7 @@ function shapeFileMeta(resource: DriveFileResource): DriveFileMeta {
 
 async function fetchFileResource(fileId: string, token: string, userId: string): Promise<DriveFileResource> {
   const fields = 'id,name,mimeType,modifiedTime,size,trashed,shortcutDetails'
-  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=${fields}&supportsAllDrives=true`
+  const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${fields}&supportsAllDrives=true`
   const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } }, { userId, retry: true })
 
   if (res.status === 404) throw new DriveNotFoundError()

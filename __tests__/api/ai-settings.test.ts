@@ -59,6 +59,32 @@ describe('GET /api/orgs/[orgId]/ai-settings', () => {
     expect(res.status).toBe(401)
   })
 
+  it('returns 403 when caller is NOT a member of the org (IDOR guard)', async () => {
+    // Authenticated, but not a member → requireOrgRole throws 403.
+    mockPrisma.orgMember.findUnique.mockResolvedValue(null)
+
+    const { GET } = await getHandlers()
+    const res = await GET(makeRequest('GET'), routeCtx)
+    expect(res.status).toBe(403)
+    // Must NOT have leaked the org's key status to a non-member.
+    expect(mockPrisma.orgAiSettings.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('allows a MEMBER to read settings (negative / false-positive boundary)', async () => {
+    mockPrisma.orgMember.findUnique.mockResolvedValue({ userId: 'user-1', orgId: ORG_ID, role: 'MEMBER' })
+    mockPrisma.orgAiSettings.findUnique.mockResolvedValue({
+      anthropicApiKeyEncrypted: 'enc',
+      anthropicApiKeyLastFour: '9999',
+    })
+
+    const { GET } = await getHandlers()
+    const res = await GET(makeRequest('GET'), routeCtx)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.anthropicApiKey.configured).toBe(true)
+    expect(body.anthropicApiKey.lastFour).toBe('9999')
+  })
+
   it('returns configured: false when no settings row exists', async () => {
     mockPrisma.orgAiSettings.findUnique.mockResolvedValue(null)
 

@@ -74,6 +74,7 @@ import { prisma } from '../../src/lib/db'
 import { getStorageDriver } from '../../src/lib/storage'
 import {
   enqueueAiReview,
+  enqueueCardDescriptionReview,
   flushForTests,
   __setClaudeClientForTests,
   resetQueueForTests,
@@ -443,6 +444,134 @@ describe('AI Review Pipeline', () => {
           data: expect.objectContaining({ status: 'pending', startedAt: null }),
         })
       )
+    })
+  })
+
+  // ─── G5 #1: concurrent-enqueue dedup is atomic under withKeyedLock ───────────
+  describe('G5 #1: concurrent enqueue dedup (keyed lock)', () => {
+    /**
+     * Models a realistic store: findFirst returns a pending/running row iff one
+     * exists for the (artifactId/cardId) dedup identity, and create appends to it.
+     * findFirst awaits a microtask to widen the check-then-create race window —
+     * without the in-process lock both concurrent enqueues would pass the check
+     * and both create a row.
+     */
+    type Row = { id: string; artifactId: string | null; cardId: string; status: string }
+    function installStore(): Row[] {
+      const rows: Row[] = []
+      mockPrisma.aiReview.findFirst.mockImplementation(async (args: {
+        where: { artifactId?: string | null; cardId?: string; status: { in: string[] } }
+      }) => {
+        await Promise.resolve()
+        const w = args.where
+        return (
+          rows.find(
+            (r) =>
+              (w.artifactId === undefined || r.artifactId === w.artifactId) &&
+              (w.cardId === undefined || r.cardId === w.cardId) &&
+              w.status.in.includes(r.status)
+          ) ?? null
+        )
+      })
+      mockPrisma.aiReview.create.mockImplementation(async (args: { data: Record<string, unknown> }) => {
+        const row: Row = {
+          id: `review-${rows.length + 1}`,
+          artifactId: (args.data.artifactId as string | null) ?? null,
+          cardId: args.data.cardId as string,
+          status: (args.data.status as string) ?? 'pending',
+        }
+        rows.push(row)
+        return row
+      })
+      mockPrisma.aiReview.findUnique.mockImplementation(async () => null)
+      mockPrisma.aiReview.update.mockResolvedValue({})
+      return rows
+    }
+
+    it('POSITIVE: two concurrent enqueues for the SAME artifact create exactly ONE row', async () => {
+      const rows = installStore()
+
+      const [r1, r2] = await Promise.all([
+        enqueueAiReview(ARTIFACT_ID),
+        enqueueAiReview(ARTIFACT_ID),
+      ])
+      await flushForTests()
+
+      // Exactly one create; the second observes the first's pending row.
+      expect(mockPrisma.aiReview.create).toHaveBeenCalledTimes(1)
+      expect(rows).toHaveLength(1)
+      expect([r1, r2].filter(Boolean)).toHaveLength(1)
+    })
+
+    it('NEGATIVE: concurrent enqueues for DIFFERENT artifacts are independent — both create', async () => {
+      const rows = installStore()
+      mockPrisma.artifact.findUnique.mockImplementation(async (args: { where: { id: string } }) => ({
+        id: args.where.id,
+        cardId: CARD_ID,
+        filename: 'doc.txt',
+        mimeType: 'text/plain',
+        storageKey: args.where.id,
+      }))
+
+      const [r1, r2] = await Promise.all([
+        enqueueAiReview('art-A'),
+        enqueueAiReview('art-B'),
+      ])
+      await flushForTests()
+
+      expect(mockPrisma.aiReview.create).toHaveBeenCalledTimes(2)
+      expect(rows).toHaveLength(2)
+      expect(r1).toBe(true)
+      expect(r2).toBe(true)
+    })
+
+    it('EDGE: three concurrent same-card description enqueues create exactly ONE row', async () => {
+      const rows = installStore()
+      mockPrisma.card.findUnique.mockImplementation(async (args: { where: { id: string }; select?: unknown }) => {
+        // enqueue existence check + inheritance param lookup both hit card.findUnique.
+        return {
+          id: args.where.id,
+          aiReviewParams: JSON.stringify({ model: 'claude-opus-4-7', rubric: 'review code quality' }),
+          parentCardId: null,
+        }
+      })
+
+      const results = await Promise.all([
+        enqueueCardDescriptionReview(CARD_ID),
+        enqueueCardDescriptionReview(CARD_ID),
+        enqueueCardDescriptionReview(CARD_ID),
+      ])
+      await flushForTests()
+
+      expect(rows).toHaveLength(1)
+      expect(results.filter(Boolean)).toHaveLength(1)
+    })
+
+    it('EDGE: a description enqueue and an artifact enqueue on the same card do NOT block each other', async () => {
+      const rows = installStore()
+      mockPrisma.card.findUnique.mockImplementation(async (args: { where: { id: string } }) => ({
+        id: args.where.id,
+        aiReviewParams: JSON.stringify({ model: 'claude-opus-4-7', rubric: 'review code quality' }),
+        parentCardId: null,
+      }))
+      mockPrisma.artifact.findUnique.mockResolvedValue({
+        id: ARTIFACT_ID,
+        cardId: CARD_ID,
+        filename: 'doc.txt',
+        mimeType: 'text/plain',
+        storageKey: ARTIFACT_ID,
+      })
+
+      const [desc, art] = await Promise.all([
+        enqueueCardDescriptionReview(CARD_ID),
+        enqueueAiReview(ARTIFACT_ID),
+      ])
+      await flushForTests()
+
+      // Different dedup identities (card-description vs artifact) → both create.
+      expect(rows).toHaveLength(2)
+      expect(desc).toBe(true)
+      expect(art).toBe(true)
     })
   })
 })

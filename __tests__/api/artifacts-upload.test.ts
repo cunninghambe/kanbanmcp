@@ -154,6 +154,58 @@ describe('POST /api/cards/[cardId]/artifacts', () => {
     expect(mockPrisma.card.findUnique).not.toHaveBeenCalled()
   })
 
+  it('returns 413 for a chunked (no Content-Length) body that streams over the cap', async () => {
+    // Simulate a chunked upload: a ReadableStream body, NO content-length header.
+    // The fast-path CL check cannot fire, so the route must count actual bytes
+    // and abort once cumulative bytes exceed MAX_ARTIFACT_BYTES — before
+    // buffering the whole body (the OOM vector).
+    const chunkSize = 4 * 1024 * 1024 // 4 MB chunks
+    // Far more chunks than the cap needs (80 MB vs 25 MB), so an early abort is
+    // unambiguous: the reader must cancel ~7 chunks in. `produced` counts chunks
+    // the source ENQUEUED; a ReadableStream pulls ~1 ahead, so we assert it
+    // stopped well before exhausting the stream rather than an exact count.
+    const chunkCount = 20 // 80 MB total ≫ 25 MB cap
+    let produced = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (produced >= chunkCount) {
+          controller.close()
+          return
+        }
+        produced += 1
+        controller.enqueue(new Uint8Array(chunkSize).fill(65))
+      },
+    })
+
+    const req = new NextRequest('http://localhost/api/cards/card-1/artifacts', {
+      method: 'POST',
+      // multipart content-type so the route does not reject on a missing boundary
+      // before the size check — though the size check fires first regardless.
+      headers: { 'content-type': 'multipart/form-data; boundary=----test' },
+      body: stream,
+      duplex: 'half',
+    })
+
+    const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
+    expect(res.status).toBe(413)
+    const body = await res.json()
+    expect(body.error).toBe('Payload Too Large')
+    // The whole stream must NOT have been buffered: production stopped early.
+    expect(produced).toBeLessThan(chunkCount)
+    // No artifact row created for an over-limit upload.
+    expect(mockPrisma.artifact.create).not.toHaveBeenCalled()
+  })
+
+  it('still succeeds for an under-limit chunked body (negative / false-positive boundary)', async () => {
+    // A small chunked body (no content-length) must parse normally and 201.
+    const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
+    const req = makeFormDataRequest(makeFile('small.pdf', 'application/pdf', 256))
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-1' }) })
+    expect(res.status).toBe(201)
+    expect(mockPrisma.artifact.create).toHaveBeenCalled()
+  })
+
   it('returns 400 when file field is missing', async () => {
     const { POST } = await import('../../src/app/api/cards/[cardId]/artifacts/route')
     const fd = new FormData()

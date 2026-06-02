@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
 import { prisma } from '@/lib/db'
 import { requireSession, apiError } from '@/lib/api-helpers'
-import { assertNotPrivateUrl } from '@/lib/ssrf-guard'
+import { assertNotPrivateUrl, safeFetch } from '@/lib/ssrf-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,20 +45,18 @@ export async function POST(
 
   const signature = `sha256=${createHmac('sha256', webhook.secret).update(body).digest('hex')}`
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 10_000)
-
   try {
-    const response = await fetch(webhook.url, {
+    // safeFetch re-resolves + re-validates + pins the connection (defeating
+    // DNS-rebinding TOCTOU) and does not follow redirects.
+    const response = await safeFetch(webhook.url, {
       method: 'POST',
-      signal: controller.signal,
+      timeoutMs: 10_000,
       headers: {
         'Content-Type': 'application/json',
         'X-KanbanMCP-Signature': signature,
       },
       body,
     })
-    clearTimeout(timeoutId)
 
     return NextResponse.json({
       ok: response.ok,
@@ -66,7 +64,6 @@ export async function POST(
       statusText: response.statusText,
     })
   } catch (err) {
-    clearTimeout(timeoutId)
     const message = err instanceof Error ? err.message : 'Request failed'
     return apiError(502, `Test ping failed: ${message}`)
   }

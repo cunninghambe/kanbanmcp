@@ -12,14 +12,47 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 })
 
+/**
+ * Derives the client IP for rate-limiting from the trusted reverse proxy.
+ *
+ * SECURITY: X-Forwarded-For is a client-controllable list. The LEFTMOST entry
+ * is supplied by the (untrusted) client, so keying the limiter on it lets an
+ * attacker bypass throttling simply by rotating the header. We instead trust
+ * only the hops appended by our own infrastructure and read from the RIGHT.
+ *
+ * Assumption: exactly TRUSTED_PROXY_HOPS reverse proxies sit in front of this
+ * app (default 1 — a single nginx). The IP appended by the closest trusted
+ * proxy is the entry at index (length - TRUSTED_PROXY_HOPS), counting from the
+ * right. Anything to the left of that is attacker-controlled and ignored.
+ * Falls back to x-real-ip (set by nginx) then 'unknown'.
+ */
+function clientIp(req: NextRequest): string {
+  const hopsRaw = parseInt(process.env.TRUSTED_PROXY_HOPS ?? '1', 10)
+  const trustedHops = Number.isNaN(hopsRaw) || hopsRaw < 1 ? 1 : hopsRaw
+
+  const forwarded = req.headers.get('x-forwarded-for')
+  if (forwarded) {
+    const chain = forwarded
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+    if (chain.length > 0) {
+      // Pick the hop our closest trusted proxy appended, counting from the right.
+      // Clamp so a chain shorter than the configured hop count still resolves to
+      // the leftmost trusted entry rather than going out of bounds.
+      const idx = Math.max(0, chain.length - trustedHops)
+      return chain[idx]
+    }
+  }
+
+  return req.headers.get('x-real-ip') ?? 'unknown'
+}
+
 export async function POST(req: NextRequest) {
   // Rate limit: 10 attempts per IP per 15 minutes.
   // Skipped during Playwright e2e runs so suites with many tests are not blocked.
   if (!process.env.PLAYWRIGHT_E2E) {
-    const ip =
-      req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-      req.headers.get('x-real-ip') ??
-      'unknown'
+    const ip = clientIp(req)
     if (!checkRateLimit(`login:${ip}`, 10, 15 * 60 * 1000)) {
       return NextResponse.json(
         { error: 'Too many login attempts. Please try again later.' },

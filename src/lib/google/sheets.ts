@@ -40,7 +40,7 @@ function throwOnError(status: number, body: () => Promise<string>): void | Promi
 }
 
 async function fetchMeta(fileId: string, token: string, userId: string): Promise<SpreadsheetsMetaResponse> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${fileId}?fields=sheets.properties(title,gridProperties)`
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}?fields=sheets.properties(title,gridProperties)`
   const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } }, { userId, retry: true })
   const maybeThrow = throwOnError(res.status, () => res.text())
   if (maybeThrow) await maybeThrow
@@ -49,7 +49,7 @@ async function fetchMeta(fileId: string, token: string, userId: string): Promise
 
 async function fetchValues(fileId: string, title: string, token: string, userId: string): Promise<ValuesResponse> {
   const encoded = encodeURIComponent(title)
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${encoded}?majorDimension=ROWS`
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(fileId)}/values/${encoded}?majorDimension=ROWS`
   const res = await googleFetch(url, { headers: { Authorization: `Bearer ${token}` } }, { userId, retry: true })
   const maybeThrow = throwOnError(res.status, () => res.text())
   if (maybeThrow) await maybeThrow

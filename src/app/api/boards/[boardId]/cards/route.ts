@@ -94,6 +94,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ boardId: s
       return apiError(400, `${role} must be a member of this organization`)
     }
 
+    // Validate that any label IDs belong to this board (cross-board attachment guard)
+    if (labels && labels.length > 0) {
+      const uniqueLabelIds = [...new Set(labels)]
+      const validLabels = await prisma.label.findMany({
+        where: { id: { in: uniqueLabelIds }, boardId: params.boardId },
+        select: { id: true },
+      })
+      if (validLabels.length !== uniqueLabelIds.length) {
+        return apiError(400, 'One or more labels do not belong to this board')
+      }
+    }
+
     // For API key auth, Card.createdById is required (non-nullable). Use the first
     // org admin as the creator and set agentId to track the actual agent.
     let createdById = session.userId
