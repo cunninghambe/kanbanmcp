@@ -66,33 +66,34 @@ test.describe('04 – signoff workflow', () => {
     await page.getByText('Signoff Workflow Card').first().click()
     await expect(page.getByRole('dialog')).toBeVisible()
 
-    const signoffsSection = page.getByRole('region', { name: /Signoffs/i })
-    await expect(signoffsSection).toBeVisible()
+    // The reviewer's decision controls are a <fieldset>/<legend>, exposed to the
+    // accessibility tree as a group named "Record Reviewer decision".
+    const decision = page.getByRole('group', { name: /Record Reviewer decision/i })
+    await expect(decision).toBeVisible()
 
     // Fill comment and approve
-    const commentTextarea = signoffsSection.locator('textarea[placeholder="Add a comment…"]')
-    await commentTextarea.fill('Looks good to me')
-    await signoffsSection.getByRole('button', { name: /Approve this card/i }).click()
-
-    await expect(signoffsSection.getByText(/Approved successfully/i)).toBeVisible({ timeout: 10_000 })
+    await decision.locator('textarea').fill('Looks good to me')
+    await decision.getByRole('button', { name: /Approve this card/i }).click()
+    // The success banner renders alongside (outside) the fieldset, so assert at page scope.
+    await expect(page.getByText(/Approved successfully/i)).toBeVisible({ timeout: 10_000 })
 
     // Now request changes
-    await signoffsSection.getByRole('button', { name: /Request changes/i }).click()
-    await expect(signoffsSection.getByText(/Changes requested successfully/i)).toBeVisible({
-      timeout: 10_000,
-    })
+    await decision.getByRole('button', { name: /Request changes to this card/i }).click()
+    await expect(page.getByText(/Changes requested successfully/i)).toBeVisible({ timeout: 10_000 })
   })
 
-  test('non-reviewer sees read-only signoff panel', async ({ page }) => {
+  test('non-reviewer does not see signoff decision controls', async ({ page }) => {
     await loginAs(page, 'member04@e2e.test', 'testpass04')
     await page.goto(`/board/${boardId}`)
 
     await page.getByText('Signoff Workflow Card').first().click()
     await expect(page.getByRole('dialog')).toBeVisible()
 
-    const signoffsSection = page.getByRole('region', { name: /Signoffs/i })
-    await expect(signoffsSection).toBeVisible()
-    await expect(signoffsSection.getByRole('button', { name: /Approve this card/i })).not.toBeVisible()
-    await expect(signoffsSection.getByRole('button', { name: /Reject this card/i })).not.toBeVisible()
+    // A non-reviewer / non-approver cannot record decisions — the decision panel
+    // is not rendered for them at all (read-only by omission).
+    await expect(
+      page.getByRole('group', { name: /Record (Reviewer|Approver) decision/i })
+    ).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Approve this card/i })).toHaveCount(0)
   })
 })

@@ -49,23 +49,28 @@ test.describe('02 – card create and roles', () => {
     const rolesSection = page.getByRole('region', { name: 'Roles' })
     await expect(rolesSection).toBeVisible()
 
-    // Set Reviewer and Approver to first available member
-    const reviewerSelect = rolesSection.getByLabel('Reviewer')
-    await reviewerSelect.selectOption({ index: 1 })
+    // With no reviewer/approver yet, the role selects render inline (comboboxes
+    // named by role). Selecting a member saves and collapses the row to an
+    // avatar + a "Change <role>" control — which is the proof the role is set.
+    await rolesSection.getByRole('combobox', { name: 'Reviewer' }).selectOption({ index: 1 })
+    await expect(rolesSection.getByRole('button', { name: 'Change reviewer' })).toBeVisible({
+      timeout: 10_000,
+    })
 
-    const approverSelect = rolesSection.getByLabel('Approver')
-    await approverSelect.selectOption({ index: 1 })
+    await rolesSection.getByRole('combobox', { name: 'Approver' }).selectOption({ index: 1 })
+    await expect(rolesSection.getByRole('button', { name: 'Change approver' })).toBeVisible({
+      timeout: 10_000,
+    })
 
-    await expect(reviewerSelect).not.toHaveValue('')
-    await expect(approverSelect).not.toHaveValue('')
-
-    // Verify persistence: close and reopen
+    // Verify persistence: close and reopen — the collapsed "Change" controls
+    // only render when a member is assigned, so their presence proves the
+    // reviewer/approver were saved.
     await page.keyboard.press('Escape')
     await page.getByText('Role Test Card').first().click()
     await expect(page.getByRole('dialog')).toBeVisible()
 
     const rolesSection2 = page.getByRole('region', { name: 'Roles' })
-    await expect(rolesSection2.getByLabel('Reviewer')).not.toHaveValue('')
-    await expect(rolesSection2.getByLabel('Approver')).not.toHaveValue('')
+    await expect(rolesSection2.getByRole('button', { name: 'Change reviewer' })).toBeVisible()
+    await expect(rolesSection2.getByRole('button', { name: 'Change approver' })).toBeVisible()
   })
 })

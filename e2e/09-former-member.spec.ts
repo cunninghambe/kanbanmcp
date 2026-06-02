@@ -89,7 +89,12 @@ test('assignee removed from org shows (former member) in card detail', async ({ 
   const rolesSection = page.getByRole('region', { name: 'Roles' })
   await expect(rolesSection).toBeVisible()
 
-  const assigneeSelect = rolesSection.getByLabel('Assignee')
+  // The assignee (a now-former org member) is collapsed to an avatar + change
+  // control; open the editor to reveal the select, which lists the former
+  // member as a disabled "(former member)" option holding the current value.
+  await rolesSection.getByRole('button', { name: 'Change assignee' }).click()
+
+  const assigneeSelect = rolesSection.getByRole('combobox', { name: 'Assignee' })
   await expect(assigneeSelect).toBeVisible()
 
   const formerMemberOption = assigneeSelect.locator('option', { hasText: '(former member)' })

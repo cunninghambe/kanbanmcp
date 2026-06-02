@@ -1,9 +1,9 @@
 /**
- * 08: Assigned-to-me widget
+ * 08: "Your queue" dashboard
  * - Seed assigned cards in beforeAll
- * - Verify the avatar badge shows a count > 0
- * - Verify AssignmentWidget renders sections on dashboard
- * - Click a card in the widget → verify navigation to board
+ * - Verify the redesigned dashboard renders the "your queue" view with the
+ *   user's assigned cards as keyboard-accessible queue rows
+ * - Click a queue row → verify navigation to the board
  */
 import { test, expect } from '@playwright/test'
 import { PrismaClient } from '@prisma/client'
@@ -41,33 +41,31 @@ test.beforeAll(async () => {
   await prisma.$disconnect()
 })
 
-test.describe('08 – assigned-to-me widget', () => {
-  test('avatar badge shows assignment count, widget renders sections', async ({ page }) => {
+test.describe('08 – your-queue dashboard', () => {
+  test('dashboard renders the "your queue" view with the user\'s assigned cards', async ({ page }) => {
     await loginAsAdmin(page)
-
-    // Wait for the sidebar to show the avatar badge with a count > 0
-    const avatarLink = page.getByRole('link', { name: /items need your attention/i })
-    await expect(avatarLink).toBeVisible({ timeout: 15_000 })
-
     await page.goto('/dashboard')
 
-    // AssignmentWidget sections should render
-    await expect(page.getByText('Assigned to you')).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText('Needs your action')).toBeVisible()
+    // Redesigned dashboard: a "your queue" view replaces the old AssignmentWidget
+    // "Assigned to you" / "Needs your action" sections.
+    await expect(page.getByRole('heading', { name: /your queue/i, level: 1 })).toBeVisible({
+      timeout: 15_000,
+    })
 
-    // Our seeded card should appear
-    await expect(page.getByText('Assigned To Me Card 1')).toBeVisible({ timeout: 10_000 })
+    // Seeded assigned cards appear as queue rows.
+    await expect(page.getByText('Assigned To Me Card 1').first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test('clicking a card in the widget navigates to the board', async ({ page }) => {
+  test('clicking a queue row navigates to the board', async ({ page }) => {
     await loginAsAdmin(page)
     await page.goto('/dashboard')
 
-    // Expand "Assigned to you" section if needed and click the card
-    await expect(page.getByText('Assigned To Me Card 1')).toBeVisible({ timeout: 10_000 })
-    await page.getByText('Assigned To Me Card 1').click()
+    // Queue rows are keyboard-accessible <button role="listitem"> elements whose
+    // click handler routes to /board/<cardId>.
+    const row = page.getByText('Assigned To Me Card 1').first()
+    await expect(row).toBeVisible({ timeout: 10_000 })
+    await row.click()
 
-    // Dashboard onCardClick navigates to the board
     await expect(page).toHaveURL(/\/board\//, { timeout: 10_000 })
   })
 })
