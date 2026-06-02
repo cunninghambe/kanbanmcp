@@ -2,8 +2,9 @@ import { Page } from '@playwright/test'
 
 /**
  * Log in via the UI form and wait until the sidebar confirms the session is
- * active (email visible). This guarantees that a subsequent `page.goto`
- * within the same browser context will find an authenticated session.
+ * active (the "Sign out" control is rendered). This guarantees that a
+ * subsequent `page.goto` within the same browser context will find an
+ * authenticated session.
  */
 export async function loginAsAdmin(page: Page) {
   await page.goto('/login')
@@ -11,9 +12,10 @@ export async function loginAsAdmin(page: Page) {
   await page.fill('input[name="password"]', 'demo1234')
   await page.click('button[type="submit"]')
   await page.waitForURL('**/dashboard')
-  // Confirm the sidebar has rendered with the user's email — this proves
-  // /api/auth/me returned successfully and the session cookie is valid.
-  await page.waitForSelector('text=admin@demo.com', { timeout: 10_000 })
+  // Confirm the sidebar rendered for an authenticated user — the "Sign out"
+  // control only exists once /api/auth/me returned a valid session. (Robust to
+  // sidebar redesigns that no longer surface the raw email.)
+  await page.getByRole('button', { name: /sign out/i }).waitFor({ timeout: 10_000 })
 }
 
 /** Log in as an arbitrary user. */

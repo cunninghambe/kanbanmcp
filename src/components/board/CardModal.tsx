@@ -161,9 +161,13 @@ function SectionHeader({ children, count, action }: {
 // RailSection — groups right-rail sections
 // ---------------------------------------------------------------------------
 
-function RailSection({ children }: { children: React.ReactNode }) {
+function RailSection({ children, ariaLabel }: { children: React.ReactNode; ariaLabel?: string }) {
   return (
-    <div style={{ borderBottom: '1px solid var(--line)' }}>
+    <div
+      style={{ borderBottom: '1px solid var(--line)' }}
+      role={ariaLabel ? 'region' : undefined}
+      aria-label={ariaLabel}
+    >
       {children}
     </div>
   )
@@ -725,7 +729,7 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
             </RailSection>
 
             {/* Roles + Signoffs */}
-            <RailSection>
+            <RailSection ariaLabel="Roles">
               <div style={{ padding: '14px 16px 6px' }}>
                 <h3 className="km-eyebrow" style={{ fontSize: 9, margin: 0, fontWeight: 500 }}>Roles</h3>
               </div>

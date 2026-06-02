@@ -73,7 +73,7 @@ export function KanbanColumn({ column, onCardClick, onCardHover, onAddCard }: Ka
         }}
       >
         <span className={pipClass} />
-        <span
+        <h3
           className="km-mono"
           style={{
             fontSize: 11,
@@ -82,10 +82,11 @@ export function KanbanColumn({ column, onCardClick, onCardHover, onAddCard }: Ka
             color: 'var(--fg-1)',
             fontWeight: 500,
             flex: 1,
+            margin: 0,
           }}
         >
           {nameLower}
-        </span>
+        </h3>
         <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)', letterSpacing: '0.08em' }}>
           {count}
         </span>
