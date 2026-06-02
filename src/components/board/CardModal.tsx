@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import useSWR from 'swr'
+import useSWR, { mutate as globalMutate } from 'swr'
 import ReactMarkdown from 'react-markdown'
 import { X, GitFork, Link2, MoreHorizontal, Bold, Italic, Code, Link, AtSign, Paperclip, Calendar } from 'lucide-react'
 import { useSession } from '@/hooks/useSession'
@@ -9,6 +9,7 @@ import { RoleSelector } from './RoleSelector'
 import type { OrgMember } from './RoleSelector'
 import { AiReviewToggle } from './AiReviewToggle'
 import { ArtifactList } from './ArtifactList'
+import { AttachGoogleLink } from './AttachGoogleLink'
 import { SignoffPanel } from './SignoffPanel'
 import type { ExistingSignoff } from './SignoffPanel'
 import { SubcardTree } from './SubcardTree'
@@ -1073,6 +1074,10 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
                   if (isOrgAdmin) return true
                   return artifact.uploader.id === currentUserId
                 }}
+              />
+              <AttachGoogleLink
+                cardId={card.id}
+                onAttached={() => void globalMutate(['artifacts', card.id])}
               />
             </section>
 

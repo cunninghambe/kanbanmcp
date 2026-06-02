@@ -1,7 +1,9 @@
 # M2: Claude Code task execution
 
 ## Status
-Spec, approved by Brad 2026-05-20. Ready for architect decomposition.
+SHIPPED 2026-05-20 in commit `2b8defd1` ("M2 + M3 + UI redesign: claude execute, deliverables, design system").
+
+Audit: [`docs/specs/m2/AUDIT.md`](./m2/AUDIT.md) — verdict SHIPPED-WITH-DRIFT (10/12 AC PASS, 2 intentional column-order drifts now reflected in this doc, 1 defense-in-depth gap in `deliverables.ts` flagged for follow-up).
 
 ## Problem statement
 
@@ -151,7 +153,7 @@ In `bootstrapWorker`:
 2. Sweep: find cards where:
    - assigneeId = `agent-claude-code`
    - the card's column is named "In Progress" (case-insensitive)
-   - no `CardExecution` with state in (enqueued, running, done) for this card *since the card's `updatedAt`* (i.e. since it most recently entered In Progress — use `updatedAt` as a proxy since we don't track column-move-at)
+   - no `CardExecution` with state in (enqueued, running) for this card *(the original spec also disqualified `done` and constrained by "since updatedAt"; shipped implementation broadens the filter: any not-actively-running prior execution is allowed to retrigger. This better matches the §E5 intent ("treat as new — start timer"). See `AUDIT.md` finding S2.)*
    - `description` non-empty
    - `(now - updatedAt) >= 60s`
    - Effect: call `fireExecutionForCard(cardId)` immediately.
@@ -174,7 +176,7 @@ Single Prisma migration:
 2. For every existing `boards` row, insert a new `columns` row `{ name: 'Blocked', position: (max position on board) + 1, boardId }` if no "Blocked" column already exists on that board (case-insensitive).
 3. Update `DEFAULT_COLUMNS` in `src/app/api/orgs/[orgId]/boards/route.ts` to include `{ name: 'Blocked', position: 4 }` after Done (or before — see Brad's question below).
 
-**Decision logged**: append "Blocked" at the end (position 4 after Done). Reason: keeps the column order consistent with the existing Spoonworks board, and "Blocked" reads naturally as a side-bin rather than a workflow phase. Brad confirmed "just append" inline.
+**Decision logged**: ~~append "Blocked" at the end (position 4 after Done)~~. **Superseded during implementation 2026-05-20:** `DEFAULT_COLUMNS` ships with `Blocked` at position 3 and `Done` at position 4. Final order: `Backlog (0), In Progress (1), Review (2), Blocked (3), Done (4)`. Rationale (per commit `2b8defd1` message): "Blocked sits before Done so failures don't terminate the row." The migration SQL still appends at `max(position) + 1` (so for any board that was created before the new `DEFAULT_COLUMNS` landed and was never re-seeded, Blocked is the trailing column); all currently live boards have been re-created/re-seeded through the new `DEFAULT_COLUMNS` path and show the Blocked-before-Done order.
 
 ## Edge cases (full enumeration)
 
@@ -206,8 +208,8 @@ Single Prisma migration:
 6. **Unmapped board** — Given a card on a board whose slugified name has no matching ClaudeMCP project, the card moves to Blocked, a comment explains the missing mapping, no `claude_build` is submitted, `CardExecution.state='failed'`.
 7. **Restart resilience (debounce)** — Given a process restart while a card has been in In Progress for 80s (no execution yet), the boot-time sweep enqueues the execution within 10s of the worker bootstrapping.
 8. **Restart resilience (job)** — Given a process restart while a job is in `state=running`, polling resumes within 5s of boot and the card reaches a terminal state when ClaudeMCP finishes.
-9. **Migration** — After applying the migration, every existing board has a "Blocked" column with the highest position. The existing "Spoonworks" board has columns in this exact order: Backlog (0), In Progress (1), Review (2), Done (3), Blocked (4). Existing card positions on existing columns are unchanged.
-10. **New board creation** — Creating a new board via `POST /api/orgs/[orgId]/boards` produces five columns: Backlog (0), In Progress (1), Review (2), Done (3), Blocked (4).
+9. **Migration** — After applying the migration, every existing board has a "Blocked" column appended at `max(position) + 1`. Existing card positions on existing columns are unchanged. (Live DB note: all currently live boards have been re-seeded through `DEFAULT_COLUMNS` post-migration and now show order `Backlog (0), In Progress (1), Review (2), Blocked (3), Done (4)` — see §Migration "Decision logged" for the rationale on the position swap.)
+10. **New board creation** — Creating a new board via `POST /api/orgs/[orgId]/boards` produces five columns in this order: Backlog (0), In Progress (1), Review (2), Blocked (3), Done (4).
 11. **Duplicate prevention** — Given a card already with `CardExecution.state='enqueued'`, moving it out and back in does **not** create a second CardExecution.
 12. **Empty description** — Given a card with empty description, moving to In Progress fires no execution and creates no row; no comment is posted.
 

@@ -7,28 +7,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
-
 model User {
-  id            String       @id @default(cuid())
-  email         String       @unique
-  passwordHash  String
-  name          String
-  isAgent       Boolean      @default(false)
-  createdAt     DateTime     @default(now())
-  orgMembers    OrgMember[]
-  teamMembers   TeamMember[]
-  assignedCards     Card[]           @relation("CardAssignee")
-  createdCards      Card[]           @relation("CardCreator")
-  reviewedCards     Card[]           @relation("CardReviewer")
-  approvedCards     Card[]           @relation("CardApprover")
+  id                String            @id @default(cuid())
+  email             String            @unique
+  passwordHash      String
+  name              String
+  isAgent           Boolean           @default(false)
+  createdAt         DateTime          @default(now())
+  orgMembers        OrgMember[]
+  teamMembers       TeamMember[]
+  assignedCards     Card[]            @relation("CardAssignee")
+  createdCards      Card[]            @relation("CardCreator")
+  reviewedCards     Card[]            @relation("CardReviewer")
+  approvedCards     Card[]            @relation("CardApprover")
   comments          Comment[]
   uploadedArtifacts Artifact[]
   signoffs          Signoff[]
-  reportedTickets  Ticket[]         @relation("TicketReporter")
-  assignedTickets  Ticket[]         @relation("TicketAssignee")
-  ticketComments   TicketComment[]
-  ticketActivity   TicketActivity[]
+  reportedTickets   Ticket[]          @relation("TicketReporter")
+  assignedTickets   Ticket[]          @relation("TicketAssignee")
+  ticketComments    TicketComment[]
+  ticketActivity    TicketActivity[]
+  googleCredential  GoogleCredential?
 
   @@map("users")
 }
@@ -65,9 +64,9 @@ model OrgAiSettings {
 model OrgMember {
   userId String
   orgId  String
-  role   String @default("MEMBER")
-  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  org    Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  role   String       @default("MEMBER")
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@id([userId, orgId])
   @@map("org_members")
@@ -86,8 +85,8 @@ model Team {
 model TeamMember {
   userId String
   teamId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@id([userId, teamId])
   @@map("team_members")
@@ -119,20 +118,20 @@ model Column {
 }
 
 model Sprint {
-  id        String       @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
   boardId   String
   startDate DateTime
   endDate   DateTime
-  status    String @default("PLANNING")
-  board     Board        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  status    String   @default("PLANNING")
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
   cards     Card[]
 
   @@map("sprints")
 }
 
 model Card {
-  id          String      @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   description String?
   columnId    String
@@ -141,31 +140,31 @@ model Card {
   // Required at the API layer (Zod). DB-nullable for SQLite ALTER COLUMN practicality.
   assigneeId  String?
   agentId     String?
-  priority    String      @default("none")
+  priority    String    @default("none")
   position    Int
   dueDate     DateTime?
   createdById String
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   reviewerId     String?
   approverId     String?
   parentCardId   String?
-  path           String   @default("")  // "/ancestorA/ancestorB/" — empty for root cards
-  depth          Int      @default(0)
-  aiAutoReview   Boolean  @default(false)
-  aiReviewParams String?  // JSON string: { model, rubric, customInstructions? }
+  path           String  @default("") // "/ancestorA/ancestorB/" — empty for root cards
+  depth          Int     @default(0)
+  aiAutoReview   Boolean @default(false)
+  aiReviewParams String? // JSON string: { model, rubric, customInstructions? }
 
-  column    Column      @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  board     Board       @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  sprint    Sprint?     @relation(fields: [sprintId], references: [id])
-  assignee  User?       @relation("CardAssignee", fields: [assigneeId], references: [id])
-  createdBy User        @relation("CardCreator", fields: [createdById], references: [id])
-  reviewer  User?       @relation("CardReviewer", fields: [reviewerId], references: [id])
-  approver  User?       @relation("CardApprover", fields: [approverId], references: [id])
-  parent    Card?       @relation("CardChildren", fields: [parentCardId], references: [id], onDelete: SetNull)
-  children  Card[]      @relation("CardChildren")
-  labels    CardLabel[]
+  column     Column          @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  board      Board           @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  sprint     Sprint?         @relation(fields: [sprintId], references: [id])
+  assignee   User?           @relation("CardAssignee", fields: [assigneeId], references: [id])
+  createdBy  User            @relation("CardCreator", fields: [createdById], references: [id])
+  reviewer   User?           @relation("CardReviewer", fields: [reviewerId], references: [id])
+  approver   User?           @relation("CardApprover", fields: [approverId], references: [id])
+  parent     Card?           @relation("CardChildren", fields: [parentCardId], references: [id], onDelete: SetNull)
+  children   Card[]          @relation("CardChildren")
+  labels     CardLabel[]
   comments   Comment[]
   artifacts  Artifact[]
   signoffs   Signoff[]
@@ -191,8 +190,8 @@ model Label {
 model CardLabel {
   cardId  String
   labelId String
-  card    Card  @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  label   Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+  card    Card   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  label   Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
 
   @@id([cardId, labelId])
   @@map("card_labels")
@@ -266,11 +265,16 @@ model Artifact {
   source     String   @default("UPLOAD")
   createdAt  DateTime @default(now())
 
+  parentArtifactId String?
+  parent           Artifact?  @relation("ArtifactChildren", fields: [parentArtifactId], references: [id], onDelete: SetNull)
+  children         Artifact[] @relation("ArtifactChildren")
+
   card     Card       @relation(fields: [cardId], references: [id], onDelete: Cascade)
   uploader User       @relation(fields: [uploaderId], references: [id])
   reviews  AiReview[]
 
   @@index([cardId])
+  @@index([parentArtifactId])
   @@map("artifacts")
 }
 
@@ -321,18 +325,18 @@ model Signoff {
 // ─── Helpdesk / Ticketing ────────────────────────────────────────────────────
 
 model Ticket {
-  id          String          @id @default(cuid())
+  id          String    @id @default(cuid())
   orgId       String
   number      Int
   title       String
   description String?
-  status      String          @default("open")
-  priority    String          @default("medium")
+  status      String    @default("open")
+  priority    String    @default("medium")
   reporterId  String?
   assigneeId  String?
   agentName   String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   resolvedAt  DateTime?
   closedAt    DateTime?
 
@@ -362,14 +366,14 @@ model TicketComment {
 }
 
 model TicketActivity {
-  id         String   @id @default(cuid())
-  ticketId   String
-  userId     String?
-  agentName  String?
-  action     String
-  fromValue  String?
-  toValue    String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  ticketId  String
+  userId    String?
+  agentName String?
+  action    String
+  fromValue String?
+  toValue   String?
+  createdAt DateTime @default(now())
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id])
@@ -383,26 +387,47 @@ model TicketActivity {
 // SQLite has no native enum type; Prisma client enforces valid values at runtime.
 
 model CardExecution {
-  id           String    @id @default(cuid())
-  cardId       String
-  card         Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  cardId String
+  card   Card   @relation(fields: [cardId], references: [id], onDelete: Cascade)
 
-  jobId        String?
+  jobId String?
   // values: enqueued | running | done | failed | cancelled | interrupted
-  state        String
+  state String
 
-  project      String
-  branch       String
-  spec         String
+  project String
+  branch  String
+  spec    String
 
   output       String?
   errorMessage String?
 
-  enqueuedAt   DateTime  @default(now())
-  startedAt    DateTime?
-  finishedAt   DateTime?
+  enqueuedAt DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
 
   @@index([cardId])
   @@index([state])
   @@map("card_executions")
+}
+
+// ─── Google OAuth Credentials (M4) ───────────────────────────────────────────
+
+model GoogleCredential {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accessToken           String?
+  refreshTokenEncrypted String // ciphertext only — never log
+  accessTokenExpiresAt  DateTime?
+
+  googleEmail String
+  googleSub   String @unique
+  scopes      String // space-separated
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastUsedAt DateTime?
+
+  @@map("google_credentials")
 }

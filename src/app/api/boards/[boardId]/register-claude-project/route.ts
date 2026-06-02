@@ -44,7 +44,8 @@ export async function POST(
     return NextResponse.json({ ok: true, project: slug, path: repoPath })
   } catch (err) {
     if (err instanceof NextResponse) return err
+    // Do not leak raw error.message (filesystem / git internals) to the client.
     console.error('POST register-claude-project error:', err)
-    return apiError(500, err instanceof Error ? err.message : 'Internal server error')
+    return apiError(500, 'Internal server error')
   }
 }

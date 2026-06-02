@@ -387,6 +387,9 @@ describe('POST /api/orgs/[orgId]/boards', () => {
     }
     expect(body.board).toBeDefined()
     expect(body.claudeRegistration.ok).toBe(false)
-    expect(body.claudeRegistration.error).toContain('git init failed')
+    // The route returns a generic message and logs the raw error server-side,
+    // so internal git/filesystem details are not leaked to the client.
+    expect(body.claudeRegistration.error).toBe('Claude project registration failed')
+    expect(body.claudeRegistration.error).not.toContain('git init failed')
   })
 })

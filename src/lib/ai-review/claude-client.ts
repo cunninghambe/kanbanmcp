@@ -1,7 +1,7 @@
 import Anthropic, { APIError, RateLimitError } from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/db'
 import { decryptSecret } from '@/lib/secrets'
-import type { ExtractedContent } from './extractors'
+import type { ExtractedContent, ExtractedSegment } from './extractors'
 import type { AiReviewParams } from '@/lib/cards'
 
 export interface ClaudeReviewResult {
@@ -23,10 +23,40 @@ function buildSystemPrompt(params: AiReviewParams): string {
     : params.rubric
 }
 
+function segmentToContentBlock(
+  segment: ExtractedSegment
+): Anthropic.Messages.TextBlockParam | Anthropic.Messages.ImageBlockParam {
+  if (segment.kind === 'image') {
+    return {
+      type: 'image',
+      source: { type: 'base64', media_type: segment.imageMimeType, data: segment.imageBase64 },
+    }
+  }
+  return { type: 'text', text: segment.text }
+}
+
+function buildMultimodalUserMessage(
+  segments: ExtractedSegment[],
+  filename: string
+): Anthropic.Messages.MessageParam {
+  const leading: Anthropic.Messages.TextBlockParam = {
+    type: 'text',
+    text: `Review this artifact (filename: ${filename}). The artifact contains interleaved text and images.`,
+  }
+  return {
+    role: 'user',
+    content: [leading, ...segments.map(segmentToContentBlock)],
+  }
+}
+
 function buildUserMessage(
   content: ExtractedContent,
   filename: string
 ): Anthropic.Messages.MessageParam {
+  if (content.kind === 'multimodal') {
+    return buildMultimodalUserMessage(content.segments, filename)
+  }
+
   if (content.kind === 'image') {
     return {
       role: 'user',
@@ -35,7 +65,7 @@ function buildUserMessage(
           type: 'image',
           source: {
             type: 'base64',
-            media_type: content.imageMimeType as 'image/png' | 'image/jpeg' | 'image/webp',
+            media_type: content.imageMimeType,
             data: content.imageBase64,
           },
         },
@@ -44,9 +74,10 @@ function buildUserMessage(
     }
   }
 
+  const text = content.kind === 'text' ? content.text : ''
   return {
     role: 'user',
-    content: `Review this artifact (filename: ${filename}):\n\n${content.text ?? ''}`,
+    content: `Review this artifact (filename: ${filename}):\n\n${text}`,
   }
 }
 
@@ -229,11 +260,12 @@ export async function runClaudeReview(
   const mcp = getClaudeMCPConfig()
   const anthropic = await getAnthropicAuth(orgId)
 
-  // Image content can't traverse ClaudeMCP (no multimodal pass-through) — must use the API.
-  if (content.kind === 'image') {
+  // Image and multimodal content can't traverse ClaudeMCP (no multimodal pass-through) — must use the API.
+  // Spec § "ClaudeMCP routing": multimodal (Slides) routes through runViaAnthropic unconditionally.
+  if (content.kind === 'image' || content.kind === 'multimodal') {
     if (!anthropic) {
       throw new Error(
-        'Image artifact review requires ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (ClaudeMCP cannot pass multimodal payloads)'
+        'Image/multimodal artifact review requires ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (ClaudeMCP cannot pass multimodal payloads)'
       )
     }
     return runViaAnthropic(params, content, filename, anthropic)

@@ -1,6 +1,6 @@
 import { createHmac } from 'crypto'
 import { prisma } from '@/lib/db'
-import { assertNotPrivateUrl } from '@/lib/ssrf-guard'
+import { safeFetch } from '@/lib/ssrf-guard'
 
 /**
  * Dispatches a webhook event to all matching active webhook endpoints
@@ -33,32 +33,22 @@ export async function dispatchWebhook(
   const body = JSON.stringify({ event, payload })
 
   const deliveries = matching.map(async (wh) => {
-    try {
-      await assertNotPrivateUrl(wh.url)
-    } catch {
-      // Skip delivery to internal/invalid URLs
-      return
-    }
+    // safeFetch internally resolves, validates (rejecting private/internal
+    // addresses), and pins the connection — so it is safe even if DNS changed
+    // since the webhook was created. It throws on private/invalid URLs, which
+    // we treat as a skipped delivery (matching the prior behavior).
+    const response = await safeFetch(wh.url, {
+      method: 'POST',
+      timeoutMs: 10_000,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-KanbanMCP-Signature': `sha256=${createHmac('sha256', wh.secret).update(body).digest('hex')}`,
+      },
+      body,
+    })
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10_000)
-
-    try {
-      const response = await fetch(wh.url, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-KanbanMCP-Signature': `sha256=${createHmac('sha256', wh.secret).update(body).digest('hex')}`,
-        },
-        body,
-      })
-
-      if (!response.ok) {
-        throw new Error(`Webhook delivery to ${wh.url} failed with status ${response.status}`)
-      }
-    } finally {
-      clearTimeout(timeoutId)
+    if (!response.ok) {
+      throw new Error(`Webhook delivery to ${wh.url} failed with status ${response.status}`)
     }
   })
 

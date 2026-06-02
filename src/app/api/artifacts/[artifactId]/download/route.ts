@@ -27,6 +27,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ artifactId:
 
     await requireOrgRole(session, session.orgId, 'MEMBER')
 
+    // Google-sourced artifacts are not backed by local/object storage; their
+    // storageKey is a `gdrive://` reference, not a path-safe key. Calling
+    // getStream on it would throw inside assertSafeKey and 500. Return a
+    // defined, non-500 response instead.
+    if (artifact.source.startsWith('GOOGLE_') || artifact.storageKey.startsWith('gdrive://')) {
+      return apiError(409, 'Artifact is not directly downloadable')
+    }
+
     const storage = getStorageDriver()
 
     let nodeStream: Readable

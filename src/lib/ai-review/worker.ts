@@ -1,12 +1,46 @@
 import { prisma } from '@/lib/db'
 import { getStorageDriver } from '@/lib/storage'
+import { withKeyedLock } from '@/lib/keyed-mutex'
 import { AI_REVIEWER_EMAIL, ensureAiReviewerUser } from '../../../prisma/seed-ai-reviewer'
 import { resolveEffectiveAiReviewParams } from './inheritance'
 import { extractContent, PDF_SIZE_CAP } from './extractors'
 import { runClaudeReview } from './claude-client'
+import {
+  GoogleAuthExpiredError,
+  TokenRevokedError,
+  InsufficientScopesError,
+  GoogleHttpError,
+  DriveNotFoundError,
+  DriveForbiddenError,
+  DriveTrashedError,
+  RateLimitExceededError,
+} from '@/lib/google/errors'
 import type { ExtractedContent } from './extractors'
 import type { AiReviewParams } from '@/lib/cards'
 import type { ClaudeReviewResult } from './claude-client'
+
+type GoogleError =
+  | GoogleAuthExpiredError
+  | TokenRevokedError
+  | InsufficientScopesError
+  | GoogleHttpError
+  | DriveNotFoundError
+  | DriveForbiddenError
+  | DriveTrashedError
+  | RateLimitExceededError
+
+function isGoogleError(err: unknown): err is GoogleError {
+  return (
+    err instanceof GoogleAuthExpiredError ||
+    err instanceof TokenRevokedError ||
+    err instanceof InsufficientScopesError ||
+    err instanceof GoogleHttpError ||
+    err instanceof DriveNotFoundError ||
+    err instanceof DriveForbiddenError ||
+    err instanceof DriveTrashedError ||
+    err instanceof RateLimitExceededError
+  )
+}
 
 // Cached AI Reviewer user id, resolved once at runtime.
 let cachedReviewerUserId: string | null = null
@@ -64,10 +98,19 @@ async function processJob(reviewId: string): Promise<void> {
 }
 
 async function fetchAndExtract(artifact: {
+  id: string
+  source: string
   storageKey: string
   mimeType: string
   filename: string
+  uploaderId: string
 }): Promise<{ content: ExtractedContent } | { skipped: string }> {
+  const GOOGLE_SOURCES = new Set(['GOOGLE_DOC', 'GOOGLE_SHEET', 'GOOGLE_SLIDE', 'GOOGLE_FOLDER', 'URL'])
+  if (GOOGLE_SOURCES.has(artifact.source)) {
+    const content = await extractContent({ artifact })
+    return { content }
+  }
+
   let bytes: Buffer
   try {
     const storage = getStorageDriver()
@@ -82,7 +125,7 @@ async function fetchAndExtract(artifact: {
     return { skipped: 'Artifact deleted before review' }
   }
 
-  const content = await extractContent(bytes, artifact.mimeType, artifact.filename)
+  const content = await extractContent({ artifact, bytes })
   return { content }
 }
 
@@ -148,7 +191,17 @@ async function runReview(reviewId: string): Promise<void> {
       })
       return
     }
-    fetchResult = await fetchAndExtract(artifact)
+    try {
+      fetchResult = await fetchAndExtract(artifact)
+    } catch (err) {
+      if (!isGoogleError(err)) throw err
+      const msg = err instanceof Error ? err.message : String(err)
+      await prisma.aiReview.update({
+        where: { id: reviewId },
+        data: { status: 'failed', errorMessage: msg.slice(0, 1000), finishedAt: now() },
+      })
+      return
+    }
   }
 
   if ('skipped' in fetchResult) {
@@ -248,43 +301,48 @@ export async function enqueueAiReview(artifactId: string): Promise<boolean> {
   })
   if (!artifact) return false
 
-  const existing = await prisma.aiReview.findFirst({
-    where: { artifactId, status: { in: ['pending', 'running'] } },
-    select: { id: true },
-  })
-  if (existing) return false
+  // Serialize the dedup check + row creation per artifact so two concurrent
+  // enqueues cannot both pass the "no pending/running review" check and create
+  // duplicate review rows (→ duplicate Claude spend + duplicate comments).
+  return withKeyedLock(`ai-review:${artifactId}`, async () => {
+    const existing = await prisma.aiReview.findFirst({
+      where: { artifactId, status: { in: ['pending', 'running'] } },
+      select: { id: true },
+    })
+    if (existing) return false
 
-  const params = await resolveEffectiveAiReviewParams(prisma, artifact.cardId)
+    const params = await resolveEffectiveAiReviewParams(prisma, artifact.cardId)
 
-  if (!params) {
-    await prisma.aiReview.create({
+    if (!params) {
+      await prisma.aiReview.create({
+        data: {
+          artifactId,
+          cardId: artifact.cardId,
+          status: 'failed',
+          model: 'unknown',
+          rubricSnapshot: '',
+          errorMessage: 'No review params configured',
+        },
+      })
+      return true
+    }
+
+    const review = await prisma.aiReview.create({
       data: {
         artifactId,
         cardId: artifact.cardId,
-        status: 'failed',
-        model: 'unknown',
-        rubricSnapshot: '',
-        errorMessage: 'No review params configured',
+        status: 'pending',
+        model: params.model,
+        rubricSnapshot: params.rubric,
+        instructions: params.customInstructions ?? null,
       },
     })
+
+    if (inFlightIds.has(review.id)) return true
+    inFlightIds.add(review.id)
+    queueTail = queueTail.then(() => processJob(review.id))
     return true
-  }
-
-  const review = await prisma.aiReview.create({
-    data: {
-      artifactId,
-      cardId: artifact.cardId,
-      status: 'pending',
-      model: params.model,
-      rubricSnapshot: params.rubric,
-      instructions: params.customInstructions ?? null,
-    },
   })
-
-  if (inFlightIds.has(review.id)) return true
-  inFlightIds.add(review.id)
-  queueTail = queueTail.then(() => processJob(review.id))
-  return true
 }
 
 /**
@@ -300,43 +358,48 @@ export async function enqueueCardDescriptionReview(cardId: string): Promise<bool
   })
   if (!card) return false
 
-  const existing = await prisma.aiReview.findFirst({
-    where: { cardId, artifactId: null, status: { in: ['pending', 'running'] } },
-    select: { id: true },
-  })
-  if (existing) return false
+  // Serialize the dedup check + row creation per card (description reviews have
+  // no artifactId, so the dedup identity is the card) to prevent two concurrent
+  // enqueues from both creating a pending description review.
+  return withKeyedLock(`ai-review:card:${cardId}`, async () => {
+    const existing = await prisma.aiReview.findFirst({
+      where: { cardId, artifactId: null, status: { in: ['pending', 'running'] } },
+      select: { id: true },
+    })
+    if (existing) return false
 
-  const params = await resolveEffectiveAiReviewParams(prisma, cardId)
+    const params = await resolveEffectiveAiReviewParams(prisma, cardId)
 
-  if (!params) {
-    await prisma.aiReview.create({
+    if (!params) {
+      await prisma.aiReview.create({
+        data: {
+          artifactId: null,
+          cardId,
+          status: 'failed',
+          model: 'unknown',
+          rubricSnapshot: '',
+          errorMessage: 'No review params configured',
+        },
+      })
+      return true
+    }
+
+    const review = await prisma.aiReview.create({
       data: {
         artifactId: null,
         cardId,
-        status: 'failed',
-        model: 'unknown',
-        rubricSnapshot: '',
-        errorMessage: 'No review params configured',
+        status: 'pending',
+        model: params.model,
+        rubricSnapshot: params.rubric,
+        instructions: params.customInstructions ?? null,
       },
     })
+
+    if (inFlightIds.has(review.id)) return true
+    inFlightIds.add(review.id)
+    queueTail = queueTail.then(() => processJob(review.id))
     return true
-  }
-
-  const review = await prisma.aiReview.create({
-    data: {
-      artifactId: null,
-      cardId,
-      status: 'pending',
-      model: params.model,
-      rubricSnapshot: params.rubric,
-      instructions: params.customInstructions ?? null,
-    },
   })
-
-  if (inFlightIds.has(review.id)) return true
-  inFlightIds.add(review.id)
-  queueTail = queueTail.then(() => processJob(review.id))
-  return true
 }
 
 /** For tests: returns when all queued jobs have drained. */

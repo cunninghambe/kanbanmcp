@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
+import { checkRateLimit } from '@/lib/rate-limit'
 import { enqueueCardDescriptionReview } from '@/lib/ai-review/queue'
 import { shapeReview } from '@/lib/ai-review/response'
 
@@ -19,6 +20,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ cardId: st
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, session.orgId, 'MEMBER')
+
+    // Rate limit AI-review triggers per org: each one spends Claude tokens, so an
+    // authenticated member could otherwise drive unbounded cost. 20 per 5 minutes.
+    // checkRateLimit bypasses under PLAYWRIGHT_E2E so e2e suites are not blocked.
+    if (!checkRateLimit(`ai-review:${session.orgId}`, 20, 5 * 60 * 1000)) {
+      return apiError(429, 'Too many review requests, slow down')
+    }
 
     const orgId = await resolveCardOrgId(cardId)
     if (!orgId || orgId !== session.orgId) return apiError(404, 'Card not found')

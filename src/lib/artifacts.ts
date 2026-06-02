@@ -35,6 +35,7 @@ export type ArtifactResponse = {
   mimeType: string
   sizeBytes: number
   source: string
+  parentArtifactId: string | null
   createdAt: string
   uploader: { id: string; name: string; email: string }
   reviews: AiReviewSummary[]
@@ -49,6 +50,7 @@ export function shapeArtifact(
     mimeType: a.mimeType,
     sizeBytes: a.sizeBytes,
     source: a.source,
+    parentArtifactId: a.parentArtifactId,
     createdAt: a.createdAt.toISOString(),
     uploader: { id: a.uploader.id, name: a.uploader.name, email: a.uploader.email },
     reviews: a.reviews.map((r) => ({

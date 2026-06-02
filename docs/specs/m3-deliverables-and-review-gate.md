@@ -1,7 +1,9 @@
 # M3: Deliverable files + pre-commit review gate
 
 ## Status
-Spec, drafted 2026-05-20. Awaiting Brad's final go.
+SHIPPED 2026-05-20 in commit `2b8defd1` ("M2 + M3 + UI redesign: claude execute, deliverables, design system") alongside M2.
+
+Audit: [`docs/specs/m2/AUDIT.md`](./m2/AUDIT.md) — M3 verdict: 7/11 AC PASS, 2 AC UNTESTABLE-FROM-CODE (runtime-dependent on Claude's behavior — AC6 reviewer-iterates and AC10 venv-bootstrapping), 0 FAIL, 0 DRIFT. Two edge cases are PARTIAL DRIFT: E6 (missing project path posts a warning comment and leaves the card in Review instead of moving to Blocked — sensible deviation, doc updated below) and E7 (size cap is 25 MB from `MAX_ARTIFACT_BYTES`, not 10 MB — spec was hand-wavy).
 
 ## Problem statement
 
@@ -111,7 +113,7 @@ Modify `handleTerminal` (or extract a `handleDone` helper) for the `done` + `exi
    a. Resolve full path: `<projectPath>/<deliverablePath>` (deliverablePath is repo-relative).
    b. Read the file. If missing, skip and accumulate a warning.
    c. Copy into `/opt/kanban/uploads/` using the existing storage driver. Use `path.basename(deliverable)` as the filename suffix.
-   d. Insert a row in `artifacts` table: `{ cardId, filename, storageKey, mimeType (sniff or derive from extension), size, uploadedById: 'agent-claude-code' }`.
+   d. Insert a row in `artifacts` table: `{ cardId, filename, storageKey, mimeType (sniff or derive from extension), sizeBytes, uploaderId: 'agent-claude-code' }`. (Spec originally said `uploadedById`; the Prisma model field is `uploaderId`. Shipped code uses `uploaderId` — spec corrected here.)
 4. Post the `SUMMARY:` content as a comment by `agent-claude-code`. Prepend a header line: `**Claude Code delivered:**` then the summary, then a footer listing the attached artifact filenames.
 5. If parsing failed (no `DELIVERABLES:` line) → fall back to M2 behavior (post full output) AND post a second warning comment: `[M3 protocol warning] Claude did not output a DELIVERABLES: line. No artifacts were attached. Reviewing manually.`
 6. Move card to Review column (unchanged from M2).
@@ -155,8 +157,8 @@ Branch naming, project resolution, debounce: unchanged from M2.
 | E3 | `DELIVERABLES:` lists files outside `/deliverables/` (security) | Reject any path that doesn't start with `/deliverables/` or that contains `..`. Skip with warning. |
 | E4 | Multiple deliverables, one fails to copy | Attach the ones that work. Warning comment lists failures. Card still moves to Review. |
 | E5 | Reviewer never converges (3 REVISE rounds) | Claude commits anyway and prepends `[REVIEW UNCONVERGED]` to summary. Card still moves to Review. |
-| E6 | Project path not found in `projects.json` | Treat as M2 failure: move to Blocked, comment with error. (Should not happen if the project trigger fired; projects.json is the source of truth.) |
-| E7 | Deliverable file >10 MB | Reject; standard kanban artifact size cap (TBD what it currently is — verify in `artifacts/route.ts`). Post warning. |
+| E6 | Project path not found in `projects.json` | ~~Treat as M2 failure: move to Blocked.~~ **Shipped behavior (2026-05-20):** card stays in Review (the `isSuccess` branch already moved it before deliverable parsing); a warning comment is posted naming the missing project. Rationale: by the time we're attempting to attach deliverables, the build itself succeeded — failure to *locate* deliverables is a degraded-success, not a job failure. Don't bounce the card back to Blocked. |
+| E7 | Deliverable file >MAX_ARTIFACT_BYTES | Reject. Cap is **25 MB** (`MAX_ARTIFACT_BYTES` in `src/lib/artifacts.ts:3`); the spec's original "10 MB TBD" was hand-wavy. `attachDeliverableArtifact` returns `{ skipped: 'too_large' }`; the file is listed in the warning footer of the summary comment. |
 | E8 | Claude installs libraries into `.venv-agent/` then accidentally commits it | The instructions say "do not commit the venv" but a robust commit hook isn't enforced. Mitigation: the spec text is explicit, and if it ends up committed, it's a one-time noise commit on the agent branch (the project's main branch is unaffected). Acceptable. |
 | E9 | Per-card flag wants `runTests: true` (a real code task) | Out of scope for M3. Defer until needed. |
 | E10 | Card has no description (re-check from M2) | M2 invariant check still fires — no execution starts. |
