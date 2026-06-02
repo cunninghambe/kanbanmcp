@@ -1,6 +1,12 @@
+// Memoize the import promise so concurrent callers share one dynamic import
+// (avoids redundant imports and a concurrent-dynamic-import race vs test mocks).
+let prismaPromise: Promise<(typeof import('@/lib/db'))['prisma']> | null = null
+
 async function db() {
-  const mod = await import('@/lib/db')
-  return mod.prisma
+  if (!prismaPromise) {
+    prismaPromise = import('@/lib/db').then((mod) => mod.prisma)
+  }
+  return prismaPromise
 }
 
 export async function postExecutionComment(cardId: string, content: string): Promise<void> {

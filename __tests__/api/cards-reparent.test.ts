@@ -104,7 +104,11 @@ describe('POST /api/cards/[cardId]/reparent', () => {
   it('returns 400 when new parent is on a different board (AC-9 board check)', async () => {
     mockPrisma.card.findUnique.mockResolvedValue(baseCard)
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
-    txMock.card.findUnique.mockResolvedValueOnce({ boardId: 'other-board', depth: 0, path: '' })
+    txMock.card.findUnique
+      // 1) fresh in-tx read of the moved card (path/depth)
+      .mockResolvedValueOnce({ path: '', depth: 0 })
+      // 2) new parent lookup — different board
+      .mockResolvedValueOnce({ boardId: 'other-board', depth: 0, path: '' })
 
     const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
     const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
@@ -125,7 +129,11 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     txMock.card.findUnique
-      .mockResolvedValueOnce({ boardId: 'board-1', depth: 1, path: '/card-A/' })
+      // 1) fresh in-tx read of moved card-A
+      .mockResolvedValueOnce({ path: '', depth: 0 })
+      // 2) new parent (card-B) lookup — same board, NOT inside card-A subtree
+      .mockResolvedValueOnce({ boardId: 'board-1', depth: 1, path: '/other/' })
+      // 3+) wouldFormCycle ancestor walk from card-B reaches card-A
       .mockResolvedValueOnce({ parentCardId: 'card-A' })
       .mockResolvedValueOnce({ parentCardId: null })
 
@@ -148,7 +156,11 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     txMock.card.findUnique
+      // 1) fresh in-tx read of moved card-A
+      .mockResolvedValueOnce({ path: '', depth: 0 })
+      // 2) new parent lookup — same board, deep
       .mockResolvedValueOnce({ boardId: 'board-1', depth: 40, path: '/deep/' })
+      // 3) wouldFormCycle ancestor walk terminates immediately
       .mockResolvedValueOnce(null)
     txMock.$queryRaw.mockResolvedValue([{ maxDepth: 10 }])
 
@@ -195,8 +207,13 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     txMock.card.findUnique
+      // 1) fresh in-tx read of moved card-A
+      .mockResolvedValueOnce({ path: '', depth: 0 })
+      // 2) new parent (card-B) lookup — same board, root
       .mockResolvedValueOnce({ boardId: 'board-1', depth: 0, path: '' })
+      // 3) wouldFormCycle ancestor walk terminates
       .mockResolvedValueOnce(null)
+      // 4) recomputeSubtreePathAndDepth re-reads card-A
       .mockResolvedValueOnce(cardA)
 
     txMock.$queryRaw.mockResolvedValue([{ maxDepth: null }])
@@ -254,8 +271,13 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     txMock.card.findUnique
+      // 1) fresh in-tx read of moved card-A
+      .mockResolvedValueOnce({ path: '', depth: 0 })
+      // 2) new parent (card-B) lookup — same board, depth 48
       .mockResolvedValueOnce({ boardId: 'board-1', depth: 48, path: '/deep/' })
+      // 3) wouldFormCycle ancestor walk terminates
       .mockResolvedValueOnce(null)
+      // 4) recomputeSubtreePathAndDepth re-reads card-A
       .mockResolvedValueOnce(cardA)
 
     txMock.$queryRaw.mockResolvedValue([{ maxDepth: null }])
@@ -277,7 +299,11 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
 
     txMock.card.findUnique
+      // 1) fresh in-tx read of moved card-A
+      .mockResolvedValueOnce({ path: '', depth: 0 })
+      // 2) new parent (card-B) lookup — same board, depth 49
       .mockResolvedValueOnce({ boardId: 'board-1', depth: 49, path: '/very/deep/' })
+      // 3) wouldFormCycle ancestor walk terminates
       .mockResolvedValueOnce(null)
 
     txMock.$queryRaw.mockResolvedValue([{ maxDepth: null }])
@@ -290,5 +316,106 @@ describe('POST /api/cards/[cardId]/reparent', () => {
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error).toBe('Maximum nesting depth (50) reached')
+  })
+
+  // ─── Fix G4.3: fresh in-tx depth + cycle-via-path guard ──────────────────────
+
+  it('uses the FRESH in-tx card path/depth (not the pre-tx snapshot) for the depth budget', async () => {
+    // The pre-transaction snapshot says card-A is a shallow root (depth 0),
+    // but a concurrent edit moved it deep before our tx ran. The in-tx read
+    // reflects the fresh state and must drive the depth-budget rejection.
+    const staleCardA = { ...baseCard, id: 'card-A', depth: 0, path: '' }
+    mockPrisma.card.findUnique.mockResolvedValue({
+      ...staleCardA,
+      board: { orgId: 'org-1', id: 'board-1' },
+    })
+    mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
+
+    txMock.card.findUnique
+      // 1) FRESH in-tx read: card-A is actually deep now (depth 30, path '/x/')
+      .mockResolvedValueOnce({ path: '/x/', depth: 30 })
+      // 2) new parent lookup — same board, depth 45
+      .mockResolvedValueOnce({ boardId: 'board-1', depth: 45, path: '/p/' })
+      // 3) wouldFormCycle ancestor walk terminates
+      .mockResolvedValueOnce(null)
+
+    // Subtree's deepest descendant is at absolute depth 35 -> subtreeMaxDepth = 35-30 = 5.
+    // newParent.depth + 1 + 5 = 45 + 1 + 5 = 51 >= 50 -> reject.
+    // (If the stale depth 0 had been used, subtreeMaxDepth = 35 and it would have
+    //  been even larger, but the point is the prefix LIKE uses the FRESH path '/x/card-A/'.)
+    txMock.$queryRaw.mockResolvedValue([{ maxDepth: 35 }])
+
+    const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-B',
+    })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe('Maximum nesting depth (50) reached')
+    // Confirm the depth query used the FRESH subtree prefix derived from path '/x/'.
+    const queryArgs = txMock.$queryRaw.mock.calls[0]
+    expect(JSON.stringify(queryArgs)).toContain('/x/card-A/')
+  })
+
+  it('rejects reparenting a card UNDER its own descendant via the path-prefix cycle guard', async () => {
+    // wouldFormCycle relies on parentCardId pointers; if those were edited
+    // concurrently it could miss the cycle. The path-prefix check catches it:
+    // the new parent lives inside card-A's own subtree.
+    const cardA = { ...baseCard, id: 'card-A', depth: 1, path: '/root/' }
+    mockPrisma.card.findUnique.mockResolvedValue({
+      ...cardA,
+      board: { orgId: 'org-1', id: 'board-1' },
+    })
+    mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
+
+    txMock.card.findUnique
+      // 1) fresh in-tx read of moved card-A (subtree prefix = '/root/card-A/')
+      .mockResolvedValueOnce({ path: '/root/', depth: 1 })
+      // 2) new parent is a descendant of card-A (path starts with '/root/card-A/')
+      .mockResolvedValueOnce({ boardId: 'board-1', depth: 2, path: '/root/card-A/' })
+      // 3) wouldFormCycle ancestor walk is (deliberately) sabotaged: pointer says
+      //    the descendant has no parent, so ancestor-walk alone would MISS the cycle.
+      .mockResolvedValue({ parentCardId: null })
+
+    const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-descendant',
+    })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe('Cycle detected')
+  })
+
+  it('allows reparenting under a sibling subtree that merely SHARES a path prefix string', async () => {
+    // NEGATIVE / false-positive boundary: new parent path '/root/card-AB/' must
+    // NOT be treated as inside card-A's subtree prefix '/root/card-A/'.
+    const cardA = { ...baseCard, id: 'card-A', depth: 1, path: '/root/' }
+    const updatedCard = { ...cardA, parentCardId: 'card-AB', path: '/root/card-AB/', depth: 2 }
+    mockPrisma.card.findUnique
+      .mockResolvedValueOnce({ ...cardA, board: { orgId: 'org-1', id: 'board-1' } })
+      .mockResolvedValueOnce(updatedCard)
+    mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
+
+    txMock.card.findUnique
+      // 1) fresh in-tx read of moved card-A (subtree prefix = '/root/card-A/')
+      .mockResolvedValueOnce({ path: '/root/', depth: 1 })
+      // 2) new parent '/root/card-AB/' shares the '/root/card-A' string but is a
+      //    DIFFERENT subtree — startsWith('/root/card-A/') is false.
+      .mockResolvedValueOnce({ boardId: 'board-1', depth: 2, path: '/root/' })
+      // 3) wouldFormCycle ancestor walk terminates (no real cycle)
+      .mockResolvedValueOnce(null)
+      // 4) recompute re-reads card-A
+      .mockResolvedValueOnce(cardA)
+
+    txMock.$queryRaw.mockResolvedValue([{ maxDepth: null }])
+
+    const { POST } = await import('../../src/app/api/cards/[cardId]/reparent/route')
+    const req = makeRequest('http://localhost/api/cards/card-A/reparent', {
+      parentCardId: 'card-AB',
+    })
+    const res = await POST(req, { params: Promise.resolve({ cardId: 'card-A' }) })
+    expect(res.status).toBe(200)
   })
 })

@@ -183,7 +183,9 @@ export async function refreshAccessToken(userId: string): Promise<string> {
     lastUsedAt: Date
     refreshTokenEncrypted?: string
   } = {
-    accessToken: data.access_token,
+    // Encrypted at rest, mirroring refreshTokenEncrypted. Read back via
+    // decryptAccessTokenTolerant (handles legacy plaintext rows).
+    accessToken: encryptSecret(data.access_token),
     accessTokenExpiresAt: expiresAt,
     lastUsedAt: now,
   }
@@ -208,13 +210,27 @@ export async function revokeRefreshToken(userId: string): Promise<void> {
   }
 }
 
+/**
+ * Decrypts an access token stored at rest. Tolerant of legacy rows written
+ * before encryption-at-rest was introduced: AES-256-GCM authentication fails on
+ * non-ciphertext, so a decrypt failure means the value is legacy plaintext and
+ * is returned as-is. Such rows get re-encrypted on the next refresh.
+ */
+function decryptAccessTokenTolerant(stored: string): string {
+  try {
+    return decryptSecret(stored)
+  } catch {
+    return stored
+  }
+}
+
 export async function ensureFreshAccessToken(userId: string): Promise<string> {
   const cred = await prisma.googleCredential.findUnique({ where: { userId } })
   if (!cred) throw new GoogleAuthExpiredError()
 
   const thirtySecondsFromNow = new Date(Date.now() + 30 * 1000)
   if (cred.accessToken && cred.accessTokenExpiresAt && cred.accessTokenExpiresAt > thirtySecondsFromNow) {
-    return cred.accessToken
+    return decryptAccessTokenTolerant(cred.accessToken)
   }
 
   return refreshAccessToken(userId)

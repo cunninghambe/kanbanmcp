@@ -133,6 +133,34 @@ describe('parseDriveUrl', () => {
   it('returns null for drive.google.com/drive/my-drive (no id)', () => {
     expect(parseDriveUrl('https://drive.google.com/drive/my-drive')).toBeNull()
   })
+
+  // ─── id injection guard (SSRF/URL-injection: id is interpolated into a
+  //     googleapis path carrying the user's OAuth Bearer token) ───────────────
+  describe('rejects ids outside the Google file-id charset', () => {
+    it('rejects path-traversal id via open?id= branch', () => {
+      // searchParams.get('id') can return arbitrary strings; "../../tokeninfo"
+      // would otherwise traverse to a different googleapis endpoint.
+      expect(parseDriveUrl('https://drive.google.com/open?id=..%2F..%2Ftokeninfo')).toBeNull()
+      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('../../tokeninfo'))).toBeNull()
+    })
+
+    it('rejects id with a slash, space, or query-injection char', () => {
+      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc/def'))).toBeNull()
+      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc def'))).toBeNull()
+      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc?x=1'))).toBeNull()
+      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc#frag'))).toBeNull()
+    })
+
+    it('rejects empty / dot-only id', () => {
+      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('..'))).toBeNull()
+    })
+
+    it('NEGATIVE: still accepts a legitimate Drive id (alnum, _ and -)', () => {
+      // false-positive boundary — the guard must not break real ids.
+      const r = parseDriveUrl('https://drive.google.com/open?id=1A_b-2C3d4E5f6G7h8I9j0')
+      expect(r).toEqual({ kind: 'file', id: '1A_b-2C3d4E5f6G7h8I9j0' })
+    })
+  })
 })
 
 // ─── getFileMeta ──────────────────────────────────────────────────────────────

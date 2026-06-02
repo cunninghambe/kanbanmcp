@@ -36,6 +36,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ cardId: st
 
     await prisma.$transaction(async (tx) => {
       if (newParentId !== null) {
+        // Re-read the moved card's CURRENT path/depth inside the transaction.
+        // Using the pre-transaction snapshot (existingCard) can race with
+        // concurrent tree edits and miscompute the subtree prefix / depth budget.
+        const movedCard = await tx.card.findUnique({
+          where: { id: params.cardId },
+          select: { path: true, depth: true },
+        })
+        if (!movedCard) {
+          throw NextResponse.json({ error: 'Card not found' }, { status: 404 })
+        }
+
         const newParent = await tx.card.findUnique({
           where: { id: newParentId },
           select: { boardId: true, depth: true, path: true },
@@ -47,19 +58,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ cardId: st
           )
         }
 
+        const subtreePrefix =
+          movedCard.path === '' ? `/${params.cardId}/` : `${movedCard.path}${params.cardId}/`
+
         const cycle = await wouldFormCycle(tx, params.cardId, newParentId)
-        if (cycle) {
+        // Also reject when the new parent lives inside the moved card's own
+        // subtree (its path begins with the moved card's subtree prefix). This
+        // closes the cycle even if ancestor pointers were edited concurrently.
+        const newParentInSubtree = newParent.path.startsWith(subtreePrefix)
+        if (cycle || newParentInSubtree) {
           throw NextResponse.json({ error: 'Cycle detected' }, { status: 400 })
         }
 
-        const subtreePrefix =
-          existingCard.path === '' ? `/${params.cardId}/` : `${existingCard.path}${params.cardId}/`
         const maxDepthResult = await tx.$queryRaw<Array<{ maxDepth: number | null }>>`
           SELECT MAX(depth) as maxDepth FROM "cards" WHERE path LIKE ${subtreePrefix + '%'}
         `
         const maxDescendantDepth = maxDepthResult[0]?.maxDepth ?? null
         const subtreeMaxDepth =
-          maxDescendantDepth !== null ? maxDescendantDepth - existingCard.depth : 0
+          maxDescendantDepth !== null ? maxDescendantDepth - movedCard.depth : 0
 
         if (newParent.depth + 1 + subtreeMaxDepth >= MAX_NESTING_DEPTH) {
           throw NextResponse.json(

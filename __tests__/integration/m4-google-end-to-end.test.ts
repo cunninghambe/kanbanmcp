@@ -219,9 +219,11 @@ async function runOAuthCallback(ctx: TestCtx): Promise<void> {
 // ─── Global setup / teardown ──────────────────────────────────────────────────
 
 beforeAll(async () => {
+  // Provision the test's OWN database (the one this process's prisma client
+  // connects to via DATABASE_URL), not a hardcoded deploy path. Running with a
+  // pinned cwd of /opt/kanban migrated the wrong DB, leaving the test DB empty.
   try {
     execSync('npx prisma migrate deploy', {
-      cwd: '/opt/kanban',
       stdio: 'pipe',
       env: { ...process.env },
     })

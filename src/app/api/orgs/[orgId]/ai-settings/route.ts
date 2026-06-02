@@ -11,8 +11,10 @@ type RouteContext = { params: Promise<{ orgId: string }> }
 
 export async function GET(req: Request, ctx: RouteContext): Promise<NextResponse> {
   const { orgId } = await ctx.params
+
   try {
-    await requireSession(req)
+    const session = await requireSession(req)
+    await requireOrgRole(session, orgId, 'MEMBER')
   } catch (err) {
     if (err instanceof NextResponse) return err
     throw err
