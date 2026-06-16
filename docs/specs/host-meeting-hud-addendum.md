@@ -197,3 +197,43 @@ Route `/(app)/hud/[id]` (or launched from a board/series). Components under `src
 **H5 (later) — Email/Slack adapters.** Only if §7.1 chooses to build them: `gmail.readonly` scope + Gmail read adapter; Slack OAuth app + read client. Out of scope for the first cut.
 
 Acceptance (first cut, H1–H4): chair starts a HUD on a board, asks *"what's overdue and stalled here?"* and *"find the latest handover doc in Drive"*, both answers stream back with citations within the session, no board row is mutated, and a suggested change appears only as a pending proposal — confirmed by `AgentActivity` provenance and a redelivery/refresh being idempotent.
+
+---
+
+## 9. As built (confirmed decisions)
+
+Implemented per the chair's confirmed answers to §7:
+
+1. **All four targets (Board · Drive · Email · Slack).** The dispatch worker is
+   *target-agnostic*: it builds a target-aware, read-only prompt and hands it to
+   the external ClaudeMCP agent (decision #3). Because answering happens outside
+   this repo, "all four" needs **no in-repo Slack/Gmail client** — the ClaudeMCP
+   project holds that access in its own tool config. KanbanMCP still has no Slack
+   or Gmail substrate of its own; Email/Slack answers depend entirely on that
+   external configuration (documented in `.env.example`).
+2. **Minimal ChangeSet now.** `ChangeSet` + `ChangeItem` models, the
+   `propose_changeset` MCP tool, a transactional `applyChangeSet`, and the
+   `/api/changesets/*` routes (list/detail/decisions/apply) ship in this change.
+   Card ops only (`create_card | move_card | update_card | comment_card`);
+   commitment ops arrive with the Meeting pipeline.
+3. **External ClaudeMCP dispatch** (`src/lib/host-hud/mcp-client.ts` →
+   `claude_run`/`claude_job_status`), mirroring `card-execution`.
+4. **MCP permission enforcement closed.** `isToolAllowed` in `mcp-server.ts`:
+   empty `permissions[]` = legacy full access; a non-empty allowlist requires
+   `write` for mutations and `write`/`propose` for proposals. The HUD dispatch
+   key is `["read","propose"]` — it can read + propose but cannot mutate, *even
+   if prompted to* (covered by tests).
+
+**Files:** schema (`HudSession`, `AgentDispatch`, `ChangeSet`, `ChangeItem`);
+`src/lib/host-hud/{mcp-client,dispatch,worker}.ts`; `src/lib/changesets.ts`;
+`src/lib/mcp-server.ts` (tools + scoping); `src/app/api/hud/**`,
+`src/app/api/changesets/**`; `src/app/(app)/hud/**`; `src/hooks/useHudStream.ts`;
+`instrumentation.ts`. Tests under `__tests__/lib/host-hud-*`,
+`__tests__/lib/mcp-permissions.test.ts`, `__tests__/mcp/permissions-and-propose.test.ts`.
+
+**Not in this change (honest gaps):** the spec's Meeting/Series/Commitment/
+PrepBrief pipeline (the HUD soft-links to it via nullable FKs); a real in-repo
+Slack/Gmail integration (delegated to the external ClaudeMCP agent); ChangeSet
+expiry; and live verification of the ClaudeMCP round-trip (no ClaudeMCP server
+is reachable in CI — the worker is covered by a mocked-client unit test, same as
+`card-execution`).
