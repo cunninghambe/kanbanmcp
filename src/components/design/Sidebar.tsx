@@ -11,6 +11,7 @@ import {
   Settings2,
   LogOut,
   Plus,
+  RadioTower,
 } from 'lucide-react'
 import { useSession } from '@/hooks/useSession'
 import { Wordmark } from './Wordmark'
@@ -291,6 +292,10 @@ export function DesignSidebar() {
         </div>
       </div>
       <div>
+        <Link href="/hud" style={navStyle(isActive('/hud'))}>
+          <RadioTower size={14} />
+          <span style={{ flex: 1 }}>host hud</span>
+        </Link>
         <Link href="/helpdesk" style={navStyle(isActive('/helpdesk'))}>
           <LifeBuoy size={14} />
           <span style={{ flex: 1 }}>helpdesk</span>
