@@ -18,5 +18,12 @@ export async function register() {
     } catch (err) {
       console.warn('[instrumentation] card-execution bootstrapWorker failed, skipping re-queue:', err)
     }
+
+    const { bootstrapWorker: bootstrapHostHud } = await import('./src/lib/host-hud/worker')
+    try {
+      await bootstrapHostHud()
+    } catch (err) {
+      console.warn('[instrumentation] host-hud bootstrapWorker failed, skipping re-queue:', err)
+    }
   }
 }

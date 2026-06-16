@@ -411,6 +411,115 @@ model CardExecution {
   @@map("card_executions")
 }
 
+// ─── Host Meeting HUD (live in-meeting copilot) ──────────────────────────────
+// See docs/specs/host-meeting-hud-addendum.md. All cross-module refs are kept as
+// plain nullable Strings (no Prisma relation) per the spec's "nullable FK, DB
+// permissive" convention, so the HUD ships independently of the Meeting models.
+
+model HudSession {
+  id        String   @id @default(cuid())
+  orgId     String
+  chairId   String // the present human (User id)
+  // Soft links — all nullable so the HUD is standalone-capable:
+  boardId   String? // board in focus (pertinent-panel source)
+  seriesId  String? // MeetingSeries id, once that model exists
+  meetingId String? // Meeting id, once that model exists
+  title     String
+  // values: live | ended
+  status    String   @default("live")
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+
+  dispatches AgentDispatch[]
+
+  @@index([orgId, status])
+  @@map("hud_sessions")
+}
+
+model AgentDispatch {
+  id           String  @id @default(cuid())
+  orgId        String
+  hudSessionId String
+  chairId      String // requester (audit)
+  // values: board | drive | email | slack
+  target       String
+  question     String
+  // values: queued | running | done | failed | cancelled
+  status       String  @default("queued")
+  answer       String? // rendered markdown
+  // JSON: [{ kind, id, title, url?, quote? }] — evidence the answer rests on
+  citations    String?
+  confidence   Float?
+  // When the agent suggests a board change, the pending ChangeSet id lands here.
+  // The change is NEVER applied live — it surfaces for post-meeting human approval.
+  proposedChangeSetId String?
+  jobId        String? // external ClaudeMCP job id, if used
+  error        String?
+  createdAt    DateTime  @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  hudSession HudSession @relation(fields: [hudSessionId], references: [id], onDelete: Cascade)
+
+  @@index([hudSessionId, status])
+  @@index([status])
+  @@map("agent_dispatches")
+}
+
+// ─── ChangeSet (chair-approved board mutations) ──────────────────────────────
+// Minimal realization of MEETINGCOPILOTSPEC §3.2. meetingId is nullable so the
+// HUD's "agent proposes, human approves" path works before the Meeting pipeline
+// exists. Decision/apply endpoints require a human iron-session — never API-key.
+
+model ChangeSet {
+  id          String  @id @default(cuid())
+  orgId       String
+  boardId     String? // resolution/apply scope
+  meetingId   String? // origin meeting, once that model exists
+  hudSessionId String? // origin HUD session, when proposed live
+  dispatchId   String? // origin AgentDispatch, when proposed by a dispatched agent
+  // values: pending | partially_applied | applied | rejected | expired
+  status       String  @default("pending")
+  createdById  String // service user / agent name that proposed it
+  approvedById String?
+  summary      String?
+  createdAt    DateTime  @default(now())
+  appliedAt    DateTime?
+
+  items ChangeItem[]
+
+  @@index([orgId, status])
+  @@index([hudSessionId])
+  @@map("change_sets")
+}
+
+model ChangeItem {
+  id          String @id @default(cuid())
+  changeSetId String
+  // values: create_card | move_card | update_card | comment_card |
+  //         create_commitment | update_commitment_status | link_commitment_to_card
+  op          String
+  // JSON op payload, validated per-op by Zod at propose + apply time
+  payload     String
+  targetCardId       String?
+  targetCommitmentId String?
+  // JSON: { matchedId, matchedTitle, score, alternates: [{id,title,score}] }
+  resolution  String?
+  // JSON evidence span: { artifactId?, startMs?, endMs?, speakerLabel?, quote }
+  evidence    String?
+  confidence  Float?
+  // values: pending | approved | rejected | retargeted
+  decision    String  @default("pending")
+  decidedById String?
+  appliedAt   DateTime?
+  error       String?
+
+  changeSet ChangeSet @relation(fields: [changeSetId], references: [id], onDelete: Cascade)
+
+  @@index([changeSetId])
+  @@map("change_items")
+}
+
 // ─── Google OAuth Credentials (M4) ───────────────────────────────────────────
 
 model GoogleCredential {

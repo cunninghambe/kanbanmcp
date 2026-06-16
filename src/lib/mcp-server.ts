@@ -10,6 +10,7 @@ import {
 } from '@/lib/cards'
 import { fetchSubtree } from '@/lib/tree'
 import { shapeArtifact } from '@/lib/artifacts'
+import { proposeChangeSetInputSchema, createPendingChangeSet } from '@/lib/changesets'
 import type { AgentContext } from '@/types/index'
 
 const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
@@ -257,7 +258,94 @@ export const MCP_TOOLS: McpTool[] = [
       required: ['cardId'],
     },
   },
+  {
+    name: 'propose_changeset',
+    description:
+      'Propose a set of board changes for HUMAN approval. This creates a PENDING ChangeSet — it NEVER mutates the board. Each item is a validated op (create_card | move_card | update_card | comment_card) with optional evidence and confidence. Use this instead of the direct mutation tools when an agent should suggest, not apply.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        boardId: { type: 'string', description: 'Board the changes target (resolution scope).' },
+        summary: { type: 'string', description: 'Human-readable summary of the proposal.' },
+        items: {
+          type: 'array',
+          description: 'Proposed ops.',
+          items: {
+            type: 'object',
+            properties: {
+              op: {
+                type: 'string',
+                enum: ['create_card', 'move_card', 'update_card', 'comment_card'],
+              },
+              payload: { type: 'object', description: 'Op-specific payload (validated per op).' },
+              targetCardId: { type: 'string' },
+              evidence: {
+                type: 'object',
+                properties: { quote: { type: 'string' } },
+                required: ['quote'],
+              },
+              confidence: { type: 'number' },
+            },
+            required: ['op', 'payload'],
+          },
+        },
+      },
+      required: ['items'],
+    },
+  },
+  {
+    name: 'list_pending_changesets',
+    description: 'List pending ChangeSets for the organization, newest first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max records (default 20, max 100).' },
+      },
+    },
+  },
+  {
+    name: 'get_changeset',
+    description: 'Retrieve a ChangeSet with all of its items.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        changeSetId: { type: 'string' },
+      },
+      required: ['changeSetId'],
+    },
+  },
 ]
+
+// ---------------------------------------------------------------------------
+// Permission scoping
+// ---------------------------------------------------------------------------
+// ApiKey.permissions is a JSON string array. Back-compat rule: an EMPTY array
+// means "legacy key, full access" (preserves all existing agents). A non-empty
+// array is an explicit allowlist — write tools require 'write' (or '*'/'admin'),
+// proposal requires 'write' or 'propose'. This realizes MEETINGCOPILOTSPEC §6.2:
+// a read-scoped key (e.g. ['read','propose']) can read + propose but never mutate.
+
+const WRITE_TOOLS = new Set([
+  'create_card',
+  'update_card',
+  'move_card',
+  'add_comment',
+  'create_subcard',
+  'set_card_reviewers',
+  'toggle_ai_review',
+])
+
+const PROPOSE_TOOLS = new Set(['propose_changeset'])
+
+export function isToolAllowed(toolName: string, permissions: string[]): boolean {
+  if (permissions.length === 0) return true // legacy key — full access
+  if (permissions.includes('*') || permissions.includes('admin')) return true
+  if (WRITE_TOOLS.has(toolName)) return permissions.includes('write')
+  if (PROPOSE_TOOLS.has(toolName)) {
+    return permissions.includes('write') || permissions.includes('propose')
+  }
+  return true // read-only tools are always permitted for any scoped key
+}
 
 // ---------------------------------------------------------------------------
 // JSON-RPC helpers
@@ -896,6 +984,104 @@ async function toolListArtifacts(
   return { artifacts: artifacts.map(shapeArtifact) }
 }
 
+async function toolProposeChangeset(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const parsed = proposeChangeSetInputSchema.safeParse(params)
+  if (!parsed.success) {
+    throw {
+      code: -32602,
+      message: `Invalid propose_changeset input: ${parsed.error.issues
+        .map((i) => `${i.path.join('.')} ${i.message}`)
+        .join('; ')}`,
+    }
+  }
+
+  // If a board is named, confirm it belongs to the agent's org (prevent cross-org IDOR).
+  if (parsed.data.boardId) {
+    const board = await prisma.board.findFirst({
+      where: { id: parsed.data.boardId, orgId: agentCtx.orgId },
+      select: { id: true },
+    })
+    if (!board) throw { code: -32602, message: 'Board not found or access denied' }
+  }
+
+  const changeSet = await createPendingChangeSet(prisma, {
+    orgId: agentCtx.orgId,
+    createdById: agentCtx.agentName,
+    boardId: parsed.data.boardId,
+    summary: parsed.data.summary,
+    items: parsed.data.items,
+  })
+
+  logActivity(agentCtx.orgId, agentCtx.agentName, 'propose_changeset', 'change_set', changeSet.id, {
+    boardId: parsed.data.boardId ?? null,
+    itemCount: changeSet.items.length,
+  }).catch(() => {})
+
+  dispatchWebhook(agentCtx.orgId, 'changeset.proposed', {
+    changeSetId: changeSet.id,
+    itemCount: changeSet.items.length,
+    agentName: agentCtx.agentName,
+  }).catch(() => {})
+
+  return { changeSetId: changeSet.id, status: changeSet.status, itemCount: changeSet.items.length }
+}
+
+async function toolListPendingChangesets(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const limit = typeof params.limit === 'number' ? Math.min(Math.max(params.limit, 1), 100) : 20
+  const changeSets = await prisma.changeSet.findMany({
+    where: { orgId: agentCtx.orgId, status: 'pending' },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: { _count: { select: { items: true } } },
+  })
+  return changeSets.map((cs) => ({
+    id: cs.id,
+    status: cs.status,
+    summary: cs.summary,
+    boardId: cs.boardId,
+    itemCount: cs._count.items,
+    createdAt: cs.createdAt,
+  }))
+}
+
+async function toolGetChangeset(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const changeSetId = params.changeSetId as string
+  if (!changeSetId) throw { code: -32602, message: 'changeSetId is required' }
+
+  const changeSet = await prisma.changeSet.findFirst({
+    where: { id: changeSetId, orgId: agentCtx.orgId },
+    include: { items: true },
+  })
+  if (!changeSet) throw { code: -32602, message: 'ChangeSet not found or access denied' }
+
+  return {
+    ...changeSet,
+    items: changeSet.items.map((it) => ({
+      ...it,
+      payload: safeJsonParse(it.payload),
+      evidence: it.evidence ? safeJsonParse(it.evidence) : null,
+      resolution: it.resolution ? safeJsonParse(it.resolution) : null,
+    })),
+  }
+}
+
+function safeJsonParse(value: string): unknown {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch table
 // ---------------------------------------------------------------------------
@@ -918,6 +1104,9 @@ const TOOL_HANDLERS: Record<
   list_card_tree: toolListCardTree,
   record_signoff: toolRecordSignoff,
   list_artifacts: toolListArtifacts,
+  propose_changeset: toolProposeChangeset,
+  list_pending_changesets: toolListPendingChangesets,
+  get_changeset: toolGetChangeset,
 }
 
 // ---------------------------------------------------------------------------
@@ -966,6 +1155,15 @@ export async function handleMcpRequest(body: unknown, agentCtx: AgentContext): P
   const handler = TOOL_HANDLERS[toolName]
   if (!handler) {
     return rpcError(id, -32601, `Method not found: ${toolName}`)
+  }
+
+  // Enforce ApiKey permission scope (read-only / propose-only keys cannot mutate).
+  if (!isToolAllowed(toolName, agentCtx.permissions)) {
+    return rpcError(
+      id,
+      -32004,
+      `Permission denied: API key is not scoped to call "${toolName}"`
+    )
   }
 
   try {
