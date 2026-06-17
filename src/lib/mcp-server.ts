@@ -1138,7 +1138,7 @@ async function toolListCardMovements(
 
   const boardIds = [...new Set(page.map((r) => r.boardId))]
   const columns = boardIds.length
-    ? await prisma.column.findMany({ where: { boardId: { in: boardIds } }, select: { id: true, name: true } })
+    ? await prisma.column.findMany({ where: { boardId: { in: boardIds }, board: { orgId: agentCtx.orgId } }, select: { id: true, name: true } })
     : []
   const colName = new Map(columns.map((c) => [c.id, c.name]))
   const name = (id: string | null) => (id ? (colName.get(id) ?? id) : null)

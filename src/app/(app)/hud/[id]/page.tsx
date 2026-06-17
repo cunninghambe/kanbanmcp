@@ -18,6 +18,11 @@ const fetcher = (url: string) =>
     return r.json()
   })
 
+const swrOpts = (refreshInterval: number) => ({
+  refreshInterval,
+  shouldRetryOnError: (err: Error) => !['401', '403', '404'].includes(err.message),
+})
+
 type HudSession = { id: string; title: string; status: string; boardId: string | null; startedAt: string }
 
 function elapsed(fromISO: string | undefined): string {
@@ -32,11 +37,6 @@ function elapsed(fromISO: string | undefined): string {
 
 export default function HudSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-
-  const swrOpts = (refreshInterval: number) => ({
-    refreshInterval,
-    shouldRetryOnError: (err: Error) => !['401', '403', '404'].includes(err.message),
-  })
   const { data, mutate } = useSWR<{ session: HudSession; dispatches: Dispatch[] }>(`/api/hud/${id}`, fetcher, swrOpts(4000))
   const { data: pertinent } = useSWR(`/api/hud/${id}/pertinent`, fetcher, swrOpts(15000))
   const { data: changeData } = useSWR<{ changeSets: { id: string; status: string }[] }>(
