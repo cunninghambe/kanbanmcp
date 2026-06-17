@@ -43,3 +43,46 @@ describe('MCP move_card movement recording', () => {
     )
   })
 })
+
+describe('MCP list_card_movements', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('returns a board\'s movements newest-first (positive)', async () => {
+    mockPrisma.board = { findFirst: vi.fn().mockResolvedValue({ id: 'board-1' }) } as never
+    mockPrisma.cardMovement = {
+      findMany: vi.fn().mockResolvedValue([
+        { id: 'mv-2', cardId: 'c1', boardId: 'board-1', fromColumnId: 'col-1', toColumnId: 'col-2', movedById: 'user-1', movedByKind: 'user', movedAt: new Date('2026-06-14T00:00:00Z'), card: { title: 'C1' } },
+      ]),
+    } as never
+    mockPrisma.column = { findMany: vi.fn().mockResolvedValue([{ id: 'col-1', name: 'A' }, { id: 'col-2', name: 'B' }]) } as never
+
+    const { handleMcpRequest } = await import('../../src/lib/mcp-server')
+    const res = (await handleMcpRequest(
+      { jsonrpc: '2.0', id: 9, method: 'list_card_movements', params: { boardId: 'board-1' } },
+      agentCtx
+    )) as { result?: { movements: unknown[]; truncated: boolean }; error?: unknown }
+
+    expect(res.error).toBeUndefined()
+    expect(res.result?.movements).toHaveLength(1)
+    expect((res.result?.movements[0] as { fromColumn: string }).fromColumn).toBe('A')
+  })
+
+  it('rejects when neither boardId nor cardId is given (negative)', async () => {
+    const { handleMcpRequest } = await import('../../src/lib/mcp-server')
+    const res = (await handleMcpRequest(
+      { jsonrpc: '2.0', id: 10, method: 'list_card_movements', params: {} },
+      agentCtx
+    )) as { error?: { code: number } }
+    expect(res.error?.code).toBe(-32602)
+  })
+
+  it('rejects a foreign-org board (IDOR boundary)', async () => {
+    mockPrisma.board = { findFirst: vi.fn().mockResolvedValue(null) } as never
+    const { handleMcpRequest } = await import('../../src/lib/mcp-server')
+    const res = (await handleMcpRequest(
+      { jsonrpc: '2.0', id: 11, method: 'list_card_movements', params: { boardId: 'foreign' } },
+      agentCtx
+    )) as { error?: { code: number } }
+    expect(res.error?.code).toBe(-32602)
+  })
+})

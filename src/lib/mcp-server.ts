@@ -315,6 +315,21 @@ export const MCP_TOOLS: McpTool[] = [
       required: ['changeSetId'],
     },
   },
+  {
+    name: 'list_card_movements',
+    description:
+      'List column-change history for a board (or a single card), newest first. Only records ' +
+      'moves made after this feature was deployed — there is no historical backfill.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        boardId: { type: 'string', description: 'Board to list movements for (one of boardId | cardId required).' },
+        cardId: { type: 'string', description: 'Single card to list movements for.' },
+        sinceDays: { type: 'number', description: 'Look-back window in days (default 14, max 90).' },
+        limit: { type: 'number', description: 'Max rows (default 50, max 200).' },
+      },
+    },
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -1086,6 +1101,62 @@ async function toolGetChangeset(
   }
 }
 
+async function toolListCardMovements(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const boardId = typeof params.boardId === 'string' ? params.boardId : undefined
+  const cardId = typeof params.cardId === 'string' ? params.cardId : undefined
+  if (!boardId && !cardId) throw { code: -32602, message: 'boardId or cardId is required' }
+
+  const sinceDays = typeof params.sinceDays === 'number' ? Math.min(Math.max(params.sinceDays, 1), 90) : 14
+  const limit = typeof params.limit === 'number' ? Math.min(Math.max(params.limit, 1), 200) : 50
+  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
+
+  if (boardId) {
+    const board = await prisma.board.findFirst({ where: { id: boardId, orgId: agentCtx.orgId }, select: { id: true } })
+    if (!board) throw { code: -32602, message: 'Board not found or access denied' }
+  }
+  if (cardId) {
+    const card = await prisma.card.findFirst({ where: { id: cardId, board: { orgId: agentCtx.orgId } }, select: { id: true } })
+    if (!card) throw { code: -32602, message: 'Card not found or access denied' }
+  }
+
+  const rows = await prisma.cardMovement.findMany({
+    where: {
+      orgId: agentCtx.orgId,
+      movedAt: { gte: since },
+      ...(boardId ? { boardId } : {}),
+      ...(cardId ? { cardId } : {}),
+    },
+    orderBy: { movedAt: 'desc' },
+    take: limit + 1,
+    include: { card: { select: { title: true } } },
+  })
+  const truncated = rows.length > limit
+  const page = rows.slice(0, limit)
+
+  const boardIds = [...new Set(page.map((r) => r.boardId))]
+  const columns = boardIds.length
+    ? await prisma.column.findMany({ where: { boardId: { in: boardIds } }, select: { id: true, name: true } })
+    : []
+  const colName = new Map(columns.map((c) => [c.id, c.name]))
+  const name = (id: string | null) => (id ? (colName.get(id) ?? id) : null)
+
+  return {
+    movements: page.map((r) => ({
+      cardId: r.cardId,
+      cardTitle: r.card?.title ?? null,
+      fromColumn: name(r.fromColumnId),
+      toColumn: name(r.toColumnId),
+      movedBy: r.movedById,
+      movedByKind: r.movedByKind,
+      movedAt: r.movedAt,
+    })),
+    truncated,
+  }
+}
+
 function safeJsonParse(value: string): unknown {
   try {
     return JSON.parse(value)
@@ -1119,6 +1190,7 @@ const TOOL_HANDLERS: Record<
   propose_changeset: toolProposeChangeset,
   list_pending_changesets: toolListPendingChangesets,
   get_changeset: toolGetChangeset,
+  list_card_movements: toolListCardMovements,
 }
 
 // ---------------------------------------------------------------------------
