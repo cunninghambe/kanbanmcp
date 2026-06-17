@@ -20,6 +20,10 @@ class FakeEventSource {
   removeEventListener() {}
   close() { this.closed = true; this.readyState = FakeEventSource.CLOSED }
   emitError() { this.readyState = FakeEventSource.CLOSED; this.onerror?.({}) }
+  emitErrorConnecting() {
+    // readyState stays CONNECTING (0) — simulates real-browser auto-reconnect
+    this.onerror?.({})
+  }
 }
 
 beforeEach(() => {
@@ -41,6 +45,29 @@ describe('useHudStream', () => {
     const es = FakeEventSource.instances[0]
     expect(es).toBeTruthy()
     for (let i = 0; i < 6; i++) es.emitError()
+    expect(es.closed).toBe(true)
+  })
+
+  it('does NOT close before hitting the error cap (counter path)', async () => {
+    const { useHudStream } = await import('../../src/hooks/useHudStream')
+    renderHook(() => useHudStream({ sessionId: 'hud-1', enabled: true }))
+    const es = FakeEventSource.instances[0]
+    for (let i = 0; i < 4; i++) es.emitErrorConnecting()
+    expect(es.closed).toBe(false)
+    es.emitErrorConnecting()
+    expect(es.closed).toBe(true)
+  })
+
+  it('onopen resets the counter so errors after a successful open do not accumulate', async () => {
+    const { useHudStream } = await import('../../src/hooks/useHudStream')
+    renderHook(() => useHudStream({ sessionId: 'hud-1', enabled: true }))
+    const es = FakeEventSource.instances[0]
+    for (let i = 0; i < 3; i++) es.emitErrorConnecting()
+    expect(es.closed).toBe(false)
+    es.onopen?.({})
+    for (let i = 0; i < 4; i++) es.emitErrorConnecting()
+    expect(es.closed).toBe(false)
+    es.emitErrorConnecting()
     expect(es.closed).toBe(true)
   })
 })
