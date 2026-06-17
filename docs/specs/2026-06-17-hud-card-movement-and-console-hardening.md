@@ -137,9 +137,11 @@ export async function recordCardMovement(
 2. **`toolMoveCard` in `src/lib/mcp-server.ts`.** Already loads `existing.columnId` and logs
    `move_card` activity. Wrap the `prisma.card.update` + `recordCardMovement` in a
    `prisma.$transaction`; `movedBy = { id: agentCtx.agentName, kind: 'agent' }`.
-3. **ChangeSet apply (`src/lib/changesets.ts`, the `move_card` op path).** When an approved
-   `move_card` op executes, call `recordCardMovement` in the same transaction;
-   `movedBy = { id: 'Host Meeting HUD', kind: 'agent' }`.
+3. **ChangeSet apply (`src/lib/changesets.ts`, `applyItem` `move_card` case).** When an approved
+   `move_card` op executes, call `recordCardMovement` in the existing `applyItem` transaction;
+   `movedBy = { id: userId, kind: 'user' }` — the human approver who applied it. (ChangeSets can be
+   proposed by any agent, so attributing to a fixed agent label would be wrong; proposal provenance
+   already lives on the ChangeSet itself.)
 
 ### Snapshot injection (`src/lib/host-hud/worker.ts`)
 
@@ -219,7 +221,7 @@ self-test.)
 | E2 | `columnId` provided but equals current column | No row (recorder no-ops) |
 | E3 | Move + other fields in one PATCH | Exactly one movement row; other fields update normally |
 | E4 | Card moved by an MCP agent | Row with `movedByKind='agent'`, `movedById=agentName` |
-| E5 | Card moved via approved ChangeSet | Row with `movedById='Host Meeting HUD'`, kind `agent` |
+| E5 | Card moved via approved ChangeSet | Row with `movedById`=approving userId, kind `user` |
 | E6 | Card deleted later | Movement rows cascade-delete with the card |
 | E7 | Window start precedes the earliest recorded movement for the board | Snapshot/tool append the "not tracked before <earliest date>" note |
 | E8 | Board with zero in-window movements | `formatRecentMovements` returns `''`; snapshot omits the section |
@@ -243,8 +245,8 @@ self-test.)
   are created.
 - **AC3** Given a move via the MCP `move_card` tool, a row with `movedByKind='agent'` is recorded
   in the same transaction as the card update.
-- **AC4** Given a move via an approved ChangeSet, a row with `movedById='Host Meeting HUD'` is
-  recorded.
+- **AC4** Given a move via an approved ChangeSet, a row with `movedById`=the approving user's id
+  and `movedByKind='user'` is recorded.
 - **AC5** Given ≥1 in-window movement on the session's board, the HUD board snapshot contains a
   "Recent movements" section listing them with column names and dates; given none, the section is
   absent.
