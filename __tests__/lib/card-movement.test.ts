@@ -64,3 +64,49 @@ describe('recordCardMovement', () => {
     )
   })
 })
+
+describe('formatRecentMovements', () => {
+  function prismaWith(movements: unknown[], columns: unknown[], users: unknown[], earliest: unknown) {
+    return {
+      cardMovement: {
+        findMany: vi.fn().mockResolvedValue(movements),
+        findFirst: vi.fn().mockResolvedValue(earliest),
+      },
+      column: { findMany: vi.fn().mockResolvedValue(columns) },
+      user: { findMany: vi.fn().mockResolvedValue(users) },
+    } as unknown as never
+  }
+
+  it('renders movement lines with column and actor names (positive)', async () => {
+    const prisma = prismaWith(
+      [{ cardId: 'c1', fromColumnId: 'col-1', toColumnId: 'col-2', movedById: 'user-1', movedByKind: 'user', movedAt: new Date('2026-06-14T10:00:00Z'), card: { title: 'Spoonworks' } }],
+      [{ id: 'col-1', name: 'In Progress' }, { id: 'col-2', name: 'Review' }],
+      [{ id: 'user-1', name: 'Brad' }],
+      { movedAt: new Date('2026-06-10T00:00:00Z') }
+    )
+    const { formatRecentMovements } = await import('../../src/lib/card-movement')
+    const out = await formatRecentMovements(prisma, { boardId: 'board-1', orgId: 'org-1', sinceDays: 14 })
+    expect(out).toContain('Recent movements')
+    expect(out).toContain('"Spoonworks": In Progress → Review on 2026-06-14 by Brad')
+  })
+
+  it('returns an empty string when there are no movements (boundary)', async () => {
+    const prisma = prismaWith([], [], [], null)
+    const { formatRecentMovements } = await import('../../src/lib/card-movement')
+    const out = await formatRecentMovements(prisma, { boardId: 'board-1', orgId: 'org-1' })
+    expect(out).toBe('')
+  })
+
+  it('appends a not-tracked note when the window predates the earliest record (edge)', async () => {
+    const prisma = prismaWith(
+      [{ cardId: 'c1', fromColumnId: 'col-1', toColumnId: 'col-2', movedById: 'AgentX', movedByKind: 'agent', movedAt: new Date('2026-06-16T10:00:00Z'), card: { title: 'X' } }],
+      [{ id: 'col-1', name: 'A' }, { id: 'col-2', name: 'B' }],
+      [],
+      { movedAt: new Date('2026-06-16T09:00:00Z') }
+    )
+    const { formatRecentMovements } = await import('../../src/lib/card-movement')
+    const out = await formatRecentMovements(prisma, { boardId: 'board-1', orgId: 'org-1', sinceDays: 30 })
+    expect(out).toContain('not tracked')
+    expect(out).toContain('by AgentX')
+  })
+})
