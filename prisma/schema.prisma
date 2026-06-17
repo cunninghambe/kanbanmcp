@@ -42,6 +42,7 @@ model Organization {
   boards     Board[]
   apiKeys    ApiKey[]
   activities AgentActivity[]
+  movements  CardMovement[]
   webhooks   Webhook[]
   tickets    Ticket[]
   aiSettings OrgAiSettings?
@@ -189,8 +190,9 @@ model CardMovement {
   movedByKind  String   // "user" | "agent"
   movedAt      DateTime @default(now())
 
-  card  Card  @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  card  Card         @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  board Board        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@index([cardId, movedAt])
   @@index([boardId, movedAt])

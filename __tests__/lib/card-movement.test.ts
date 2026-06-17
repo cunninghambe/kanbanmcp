@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { recordCardMovement } from '../../src/lib/card-movement'
 
 describe('recordCardMovement', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -6,7 +7,6 @@ describe('recordCardMovement', () => {
   it('writes a row with from/to/actor when columns differ (positive)', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'mv-1' })
     const tx = { cardMovement: { create } } as unknown as never
-    const { recordCardMovement } = await import('../../src/lib/card-movement')
 
     const res = await recordCardMovement(tx, {
       cardId: 'card-1',
@@ -35,7 +35,6 @@ describe('recordCardMovement', () => {
   it('no-ops and returns null when from === to (negative/boundary)', async () => {
     const create = vi.fn()
     const tx = { cardMovement: { create } } as unknown as never
-    const { recordCardMovement } = await import('../../src/lib/card-movement')
 
     const res = await recordCardMovement(tx, {
       cardId: 'card-1', boardId: 'board-1', orgId: 'org-1',
@@ -50,7 +49,6 @@ describe('recordCardMovement', () => {
   it('accepts a null fromColumnId (edge)', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'mv-2' })
     const tx = { cardMovement: { create } } as unknown as never
-    const { recordCardMovement } = await import('../../src/lib/card-movement')
 
     const res = await recordCardMovement(tx, {
       cardId: 'card-1', boardId: 'board-1', orgId: 'org-1',
