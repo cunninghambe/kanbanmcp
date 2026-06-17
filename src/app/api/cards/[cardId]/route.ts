@@ -5,6 +5,7 @@ import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { aiReviewParamsSchema, roleMembershipCheck, decodeAiReviewParams } from '@/lib/cards'
 import { recomputeSubtreePathAndDepth } from '@/lib/tree'
 import { maybeStartExecutionDebounce } from '@/lib/card-execution/triggers'
+import { recordCardMovement } from '@/lib/card-movement'
 
 const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
 
@@ -243,6 +244,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ cardId: s
         await tx.card.update({
           where: { id: params.cardId },
           data: updateData,
+        })
+      }
+
+      // Record a movement audit row when the card changed column.
+      if (isChangingColumn) {
+        await recordCardMovement(tx, {
+          cardId: params.cardId,
+          boardId: existingCard.boardId,
+          orgId: session.orgId,
+          fromColumnId: existingCard.columnId,
+          toColumnId: columnId!,
+          movedBy: { id: session.userId, kind: 'user' },
         })
       }
     })
