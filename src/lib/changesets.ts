@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { recordCardMovement } from '@/lib/card-movement'
 
 /**
  * ChangeSet op schemas — the validated payload shapes for proposed (never
@@ -165,6 +166,14 @@ async function applyItem(
       const column = await tx.column.findFirst({ where: { id: p.columnId, boardId: existing.boardId } })
       if (!column) throw new Error('Target column not found on board')
       await tx.card.update({ where: { id: p.cardId }, data: { columnId: p.columnId, position: p.position } })
+      await recordCardMovement(tx, {
+        cardId: p.cardId,
+        boardId: existing.boardId,
+        orgId,
+        fromColumnId: existing.columnId,
+        toColumnId: p.columnId,
+        movedBy: { id: userId, kind: 'user' },
+      })
       return { resourceType: 'card', resourceId: p.cardId }
     }
     case 'update_card': {

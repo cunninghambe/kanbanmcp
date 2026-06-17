@@ -46,6 +46,10 @@ vi.mock('../src/lib/db', () => ({
   default: mockPrisma,
 }))
 
+vi.mock('../src/lib/card-movement', () => ({
+  recordCardMovement: vi.fn().mockResolvedValue({ id: 'mv-stub' }),
+}))
+
 function makeRequest(url: string, method: string, body?: unknown): NextRequest {
   return new NextRequest(url, {
     method,

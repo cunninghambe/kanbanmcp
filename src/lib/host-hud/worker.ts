@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db'
 import { logActivity } from '@/lib/agent-activity'
+import { formatRecentMovements } from '@/lib/card-movement'
 import { createPendingChangeSet, changeItemInputSchema } from '@/lib/changesets'
 import { buildDispatchPrompt, parseDispatchAnswer, isDispatchTarget } from './dispatch'
 import type { DispatchTarget } from './dispatch'
@@ -66,7 +67,9 @@ async function buildBoardContext(boardId: string, orgId: string): Promise<string
       lines.push(`  - [${c.id}] ${c.title} (priority ${c.priority}${due})`)
     }
   }
-  return lines.join('\n')
+  const movements = await formatRecentMovements(prisma, { boardId: board.id, orgId })
+  const body = lines.join('\n')
+  return movements ? `${body}\n\n${movements}` : body
 }
 
 // ─── Suggestion → pending ChangeSet ──────────────────────────────────────────

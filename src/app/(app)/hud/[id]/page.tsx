@@ -18,6 +18,11 @@ const fetcher = (url: string) =>
     return r.json()
   })
 
+const swrOpts = (refreshInterval: number) => ({
+  refreshInterval,
+  shouldRetryOnError: (err: Error) => !['401', '403', '404'].includes(err.message),
+})
+
 type HudSession = { id: string; title: string; status: string; boardId: string | null; startedAt: string }
 
 function elapsed(fromISO: string | undefined): string {
@@ -32,26 +37,26 @@ function elapsed(fromISO: string | undefined): string {
 
 export default function HudSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const { data, mutate } = useSWR<{ session: HudSession; dispatches: Dispatch[] }>(`/api/hud/${id}`, fetcher, {
-    refreshInterval: 4000,
-  })
-  const { data: pertinent } = useSWR(`/api/hud/${id}/pertinent`, fetcher, { refreshInterval: 15000 })
+  const { data, mutate } = useSWR<{ session: HudSession; dispatches: Dispatch[] }>(`/api/hud/${id}`, fetcher, swrOpts(4000))
+  const { data: pertinent } = useSWR(`/api/hud/${id}/pertinent`, fetcher, swrOpts(15000))
   const { data: changeData } = useSWR<{ changeSets: { id: string; status: string }[] }>(
     `/api/changesets?hudSessionId=${id}`,
     fetcher,
-    { refreshInterval: 5000 }
+    swrOpts(5000)
   )
 
-  useHudStream({ sessionId: id })
+  const session = data?.session
+
+  useHudStream({ sessionId: id, enabled: !!session })
 
   const [busy, setBusy] = useState(false)
+  const [dispatchError, setDispatchError] = useState<string | null>(null)
   const [, force] = useState(0)
   useEffect(() => {
     const t = setInterval(() => force((n) => n + 1), 1000)
     return () => clearInterval(t)
   }, [])
 
-  const session = data?.session
   const dispatches = data?.dispatches ?? []
   const live = session?.status === 'live'
   const inFlight = dispatches.filter((d) => d.status === 'running' || d.status === 'queued').length
@@ -59,13 +64,21 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
 
   async function dispatch(target: Target, question: string) {
     setBusy(true)
+    setDispatchError(null)
     try {
       const res = await fetch(`/api/hud/${id}/dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target, question }),
       })
-      if (res.ok) mutate()
+      if (res.ok) {
+        mutate()
+      } else {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        setDispatchError(body.error ?? `Dispatch failed (${res.status})`)
+      }
+    } catch {
+      setDispatchError('Dispatch failed — network error')
     } finally {
       setBusy(false)
     }
@@ -132,6 +145,12 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
 
         <main className={styles.main}>
           <AgentConsole live={!!live} busy={busy} onDispatch={dispatch} />
+
+          {dispatchError && (
+            <div role="alert" className="km-mono" style={{ margin: '8px 0', fontSize: 11, color: 'var(--danger, #f87171)' }}>
+              {dispatchError}
+            </div>
+          )}
 
           {dispatches.length === 0 ? (
             <div className={styles.empty}>
