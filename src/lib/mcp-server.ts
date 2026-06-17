@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 import { logActivity } from '@/lib/agent-activity'
 import { dispatchWebhook } from '@/lib/webhook'
+import { recordCardMovement } from '@/lib/card-movement'
 import {
   computeChildPathAndDepth,
   MAX_NESTING_DEPTH,
@@ -618,9 +619,20 @@ async function toolMoveCard(
   })
   if (!column) throw { code: -32602, message: 'Target column not found on board' }
 
-  const card = await prisma.card.update({
-    where: { id: cardId },
-    data: { columnId, position },
+  const card = await prisma.$transaction(async (tx) => {
+    const updated = await tx.card.update({
+      where: { id: cardId },
+      data: { columnId, position },
+    })
+    await recordCardMovement(tx, {
+      cardId,
+      boardId: existing.boardId,
+      orgId: agentCtx.orgId,
+      fromColumnId: existing.columnId,
+      toColumnId: columnId,
+      movedBy: { id: agentCtx.agentName, kind: 'agent' },
+    })
+    return updated
   })
 
   logActivity(agentCtx.orgId, agentCtx.agentName, 'move_card', 'card', card.id, {
