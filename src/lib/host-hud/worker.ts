@@ -246,6 +246,9 @@ export async function flushForTests(): Promise<void> {
 
 /** Called at app boot: re-enqueue any non-terminal dispatches interrupted by a restart. */
 export async function bootstrapWorker(): Promise<void> {
+  // Ops/demo escape hatch: skip re-enqueue (e.g. when inspecting captured state).
+  if (process.env.HUD_DISABLE_DISPATCH_BOOTSTRAP === '1') return
+
   const pending = await prisma.agentDispatch.findMany({
     where: { status: { in: ['queued', 'running'] } },
     select: { id: true },
