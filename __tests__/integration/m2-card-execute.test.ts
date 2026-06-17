@@ -24,6 +24,8 @@ vi.mock('pdf-parse', () => ({
   PDFParse: vi.fn(() => ({ getText: vi.fn().mockResolvedValue({ text: '' }), destroy: vi.fn().mockResolvedValue(undefined) })),
 }))
 
+vi.mock('../../src/lib/card-movement', () => ({ recordCardMovement: vi.fn() }))
+
 // ─── Prisma mock ──────────────────────────────────────────────────────────────
 vi.mock('../../src/lib/db', () => {
   const p = {
