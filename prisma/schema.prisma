@@ -102,6 +102,7 @@ model Board {
   sprints   Sprint[]
   cards     Card[]
   labels    Label[]
+  movements CardMovement[]
 
   @@map("boards")
 }
@@ -170,10 +171,31 @@ model Card {
   signoffs   Signoff[]
   aiReviews  AiReview[]
   executions CardExecution[]
+  movements  CardMovement[]
 
   @@index([parentCardId])
   @@index([path])
   @@map("cards")
+}
+
+model CardMovement {
+  id           String   @id @default(cuid())
+  cardId       String
+  boardId      String
+  orgId        String
+  fromColumnId String?
+  toColumnId   String
+  movedById    String
+  movedByKind  String   // "user" | "agent"
+  movedAt      DateTime @default(now())
+
+  card  Card  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, movedAt])
+  @@index([boardId, movedAt])
+  @@index([orgId, movedAt])
+  @@map("card_movements")
 }
 
 model Label {
