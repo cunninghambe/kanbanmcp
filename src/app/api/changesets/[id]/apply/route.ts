@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
 
     for (const applied of result.applied) {
-      logActivity(session.orgId, 'Host Meeting HUD', `apply_${applied.op}`, applied.resourceType, applied.resourceId, {
+      logActivity(session.orgId, 'mhud', `apply_${applied.op}`, applied.resourceType, applied.resourceId, {
         changeSetId: id,
         itemId: applied.itemId,
         approvedById: session.userId,

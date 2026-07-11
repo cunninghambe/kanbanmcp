@@ -1,4 +1,4 @@
-// ClaudeMCP client for the Host Meeting HUD. Uses the Q&A-oriented `claude_run`
+// ClaudeMCP client for mhud (the meeting HUD). Uses the Q&A-oriented `claude_run`
 // tool (prompt → answer) rather than the build-oriented `claude_build` used by
 // card-execution. The external ClaudeMCP agent holds the actual read access to
 // boards / Drive / email / Slack via its own tool configuration; this module

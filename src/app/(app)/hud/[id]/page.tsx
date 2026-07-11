@@ -113,10 +113,10 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
           {live ? <span className={styles.pulse} /> : <RadioTower size={14} style={{ color: 'var(--fg-3)' }} />}
           <div style={{ minWidth: 0 }}>
             <div className="km-mono" style={{ fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--fg-3)' }}>
-              host meeting hud
+              mhud
             </div>
             <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {session?.title ?? 'HUD'}
+              {session?.title ?? 'mhud'}
             </div>
           </div>
         </div>

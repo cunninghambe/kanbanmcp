@@ -294,7 +294,7 @@ export function DesignSidebar() {
       <div>
         <Link href="/hud" style={navStyle(isActive('/hud'))}>
           <RadioTower size={14} />
-          <span style={{ flex: 1 }}>host hud</span>
+          <span style={{ flex: 1 }}>mhud</span>
         </Link>
         <Link href="/helpdesk" style={navStyle(isActive('/helpdesk'))}>
           <LifeBuoy size={14} />

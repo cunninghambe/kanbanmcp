@@ -1,4 +1,4 @@
-// Pure helpers for the Host Meeting HUD dispatch: build the target-aware prompt
+// Pure helpers for mhud (the meeting HUD) dispatch: build the target-aware prompt
 // and parse the agent's structured answer. No I/O here so it is trivially testable.
 
 export const DISPATCH_TARGETS = ['board', 'drive', 'email', 'slack'] as const
