@@ -1,5 +1,5 @@
 /* ============================================================
-   KanbanMCP — Light-paper variant of Autogeny tokens
+   mhud — Light-paper variant of Autogeny tokens
    Cyber-brutalist softened: paper canvas, hairlines, signal red.
    Font import removed — loaded via next/font/google in layout.tsx
    Grain utility removed — Phase 1 does not use grain texture.
@@ -186,7 +186,7 @@
 }
 
 /* ============================================================
-   APP UTILITIES — reused across all KanbanMCP screens
+   APP UTILITIES — reused across all mhud screens
    ============================================================ */
 
 .km-mono   { font-family: var(--font-mono); }

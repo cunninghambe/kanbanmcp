@@ -1,10 +1,12 @@
-# KanbanMCP
+# mhud
 
-An AI-first Kanban board with first-class agent access via MCP, helpdesk ticketing, and a sub-issue tree with optional Claude-powered artifact + description review.
+**mhud** (pronounced "mud" — because meetings are clear as mud) is a live meeting copilot built on an agent-native Kanban board. During a meeting the chair dispatches read-only agents to query boards, Google Drive, email, and Slack and get cited answers without leaving the room; nothing an agent suggests touches the board until a human approves it. Underneath it's a full work-state system: Kanban with first-class agent access via MCP, helpdesk ticketing, and a sub-issue tree with optional Claude-powered artifact + description review.
 
 Built with Next.js 16 (App Router), Prisma + SQLite, iron-session, and the Anthropic SDK.
 
 ## Features
+
+- **mhud — the Host Meeting HUD:** live in-meeting surface with a situational rail (overdue/stalled) and a console to dispatch read-only agents (board · drive · email · slack) for cited answers; suggested board changes flow through a chair-approved ChangeSet — agents propose, humans approve
 
 - **Board + columns + cards** with assignees, sprints, labels, priorities, due dates
 - **Review workflow (M1):** required assignee, optional reviewer, optional approver per card; advisory signoffs (APPROVED / REJECTED / REQUESTED_CHANGES)
