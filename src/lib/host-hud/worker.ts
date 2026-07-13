@@ -207,7 +207,12 @@ async function processDispatch(dispatchId: string): Promise<void> {
       where: { id: dispatchId },
       select: { status: true },
     })
-    if (!current || current.status === 'cancelled') return
+    if (!current || current.status === 'cancelled') {
+      // The chair (or an ending session) cancelled this dispatch. Propagate to
+      // ClaudeMCP so the external job stops burning tokens, then bow out.
+      if (current?.status === 'cancelled') await cancelExternalJob(jobId)
+      return
+    }
 
     let status: Awaited<ReturnType<DispatchMcpClient['pollDispatchStatus']>>
     try {
@@ -257,6 +262,15 @@ async function finishDispatch(
       finishedAt: new Date(),
     },
   })
+}
+
+/** Best-effort cancellation of the external ClaudeMCP job; never throws. */
+async function cancelExternalJob(jobId: string): Promise<void> {
+  try {
+    await mcp().cancelDispatch(jobId)
+  } catch (err) {
+    console.warn('[host-hud] cancel propagation failed', err instanceof Error ? err.message : err)
+  }
 }
 
 async function failDispatch(dispatchId: string, err: unknown): Promise<void> {

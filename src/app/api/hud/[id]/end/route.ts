@@ -20,6 +20,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       where: { id },
       data: { status: 'ended', endedAt: new Date() },
     })
+
+    // Cancel any dispatches still in flight so their external ClaudeMCP jobs stop
+    // (each worker propagates the cancellation to ClaudeMCP on its next poll).
+    await prisma.agentDispatch.updateMany({
+      where: { hudSessionId: id, status: { in: ['queued', 'running'] } },
+      data: { status: 'cancelled', finishedAt: new Date() },
+    })
+
     return NextResponse.json({ session: updated })
   } catch (err) {
     if (err instanceof NextResponse) return err

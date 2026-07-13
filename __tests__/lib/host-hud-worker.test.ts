@@ -38,6 +38,7 @@ function mcp(output: string) {
   return {
     submitDispatch: vi.fn().mockResolvedValue({ jobId: 'job-1', state: 'queued' }),
     pollDispatchStatus: vi.fn().mockResolvedValue({ state: 'done', output }),
+    cancelDispatch: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -120,6 +121,7 @@ describe('host-hud worker', () => {
     __setMcpClientForTests({
       submitDispatch: vi.fn().mockRejectedValue(new Error('mcp down')),
       pollDispatchStatus: vi.fn(),
+      cancelDispatch: vi.fn(),
     })
 
     enqueueDispatch('disp-1')
@@ -128,5 +130,30 @@ describe('host-hud worker', () => {
     const failed = findUpdate((d) => d.status === 'failed')
     expect(failed).toBeDefined()
     expect(failed![0].data.error).toContain('mcp down')
+  }, 10000)
+
+  it('propagates a chair cancellation to ClaudeMCP and does not finish the dispatch', async () => {
+    // First read returns the running dispatch; the in-poll status read reports it
+    // was cancelled (by the cancel route or an ending session).
+    mockPrisma.agentDispatch.findUnique.mockReset()
+    mockPrisma.agentDispatch.findUnique
+      .mockResolvedValueOnce(queuedDispatch())
+      .mockResolvedValue({ status: 'cancelled' })
+
+    const client = {
+      submitDispatch: vi.fn().mockResolvedValue({ jobId: 'job-1', state: 'queued' }),
+      pollDispatchStatus: vi.fn().mockResolvedValue({ state: 'running' }),
+      cancelDispatch: vi.fn().mockResolvedValue(undefined),
+    }
+    __setMcpClientForTests(client)
+
+    enqueueDispatch('disp-1')
+    await flushForTests()
+
+    expect(client.cancelDispatch).toHaveBeenCalledTimes(1)
+    expect(client.cancelDispatch).toHaveBeenCalledWith('job-1')
+    // The external job is never polled to completion, so no done/failed write.
+    expect(findUpdate((d) => d.status === 'done')).toBeUndefined()
+    expect(findUpdate((d) => d.status === 'failed')).toBeUndefined()
   }, 10000)
 })
