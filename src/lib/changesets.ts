@@ -215,6 +215,12 @@ export async function applyChangeSet(prisma: PrismaClient, changeSetId: string, 
   })
   if (!changeSet) return { ok: false as const, reason: 'not_found' as const }
   if (changeSet.status === 'applied') return { ok: false as const, reason: 'already_applied' as const }
+  // Only pending/partially_applied sets are appliable — expired and rejected
+  // sets (both introduced by the expiry sweep and decision recompute below)
+  // are terminal states a human can no longer act on via apply.
+  if (changeSet.status !== 'pending' && changeSet.status !== 'partially_applied') {
+    return { ok: false as const, reason: 'invalid_status' as const }
+  }
 
   const approve = args.approvedItemIds ? new Set(args.approvedItemIds) : null
   const toApply = changeSet.items.filter(

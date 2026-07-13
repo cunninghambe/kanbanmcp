@@ -1,6 +1,7 @@
 /**
  * Tests for the lazy ChangeSet expiry helpers in src/lib/changesets.ts:
- * changeSetTtlDays (env-driven TTL) and expireStaleChangeSets (sweep).
+ * changeSetTtlDays (env-driven TTL), expireStaleChangeSets (sweep), and the
+ * applyChangeSet status guard that makes expired/rejected sets un-appliable.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PrismaClient } from '@prisma/client'
@@ -102,5 +103,63 @@ describe('expireStaleChangeSets', () => {
       where: { orgId: 'org-1', status: 'pending', createdAt: { lt: new Date('2026-06-29T10:00:00Z') } },
       data: { status: 'expired' },
     })
+  })
+})
+
+describe('applyChangeSet on a non-actionable status (edge case 6: expiry makes apply un-appliable)', () => {
+  it('EDGE: an expired ChangeSet is refused with reason "invalid_status" and nothing is applied', async () => {
+    const mockPrisma = {
+      changeSet: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'cs-1',
+          status: 'expired',
+          items: [{ id: 'item-1', op: 'create_card', payload: '{}', decision: 'pending' }],
+        }),
+        update: vi.fn(),
+      },
+      changeItem: { update: vi.fn(), count: vi.fn() },
+      $transaction: vi.fn(),
+    } as unknown as Parameters<typeof import('../../src/lib/changesets').applyChangeSet>[0]
+
+    const { applyChangeSet } = await import('../../src/lib/changesets')
+    const res = await applyChangeSet(mockPrisma, 'cs-1', { orgId: 'org-1', userId: 'user-1' })
+
+    expect(res).toEqual({ ok: false, reason: 'invalid_status' })
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled()
+    expect(mockPrisma.changeSet.update).not.toHaveBeenCalled()
+  })
+
+  it('NEGATIVE: a rejected ChangeSet is likewise refused (not just expired)', async () => {
+    const mockPrisma = {
+      changeSet: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'cs-1', status: 'rejected', items: [] }),
+        update: vi.fn(),
+      },
+      changeItem: { update: vi.fn(), count: vi.fn() },
+      $transaction: vi.fn(),
+    } as unknown as Parameters<typeof import('../../src/lib/changesets').applyChangeSet>[0]
+
+    const { applyChangeSet } = await import('../../src/lib/changesets')
+    const res = await applyChangeSet(mockPrisma, 'cs-1', { orgId: 'org-1', userId: 'user-1' })
+
+    expect(res).toEqual({ ok: false, reason: 'invalid_status' })
+  })
+
+  it('POSITIVE (regression guard): pending and partially_applied still proceed to apply', async () => {
+    for (const status of ['pending', 'partially_applied']) {
+      const tx = { card: { findFirst: vi.fn() } }
+      const mockPrisma = {
+        changeSet: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'cs-1', status, items: [] }),
+          update: vi.fn(),
+        },
+        changeItem: { update: vi.fn(), count: vi.fn().mockResolvedValue(0) },
+        $transaction: vi.fn().mockImplementation(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
+      } as unknown as Parameters<typeof import('../../src/lib/changesets').applyChangeSet>[0]
+
+      const { applyChangeSet } = await import('../../src/lib/changesets')
+      const res = await applyChangeSet(mockPrisma, 'cs-1', { orgId: 'org-1', userId: 'user-1' })
+      expect(res.ok).toBe(true)
+    }
   })
 })

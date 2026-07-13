@@ -56,7 +56,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       )
     )
 
-    const updated = await prisma.changeSet.findUnique({ where: { id }, include: { items: true } })
+    let updated = await prisma.changeSet.findUnique({ where: { id }, include: { items: true } })
+    // Mixed/partial decisions leave status untouched — apply already manages
+    // applied/partially_applied. Only a unanimous reject flips the set.
+    if (updated && updated.items.every((it) => it.decision === 'rejected')) {
+      updated = await prisma.changeSet.update({
+        where: { id },
+        data: { status: 'rejected' },
+        include: { items: true },
+      })
+    }
     return NextResponse.json({ changeSet: updated })
   } catch (err) {
     if (err instanceof NextResponse) return err

@@ -165,15 +165,24 @@ function renderCreateCard(
   return `Create card "${data.title}" in ${columnName} on ${boardName}`
 }
 
+/** The card a move/update/comment op targets: `targetCardId` (if retargeted) wins over the payload's `cardId`. */
+function resolveCard(
+  cardIdFromPayload: string,
+  targetCardId: string | null,
+  cardMap: Map<string, CardRow>
+): { title: string; row: CardRow | undefined } {
+  const cardId = targetCardId ?? cardIdFromPayload
+  const row = cardMap.get(cardId)
+  return { title: row ? row.title : notFound(cardId), row }
+}
+
 function renderMoveCard(
   data: MoveCardPayload['data'],
   targetCardId: string | null,
   cardMap: Map<string, CardRow>,
   columnMap: Map<string, string>
 ): string {
-  const cardId = targetCardId ?? data.cardId
-  const card = cardMap.get(cardId)
-  const cardTitle = card ? card.title : notFound(cardId)
+  const { title: cardTitle, row: card } = resolveCard(data.cardId, targetCardId, cardMap)
   const fromColumn = card ? (columnMap.get(card.columnId) ?? notFound(card.columnId)) : cardTitle
   const toColumn = columnMap.get(data.columnId) ?? notFound(data.columnId)
   return `Move "${cardTitle}" from ${fromColumn} to ${toColumn}`
@@ -191,9 +200,7 @@ function renderUpdateCard(
   targetCardId: string | null,
   cardMap: Map<string, CardRow>
 ): string {
-  const cardId = targetCardId ?? data.cardId
-  const card = cardMap.get(cardId)
-  const cardTitle = card ? card.title : notFound(cardId)
+  const { title: cardTitle } = resolveCard(data.cardId, targetCardId, cardMap)
 
   const parts: string[] = []
   for (const [key, label] of UPDATE_FIELD_LABELS) {
@@ -214,9 +221,7 @@ function renderCommentCard(
   targetCardId: string | null,
   cardMap: Map<string, CardRow>
 ): string {
-  const cardId = targetCardId ?? data.cardId
-  const card = cardMap.get(cardId)
-  const cardTitle = card ? card.title : notFound(cardId)
+  const { title: cardTitle } = resolveCard(data.cardId, targetCardId, cardMap)
   const excerpt = data.content.length > 80 ? `${data.content.slice(0, 80)}…` : data.content
   return `Comment on "${cardTitle}": "${excerpt}"`
 }
