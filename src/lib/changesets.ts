@@ -89,57 +89,75 @@ export interface ChangeItemOrgScopeResult {
   invalid: Array<{ index: number; reason: string }>
 }
 
-type ItemRefs = { cardIds: string[]; columnIds: string[]; boardIds: string[]; parseable: boolean }
+type ItemRefs = {
+  cardIds: string[]
+  columnIds: string[]
+  boardIds: string[]
+  artifactIds: string[]
+  parseable: boolean
+}
 
 /**
- * Collects the card/column/board ids one item persists — every position that
- * enters the store: op payload ids plus the item-level `targetCardId`. Returns
- * `parseable: false` (defensive) when the payload does not match its op schema;
- * callers pre-validate with `changeItemInputSchema`, so this should not occur.
+ * Collects the card/column/board/artifact ids one item persists — every
+ * position that enters the store: op payload ids, the item-level
+ * `targetCardId`, and `evidence.artifactId` (display-only metadata today, but
+ * persisted and org-scoped, so validated like the rest). Returns
+ * `parseable: false` (defensive — callers pre-validate with
+ * `changeItemInputSchema`, so this should not occur) when the payload does not
+ * match its op schema; in that case NONE of the item's ids are collected,
+ * since the item is rejected outright anyway.
  */
 function collectItemRefs(item: ChangeItemInput): ItemRefs {
-  const refs: ItemRefs = { cardIds: [], columnIds: [], boardIds: [], parseable: true }
-  if (typeof item.targetCardId === 'string' && item.targetCardId.length > 0) {
-    refs.cardIds.push(item.targetCardId)
-  }
+  const refs: ItemRefs = { cardIds: [], columnIds: [], boardIds: [], artifactIds: [], parseable: true }
   switch (item.op) {
     case 'create_card': {
       const p = opPayloadSchemas.create_card.safeParse(item.payload)
       if (!p.success) return { ...refs, parseable: false }
       refs.boardIds.push(p.data.boardId)
       refs.columnIds.push(p.data.columnId)
-      return refs
+      break
     }
     case 'move_card': {
       const p = opPayloadSchemas.move_card.safeParse(item.payload)
       if (!p.success) return { ...refs, parseable: false }
       refs.cardIds.push(p.data.cardId)
       refs.columnIds.push(p.data.columnId)
-      return refs
+      break
     }
     case 'update_card': {
       const p = opPayloadSchemas.update_card.safeParse(item.payload)
       if (!p.success) return { ...refs, parseable: false }
       refs.cardIds.push(p.data.cardId)
-      return refs
+      break
     }
     case 'comment_card': {
       const p = opPayloadSchemas.comment_card.safeParse(item.payload)
       if (!p.success) return { ...refs, parseable: false }
       refs.cardIds.push(p.data.cardId)
-      return refs
+      break
     }
   }
+  if (typeof item.targetCardId === 'string' && item.targetCardId.length > 0) {
+    refs.cardIds.push(item.targetCardId)
+  }
+  const artifactId = item.evidence?.artifactId
+  if (typeof artifactId === 'string' && artifactId.length > 0) {
+    refs.artifactIds.push(artifactId)
+  }
+  return refs
 }
 
 /**
  * Org-scopes every id a set of proposed change items references, at PROPOSE
  * time, so foreign-org (or nonexistent) ids never enter the ChangeSet store.
- * Card/Column ids are scoped via `board: { orgId }`, Board ids via `orgId` —
- * the same batched pattern as `describeChangeItems`: at most one `findMany` per
- * entity type, ids de-duped across all items (no N+1). Nonexistent and
- * foreign-org ids are indistinguishable by design (both absent from the org's
- * present-set) and handled identically. Never mutates; never throws on data.
+ * Card/Column ids are scoped via `board: { orgId }`, Artifact ids via
+ * `card: { board: { orgId } }`, Board ids via `orgId` — the same batched
+ * pattern as `describeChangeItems`: at most one `findMany` per entity type,
+ * ids de-duped across all items (no N+1). Nonexistent and foreign-org ids are
+ * indistinguishable by design (both absent from the org's present-set) and
+ * handled identically. Rejection reasons carry only the raw submitted id —
+ * never a resolved title/name (no enumeration). Never mutates; never throws
+ * on data.
  */
 export async function validateChangeItemsOrgScope(
   db: PrismaClient,
@@ -151,13 +169,15 @@ export async function validateChangeItemsOrgScope(
   const allCardIds = new Set<string>()
   const allColumnIds = new Set<string>()
   const allBoardIds = new Set<string>()
+  const allArtifactIds = new Set<string>()
   for (const r of refs) {
     for (const id of r.cardIds) allCardIds.add(id)
     for (const id of r.columnIds) allColumnIds.add(id)
     for (const id of r.boardIds) allBoardIds.add(id)
+    for (const id of r.artifactIds) allArtifactIds.add(id)
   }
 
-  const [cards, columns, boards] = await Promise.all([
+  const [cards, columns, boards, artifacts] = await Promise.all([
     allCardIds.size
       ? db.card.findMany({ where: { id: { in: [...allCardIds] }, board: { orgId } }, select: { id: true } })
       : Promise.resolve([] as { id: string }[]),
@@ -167,11 +187,18 @@ export async function validateChangeItemsOrgScope(
     allBoardIds.size
       ? db.board.findMany({ where: { id: { in: [...allBoardIds] }, orgId }, select: { id: true } })
       : Promise.resolve([] as { id: string }[]),
+    allArtifactIds.size
+      ? db.artifact.findMany({
+          where: { id: { in: [...allArtifactIds] }, card: { board: { orgId } } },
+          select: { id: true },
+        })
+      : Promise.resolve([] as { id: string }[]),
   ])
 
   const cardOk = new Set(cards.map((c) => c.id))
   const columnOk = new Set(columns.map((c) => c.id))
   const boardOk = new Set(boards.map((b) => b.id))
+  const artifactOk = new Set(artifacts.map((a) => a.id))
 
   const validItems: ChangeItemInput[] = []
   const invalid: Array<{ index: number; reason: string }> = []
@@ -183,7 +210,7 @@ export async function validateChangeItemsOrgScope(
       return
     }
     let missingId: string | undefined
-    let missingKind: 'card' | 'column' | 'board' | undefined
+    let missingKind: 'card' | 'column' | 'board' | 'artifact' | undefined
     for (const id of r.cardIds) {
       if (!cardOk.has(id)) { missingId = id; missingKind = 'card'; break }
     }
@@ -195,6 +222,11 @@ export async function validateChangeItemsOrgScope(
     if (missingId === undefined) {
       for (const id of r.boardIds) {
         if (!boardOk.has(id)) { missingId = id; missingKind = 'board'; break }
+      }
+    }
+    if (missingId === undefined) {
+      for (const id of r.artifactIds) {
+        if (!artifactOk.has(id)) { missingId = id; missingKind = 'artifact'; break }
       }
     }
     if (missingId !== undefined) {

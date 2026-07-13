@@ -100,6 +100,29 @@ describe('read-scoped MCP key', () => {
     expect(mockPrisma.changeSet.create).not.toHaveBeenCalled()
   })
 
+  it('the rejection message carries only raw ids — never a resolved title/name (no enumeration)', async () => {
+    // Even if the scoped lookups over-selected and returned names/titles, the
+    // -32602 message must not embed them: a rejected foreign id must not
+    // confirm anything about what it points at.
+    mockPrisma.board.findFirst.mockResolvedValue({ id: 'board-1', name: 'SECRET-BOARD-NAME' })
+    mockPrisma.card.findMany.mockResolvedValue([]) // foreign card absent from the org set
+    mockPrisma.column.findMany.mockResolvedValue([
+      { id: 'col-done', name: 'SECRET-COLUMN-NAME', title: 'SECRET-COLUMN-NAME' },
+    ])
+
+    const res = (await handleMcpRequest(
+      rpc('propose_changeset', {
+        boardId: 'board-1',
+        items: [{ op: 'move_card', payload: { cardId: 'foreign-card', columnId: 'col-done', position: 1 } }],
+      }),
+      readScoped
+    )) as { error?: { code: number; message: string } }
+
+    expect(res.error!.code).toBe(-32602)
+    expect(res.error!.message).toContain('foreign-card')
+    expect(res.error!.message).not.toMatch(/SECRET/)
+  })
+
   it('rejects a propose_changeset with an invalid op payload', async () => {
     const res = (await handleMcpRequest(
       rpc('propose_changeset', {

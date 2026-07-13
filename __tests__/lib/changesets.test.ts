@@ -115,7 +115,9 @@ describe('validateChangeItemsOrgScope', () => {
   type ScopeDb = Parameters<typeof import('../../src/lib/changesets').validateChangeItemsOrgScope>[0]
 
   /** A mock db whose findMany returns only the ids named as "present" (in-org). */
-  function scopeDb(present: { cards?: string[]; columns?: string[]; boards?: string[] } = {}) {
+  function scopeDb(
+    present: { cards?: string[]; columns?: string[]; boards?: string[]; artifacts?: string[] } = {}
+  ) {
     const pick = (pool: string[] | undefined) =>
       vi.fn().mockImplementation((args: { where: { id: { in: string[] } } }) => {
         const set = new Set(pool ?? [])
@@ -125,10 +127,12 @@ describe('validateChangeItemsOrgScope', () => {
       card: { findMany: pick(present.cards) },
       column: { findMany: pick(present.columns) },
       board: { findMany: pick(present.boards) },
+      artifact: { findMany: pick(present.artifacts) },
     } as unknown as ScopeDb & {
       card: { findMany: ReturnType<typeof vi.fn> }
       column: { findMany: ReturnType<typeof vi.fn> }
       board: { findMany: ReturnType<typeof vi.fn> }
+      artifact: { findMany: ReturnType<typeof vi.fn> }
     }
   }
 
@@ -213,6 +217,27 @@ describe('validateChangeItemsOrgScope', () => {
     expect(res.invalid[0].reason).toContain('card-9')
   })
 
+  it('POSITIVE: an in-org evidence.artifactId passes alongside its payload ids', async () => {
+    const db = scopeDb({ cards: ['card-1'], artifacts: ['art-1'] })
+    const items = [commentItem({ evidence: { quote: 'said in meeting', artifactId: 'art-1' } })]
+    const { validateChangeItemsOrgScope } = await import('../../src/lib/changesets')
+    const res = await validateChangeItemsOrgScope(db, 'org-1', items)
+
+    expect(res.invalid).toEqual([])
+    expect(res.validItems).toEqual(items)
+  })
+
+  it('EDGE: a foreign evidence.artifactId fires even when every payload id is in-org', async () => {
+    const db = scopeDb({ cards: ['card-1'], columns: ['col-1'] }) // art-foreign absent
+    const items = [moveItem({ evidence: { quote: 'q', artifactId: 'art-foreign' } })]
+    const { validateChangeItemsOrgScope } = await import('../../src/lib/changesets')
+    const res = await validateChangeItemsOrgScope(db, 'org-1', items)
+
+    expect(res.validItems).toEqual([])
+    expect(res.invalid[0].reason).toMatch(/artifact/)
+    expect(res.invalid[0].reason).toContain('art-foreign')
+  })
+
   it('EDGE: a nonexistent id is handled the same as foreign (indistinguishable)', async () => {
     const db = scopeDb({}) // nothing present at all
     const { validateChangeItemsOrgScope } = await import('../../src/lib/changesets')
@@ -244,18 +269,29 @@ describe('validateChangeItemsOrgScope', () => {
     // three card refs but all "card-1" → single query, single id
     expect(db.card.findMany).toHaveBeenCalledTimes(1)
     expect(db.card.findMany.mock.calls[0][0].where.id.in).toEqual(['card-1'])
-    // no board refs among these ops → board.findMany never called
+    // no board or artifact refs among these ops → those queries never run
     expect(db.board.findMany).not.toHaveBeenCalled()
+    expect(db.artifact.findMany).not.toHaveBeenCalled()
   })
 
-  it('DEGRADATION: a shape-invalid payload is flagged invalid, not thrown', async () => {
+  it('DEGRADATION: a shape-invalid payload is flagged invalid, not thrown — and none of its ids are looked up', async () => {
     const db = scopeDb({ columns: ['col-1'], boards: ['board-1'] })
-    // create_card missing required title → unparseable against its op schema
-    const items = [{ op: 'create_card' as const, payload: { boardId: 'board-1', columnId: 'col-1' } }]
+    // create_card missing required title → unparseable against its op schema.
+    // Its targetCardId/artifactId must not leak into the lookup IN-clauses.
+    const items = [
+      {
+        op: 'create_card' as const,
+        payload: { boardId: 'board-1', columnId: 'col-1' },
+        targetCardId: 'card-x',
+        evidence: { quote: 'q', artifactId: 'art-x' },
+      },
+    ]
     const { validateChangeItemsOrgScope } = await import('../../src/lib/changesets')
     const res = await validateChangeItemsOrgScope(db, 'org-1', items)
     expect(res.validItems).toEqual([])
     expect(res.invalid[0].reason).toMatch(/unreadable payload/)
+    expect(db.card.findMany).not.toHaveBeenCalled()
+    expect(db.artifact.findMany).not.toHaveBeenCalled()
   })
 
   it('DEGRADATION: an empty item list returns empty and queries nothing', async () => {
@@ -266,6 +302,7 @@ describe('validateChangeItemsOrgScope', () => {
     expect(db.card.findMany).not.toHaveBeenCalled()
     expect(db.column.findMany).not.toHaveBeenCalled()
     expect(db.board.findMany).not.toHaveBeenCalled()
+    expect(db.artifact.findMany).not.toHaveBeenCalled()
   })
 })
 

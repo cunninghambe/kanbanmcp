@@ -51,21 +51,30 @@ export async function validateChangeItemsOrgScope(
 ```
 
 **Referenced ids per op** (every one must resolve inside `orgId`; all are
-persisted, so all are checked). Card/Column scope via `board: { orgId }`, Board
-via `orgId` — the batched pattern established in `changesets-display.ts`:
+persisted, so all are checked). Card/Column scope via `board: { orgId }`,
+Artifact via `card: { board: { orgId } }`, Board via `orgId` — the batched
+pattern established in `changesets-display.ts`:
 
-| op            | Card refs                       | Column ref  | Board ref |
-|---------------|---------------------------------|-------------|-----------|
-| create_card   | `targetCardId?`                 | `columnId`  | `boardId` |
-| move_card     | `cardId`, `targetCardId?`       | `columnId`  | —         |
-| update_card   | `cardId`, `targetCardId?`       | —           | —         |
-| comment_card  | `cardId`, `targetCardId?`       | —           | —         |
+| op            | Card refs                       | Column ref  | Board ref | Artifact ref           |
+|---------------|---------------------------------|-------------|-----------|------------------------|
+| create_card   | `targetCardId?`                 | `columnId`  | `boardId` | `evidence.artifactId?` |
+| move_card     | `cardId`, `targetCardId?`       | `columnId`  | —         | `evidence.artifactId?` |
+| update_card   | `cardId`, `targetCardId?`       | —           | —         | `evidence.artifactId?` |
+| comment_card  | `cardId`, `targetCardId?`       | —           | —         | `evidence.artifactId?` |
 
-(The move payload's destination column field is `columnId`, not `toColumnId`.)
+(The move payload's destination column field is `columnId`, not `toColumnId`.
+`evidence.artifactId` is display-only metadata today — apply never reads it and
+display renders only `evidence.quote` — but it is a persisted, org-scoped id,
+so it is validated like the rest to keep the "every position that enters the
+store" invariant unconditional.)
 
-**Batching:** three `findMany`s max — one per entity type, ids de-duped across
+**Batching:** four `findMany`s max — one per entity type, ids de-duped across
 all items via `Set`. No N+1. Present-sets are built once, then each item is
 checked against them in memory.
+
+**No enumeration:** rejection messages carry only the raw submitted id, never a
+resolved title/name — a rejected foreign id must not confirm anything about
+what it points at.
 
 ## Edge cases
 
@@ -77,7 +86,10 @@ checked against them in memory.
 - **Mixed valid/invalid items** → MCP rejects the whole proposal; worker keeps
   the valid subset only.
 - **Shape-unparseable payload** (should not occur — callers pre-validate with
-  `changeItemInputSchema`; defensive only) → treated as invalid.
+  `changeItemInputSchema`; defensive only) → treated as invalid; none of its
+  ids (including `targetCardId` / `evidence.artifactId`) enter the lookups.
+- **`evidence.artifactId` foreign/nonexistent** → item invalid, same as any
+  other id position.
 - **Duplicate ids across items** → de-duped in the query; each item still judged
   independently.
 - **Empty referenced-id set** → impossible (every op references ≥1 id).
