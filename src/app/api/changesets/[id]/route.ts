@@ -23,6 +23,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       (
         await describeChangeItems(
           prisma,
+          session.orgId,
           changeSet.items.map((it) => ({ id: it.id, op: it.op, payload: it.payload, targetCardId: it.targetCardId }))
         )
       ).map((d) => [d.itemId, d.display])

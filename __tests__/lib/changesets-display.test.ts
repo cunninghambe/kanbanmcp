@@ -34,7 +34,7 @@ describe('describeChangeItems', () => {
       boards: [{ id: 'board-1', name: 'Roadmap' }],
     })
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const [result] = await describeChangeItems(db, [
+    const [result] = await describeChangeItems(db, 'org-1', [
       item('create_card', { boardId: 'board-1', columnId: 'col-1', title: 'Ship the deck' }),
     ])
     expect(result.display).toBe('Create card "Ship the deck" in To Do on Roadmap')
@@ -49,7 +49,7 @@ describe('describeChangeItems', () => {
       ],
     })
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const [result] = await describeChangeItems(db, [
+    const [result] = await describeChangeItems(db, 'org-1', [
       item('move_card', { cardId: 'card-1', columnId: 'col-done', position: 1 }),
     ])
     expect(result.display).toBe('Move "Fix login bug" from In Progress to Done')
@@ -58,7 +58,7 @@ describe('describeChangeItems', () => {
   it('POSITIVE: update_card renders comma-joined field:value pairs with dueDate labeled "due" and shortened', async () => {
     const db = mockDb({ cards: [{ id: 'card-1', title: 'Budget review', columnId: 'col-1' }] })
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const [result] = await describeChangeItems(db, [
+    const [result] = await describeChangeItems(db, 'org-1', [
       item('update_card', { cardId: 'card-1', priority: 'high', dueDate: '2026-07-20T00:00:00.000Z' }),
     ])
     expect(result.display).toBe('Update "Budget review": priority: high, due: 2026-07-20')
@@ -67,7 +67,7 @@ describe('describeChangeItems', () => {
   it('POSITIVE: comment_card renders content verbatim with no ellipsis when <= 80 chars', async () => {
     const db = mockDb({ cards: [{ id: 'card-1', title: 'Onboarding', columnId: 'col-1' }] })
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const [result] = await describeChangeItems(db, [
+    const [result] = await describeChangeItems(db, 'org-1', [
       item('comment_card', { cardId: 'card-1', content: 'Looks good to me' }),
     ])
     expect(result.display).toBe('Comment on "Onboarding": "Looks good to me"')
@@ -77,14 +77,14 @@ describe('describeChangeItems', () => {
     const db = mockDb({ cards: [{ id: 'card-1', title: 'Onboarding', columnId: 'col-1' }] })
     const longContent = 'x'.repeat(90)
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const [result] = await describeChangeItems(db, [item('comment_card', { cardId: 'card-1', content: longContent })])
+    const [result] = await describeChangeItems(db, 'org-1', [item('comment_card', { cardId: 'card-1', content: longContent })])
     expect(result.display).toBe(`Comment on "Onboarding": "${'x'.repeat(80)}…"`)
   })
 
   it('EDGE: a deleted/missing card degrades to the raw id + " (not found)"', async () => {
     const db = mockDb({ cards: [] })
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const [result] = await describeChangeItems(db, [
+    const [result] = await describeChangeItems(db, 'org-1', [
       item('update_card', { cardId: 'card-gone', priority: 'low' }),
     ])
     expect(result.display).toBe('Update "card-gone (not found)": priority: low')
@@ -93,7 +93,7 @@ describe('describeChangeItems', () => {
   it('EDGE: a missing column/board on create_card degrades each independently', async () => {
     const db = mockDb({ columns: [], boards: [] })
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const [result] = await describeChangeItems(db, [
+    const [result] = await describeChangeItems(db, 'org-1', [
       item('create_card', { boardId: 'board-gone', columnId: 'col-gone', title: 'New task' }),
     ])
     expect(result.display).toBe('Create card "New task" in col-gone (not found) on board-gone (not found)')
@@ -102,7 +102,7 @@ describe('describeChangeItems', () => {
   it('EDGE: targetCardId overrides the payload cardId for resolution', async () => {
     const db = mockDb({ cards: [{ id: 'card-retargeted', title: 'Correct card', columnId: 'col-1' }] })
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const [result] = await describeChangeItems(db, [
+    const [result] = await describeChangeItems(db, 'org-1', [
       item(
         'comment_card',
         { cardId: 'card-original-guess', content: 'hi' },
@@ -116,14 +116,14 @@ describe('describeChangeItems', () => {
     const db = mockDb({})
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
     const items = [{ id: 'item-1', op: 'move_card', payload: '{not valid json', targetCardId: null }]
-    const [result] = await describeChangeItems(db, items)
+    const [result] = await describeChangeItems(db, 'org-1', items)
     expect(result.display).toBe('move_card (unreadable payload)')
   })
 
   it('NEGATIVE (degradation): a payload that is valid JSON but fails its op schema also degrades to unreadable', async () => {
     const db = mockDb({})
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const [result] = await describeChangeItems(db, [item('create_card', { title: 'missing required fields' })])
+    const [result] = await describeChangeItems(db, 'org-1', [item('create_card', { title: 'missing required fields' })])
     expect(result.display).toBe('create_card (unreadable payload)')
   })
 
@@ -141,7 +141,7 @@ describe('describeChangeItems', () => {
       boards: [{ id: 'board-1', name: 'Board One' }],
     })
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const results = await describeChangeItems(db, [
+    const results = await describeChangeItems(db, 'org-1', [
       item('move_card', { cardId: 'card-1', columnId: 'col-c', position: 1 }, { id: 'item-1' }),
       item('update_card', { cardId: 'card-2', title: 'Renamed' }, { id: 'item-2' }),
       item('create_card', { boardId: 'board-1', columnId: 'col-b', title: 'New' }, { id: 'item-3' }),
@@ -156,10 +156,40 @@ describe('describeChangeItems', () => {
     expect(results[3].display).toBe('Comment on "Card One": "note"')
   })
 
+  it('SECURITY: reads are org-scoped — a foreign-org id (absent from the org-filtered findMany result) degrades to "(not found)"', async () => {
+    // The mock simulates the org filter doing its job: a foreign-org card/column/board id
+    // is simply never returned, exactly as a real `where: { ..., orgId }` query would behave.
+    const db = mockDb({ cards: [], columns: [], boards: [] })
+    const { describeChangeItems } = await import('../../src/lib/changesets-display')
+    const [moveResult, createResult] = await describeChangeItems(db, 'org-1', [
+      item('move_card', { cardId: 'card-foreign-org', columnId: 'col-foreign-org', position: 1 }, { id: 'item-1' }),
+      item(
+        'create_card',
+        { boardId: 'board-foreign-org', columnId: 'col-foreign-org', title: 'Leak attempt' },
+        { id: 'item-2' }
+      ),
+    ])
+
+    expect(moveResult.display).toBe('Move "card-foreign-org (not found)" from card-foreign-org (not found) to col-foreign-org (not found)')
+    expect(createResult.display).toBe(
+      'Create card "Leak attempt" in col-foreign-org (not found) on board-foreign-org (not found)'
+    )
+
+    expect(db.card.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ board: { orgId: 'org-1' } }) })
+    )
+    expect(db.column.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ board: { orgId: 'org-1' } }) })
+    )
+    expect(db.board.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ orgId: 'org-1' }) })
+    )
+  })
+
   it('DEGRADATION: an empty items array resolves with no lookups and returns an empty list', async () => {
     const db = mockDb({})
     const { describeChangeItems } = await import('../../src/lib/changesets-display')
-    const results = await describeChangeItems(db, [])
+    const results = await describeChangeItems(db, 'org-1', [])
     expect(results).toEqual([])
     expect(db.card.findMany).not.toHaveBeenCalled()
     expect(db.column.findMany).not.toHaveBeenCalled()

@@ -6,8 +6,11 @@ import { opPayloadSchemas, type ChangeOp } from './changesets'
  * Human-readable rendering of ChangeSet items — resolves the card/column/board
  * ids referenced in op payloads to names. Pure over pre-fetched rows aside
  * from its own batched reads: one `findMany` per referenced entity type,
- * regardless of item count. Never throws — malformed payloads and missing
- * referents degrade to readable placeholder strings.
+ * regardless of item count. Every read is scoped to `orgId` — payload ids are
+ * not validated against the org at propose time, so an unscoped lookup here
+ * would let a foreign-org id resolve to a real name. Never throws — malformed
+ * payloads and missing/foreign-org referents both degrade to readable
+ * placeholder strings.
  */
 
 export interface ChangeItemDisplay {
@@ -102,6 +105,7 @@ function collectReferencedIds(items: ParsedItem[]) {
 
 export async function describeChangeItems(
   db: PrismaClient,
+  orgId: string,
   items: DisplayItemInput[]
 ): Promise<ChangeItemDisplay[]> {
   const parsed: ParsedItem[] = items.map((item) => ({
@@ -114,18 +118,24 @@ export async function describeChangeItems(
   const { cardIds, columnIds, boardIds } = collectReferencedIds(parsed)
 
   const cards = cardIds.size
-    ? await db.card.findMany({ where: { id: { in: [...cardIds] } }, select: { id: true, title: true, columnId: true } })
+    ? await db.card.findMany({
+        where: { id: { in: [...cardIds] }, board: { orgId } },
+        select: { id: true, title: true, columnId: true },
+      })
     : []
   const cardMap = new Map<string, CardRow>(cards.map((c) => [c.id, { title: c.title, columnId: c.columnId }]))
   for (const card of cards) columnIds.add(card.columnId)
 
   const columns = columnIds.size
-    ? await db.column.findMany({ where: { id: { in: [...columnIds] } }, select: { id: true, name: true } })
+    ? await db.column.findMany({
+        where: { id: { in: [...columnIds] }, board: { orgId } },
+        select: { id: true, name: true },
+      })
     : []
   const columnMap = new Map(columns.map((c) => [c.id, c.name]))
 
   const boards = boardIds.size
-    ? await db.board.findMany({ where: { id: { in: [...boardIds] } }, select: { id: true, name: true } })
+    ? await db.board.findMany({ where: { id: { in: [...boardIds] }, orgId }, select: { id: true, name: true } })
     : []
   const boardMap = new Map(boards.map((b) => [b.id, b.name]))
 

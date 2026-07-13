@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       include: { _count: { select: { items: true } } },
     })
 
-    const hudSessionTitleById = await hudSessionTitles(changeSets.map((cs) => cs.hudSessionId))
+    const hudSessionTitleById = await hudSessionTitles(session.orgId, changeSets.map((cs) => cs.hudSessionId))
 
     return NextResponse.json({
       changeSets: changeSets.map((cs) => ({
@@ -49,10 +49,16 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** ChangeSet.hudSessionId is a plain string column (no Prisma relation) — batch-fetch titles. */
-async function hudSessionTitles(hudSessionIds: Array<string | null>): Promise<Map<string, string | null>> {
+/** ChangeSet.hudSessionId is a plain string column (no Prisma relation) — batch-fetch titles, org-scoped. */
+async function hudSessionTitles(
+  orgId: string,
+  hudSessionIds: Array<string | null>
+): Promise<Map<string, string | null>> {
   const ids = [...new Set(hudSessionIds.filter((id): id is string => id !== null))]
   if (ids.length === 0) return new Map()
-  const sessions = await prisma.hudSession.findMany({ where: { id: { in: ids } }, select: { id: true, title: true } })
+  const sessions = await prisma.hudSession.findMany({
+    where: { id: { in: ids }, orgId },
+    select: { id: true, title: true },
+  })
   return new Map(sessions.map((s) => [s.id, s.title]))
 }

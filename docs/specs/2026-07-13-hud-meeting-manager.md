@@ -225,10 +225,14 @@ status untouched; apply already manages `applied`/`partially_applied`.)
 ```ts
 export interface ChangeItemDisplay { itemId: string; display: string }
 /** Resolves card/column/board ids in op payloads to names; one batched read
- *  per changeset, no N+1. Missing referents degrade to the raw id, e.g.
+ *  per changeset, no N+1. All reads are scoped to orgId — payload ids are
+ *  never org-validated at propose time, so an unscoped lookup would let a
+ *  foreign-org id resolve to a real name. Missing/foreign-org referents
+ *  degrade to the raw id, e.g.
  *  'Move card cm…x1 (not found) from "In Progress" to "Done"'. */
 export async function describeChangeItems(
   db: PrismaClient,
+  orgId: string,
   items: Array<{ id: string; op: string; payload: string; targetCardId: string | null }>
 ): Promise<ChangeItemDisplay[]>
 ```
