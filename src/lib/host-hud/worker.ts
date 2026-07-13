@@ -4,7 +4,7 @@ import { formatRecentMovements } from '@/lib/card-movement'
 import { createPendingChangeSet, changeItemInputSchema } from '@/lib/changesets'
 import { buildDispatchPrompt, parseDispatchAnswer, isDispatchTarget } from './dispatch'
 import type { DispatchTarget } from './dispatch'
-import { MAX_CARDS_PER_COLUMN, maxBoardContextChars } from './config'
+import { IN_FLIGHT_DISPATCH_STATUSES, MAX_CARDS_PER_COLUMN, maxBoardContextChars } from './config'
 import * as defaultMcp from './mcp-client'
 import type { DispatchMcpClient } from './mcp-client'
 
@@ -168,10 +168,16 @@ async function processDispatch(dispatchId: string): Promise<void> {
   }
   const target: DispatchTarget = dispatch.target
 
-  await prisma.agentDispatch.update({
-    where: { id: dispatchId },
+  // Conditional claim: only transition to running while still in flight. A
+  // cancel that lands between the initial read and this write flips the status
+  // to `cancelled`, the claim matches nothing, and we bail without overwriting
+  // it. (In-flight — not just `queued` — so bootstrapWorker's re-enqueue of
+  // `running` dispatches interrupted by a restart can still reclaim them.)
+  const claimed = await prisma.agentDispatch.updateMany({
+    where: { id: dispatchId, status: { in: IN_FLIGHT_DISPATCH_STATUSES } },
     data: { status: 'running', startedAt: new Date() },
   })
+  if (claimed.count === 0) return
   logActivity(dispatch.orgId, 'Host Meeting HUD', 'dispatch_agent', 'agent_dispatch', dispatch.id, {
     target,
   }).catch(() => {})
@@ -305,7 +311,7 @@ export async function bootstrapWorker(): Promise<void> {
   if (process.env.HUD_DISABLE_DISPATCH_BOOTSTRAP === '1') return
 
   const pending = await prisma.agentDispatch.findMany({
-    where: { status: { in: ['queued', 'running'] } },
+    where: { status: { in: IN_FLIGHT_DISPATCH_STATUSES } },
     select: { id: true },
   })
   for (const d of pending) enqueueDispatch(d.id)

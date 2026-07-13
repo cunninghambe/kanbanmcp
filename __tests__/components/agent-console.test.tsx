@@ -31,26 +31,45 @@ describe('AgentConsole target gating', () => {
   it('enables all target chips when all are configured', () => {
     renderConsole()
     for (const label of ['board', 'drive', 'email', 'slack']) {
-      expect(screen.getByRole('button', { name: new RegExp(`^${label}$`, 'i') })).toBeEnabled()
+      const chip = screen.getByRole('button', { name: new RegExp(`^${label}$`, 'i') })
+      expect(chip).toBeEnabled()
+      expect(chip).toHaveAttribute('aria-disabled', 'false')
     }
   })
 
-  it('disables chips for targets absent from the enabled set', () => {
+  it('marks unavailable chips aria-disabled with a screen-reader reason, still focusable', () => {
     enabledTargets = ['board', 'drive']
     renderConsole()
-    expect(screen.getByRole('button', { name: /^board$/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /^drive$/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /^email$/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^slack$/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^board$/i })).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByRole('button', { name: /^drive$/i })).toHaveAttribute('aria-disabled', 'false')
+    for (const label of ['email', 'slack']) {
+      const chip = screen.getByRole('button', { name: new RegExp(label, 'i') })
+      expect(chip).toHaveAttribute('aria-disabled', 'true')
+      // Not natively disabled — stays focusable so screen readers reach the reason.
+      expect(chip).toBeEnabled()
+      // The reason is exposed to assistive tech via a visually-hidden span.
+      expect(chip).toHaveTextContent(/not configured for this deployment/i)
+    }
+  })
+
+  it('ignores clicks on an aria-disabled chip', async () => {
+    enabledTargets = ['board', 'drive']
+    renderConsole()
+    const userEvent = (await import('@testing-library/user-event')).default
+    const user = userEvent.setup()
+    const slack = screen.getByRole('button', { name: /slack/i })
+    await user.click(slack)
+    expect(slack).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: /^board$/i })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('falls back off a disabled default target to the first enabled one', async () => {
     enabledTargets = ['drive', 'email']
     renderConsole()
-    // Default is board, which is disabled here → effect switches to drive.
+    // Default is board, which is disabled here → derived target switches to drive.
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^drive$/i })).toHaveAttribute('aria-pressed', 'true')
     )
-    expect(screen.getByRole('button', { name: /^board$/i })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: /board/i })).toHaveAttribute('aria-pressed', 'false')
   })
 })

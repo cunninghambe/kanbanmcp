@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import useSWR from 'swr'
 import { LayoutGrid, HardDrive, Mail, Hash, Send } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -19,6 +20,19 @@ const ALL_TARGETS: Target[] = TARGETS.map((t) => t.key)
 
 const configFetcher = (url: string): Promise<{ enabledTargets: Target[] }> =>
   fetch(url).then((r) => (r.ok ? r.json() : { enabledTargets: ALL_TARGETS }))
+
+// Visually hidden but announced by screen readers (no sr-only utility in this app).
+const SR_ONLY: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
+}
 
 const SUGGESTIONS: Record<Target, string[]> = {
   board: ['What is overdue and stalled here?', 'Which cards moved since last week?', 'Summarise open work by assignee.'],
@@ -79,12 +93,19 @@ export function AgentConsole({
               type="button"
               className={styles.seg}
               aria-pressed={target === t.key}
-              disabled={!live || !available}
+              // Session-ended keeps the native disabled (whole console shuts off);
+              // capability gating uses aria-disabled so the chip stays focusable
+              // and screen readers can reach the hidden reason below.
+              disabled={!live}
+              aria-disabled={!live || !available}
               title={available ? undefined : `${t.label} is not enabled for this deployment`}
-              onClick={() => setSelectedTarget(t.key)}
+              onClick={() => {
+                if (available) setSelectedTarget(t.key)
+              }}
             >
               <Icon size={12} />
               {t.label}
+              {!available && <span style={SR_ONLY}>(not configured for this deployment)</span>}
             </button>
           )
         })}

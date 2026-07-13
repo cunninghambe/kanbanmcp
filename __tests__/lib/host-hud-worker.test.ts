@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
-    agentDispatch: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    agentDispatch: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     hudSession: { findUnique: vi.fn() },
     board: { findFirst: vi.fn() },
     changeSet: { create: vi.fn() },
@@ -50,6 +50,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockPrisma.agentDispatch.findUnique.mockResolvedValue(queuedDispatch())
   mockPrisma.agentDispatch.update.mockResolvedValue({})
+  // Default: the queued→running claim succeeds.
+  mockPrisma.agentDispatch.updateMany.mockResolvedValue({ count: 1 })
 })
 
 afterEach(() => {
@@ -155,5 +157,30 @@ describe('host-hud worker', () => {
     // The external job is never polled to completion, so no done/failed write.
     expect(findUpdate((d) => d.status === 'done')).toBeUndefined()
     expect(findUpdate((d) => d.status === 'failed')).toBeUndefined()
+  }, 10000)
+
+  it('bails out without submitting when a cancel lands before the running claim', async () => {
+    // The initial read sees `queued`, but by the time the worker tries the
+    // conditional queued→running claim the cancel route has already flipped the
+    // row to `cancelled` — the claim matches nothing and the worker must not
+    // overwrite the cancellation or submit an external job.
+    mockPrisma.agentDispatch.updateMany.mockResolvedValue({ count: 0 })
+
+    const client = mcp('should never be used')
+    __setMcpClientForTests(client)
+
+    enqueueDispatch('disp-1')
+    await flushForTests()
+
+    // The claim was attempted with the in-flight status guard…
+    expect(mockPrisma.agentDispatch.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'disp-1', status: { in: ['queued', 'running'] } }),
+        data: expect.objectContaining({ status: 'running' }),
+      })
+    )
+    // …and on count 0 the worker bailed: no external job, no status overwrite.
+    expect(client.submitDispatch).not.toHaveBeenCalled()
+    expect(mockPrisma.agentDispatch.update).not.toHaveBeenCalled()
   }, 10000)
 })

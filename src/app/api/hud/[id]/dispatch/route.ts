@@ -5,6 +5,7 @@ import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { enqueueDispatch } from '@/lib/host-hud/worker'
 import { DISPATCH_TARGETS } from '@/lib/host-hud/dispatch'
 import {
+  IN_FLIGHT_DISPATCH_STATUSES,
   MAX_QUESTION_LENGTH,
   isTargetEnabled,
   maxInflightPerSession,
@@ -18,8 +19,6 @@ const dispatchSchema = z.object({
     .min(1, 'question is required')
     .max(MAX_QUESTION_LENGTH, `question must be at most ${MAX_QUESTION_LENGTH} characters`),
 })
-
-const IN_FLIGHT = ['queued', 'running']
 
 // GET /api/hud/[id]/dispatch — list this session's dispatches.
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -81,8 +80,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // Best-effort (non-transactional) count — a small transient overshoot under
     // concurrent POSTs is acceptable for a single-chair HUD.
     const [sessionInFlight, orgInFlight] = await Promise.all([
-      prisma.agentDispatch.count({ where: { hudSessionId: id, status: { in: IN_FLIGHT } } }),
-      prisma.agentDispatch.count({ where: { orgId: session.orgId, status: { in: IN_FLIGHT } } }),
+      prisma.agentDispatch.count({ where: { hudSessionId: id, status: { in: IN_FLIGHT_DISPATCH_STATUSES } } }),
+      prisma.agentDispatch.count({ where: { orgId: session.orgId, status: { in: IN_FLIGHT_DISPATCH_STATUSES } } }),
     ])
     if (sessionInFlight >= maxInflightPerSession()) {
       return apiError(429, `This session already has ${sessionInFlight} agents in flight (max ${maxInflightPerSession()})`)

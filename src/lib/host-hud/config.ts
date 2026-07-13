@@ -9,6 +9,13 @@ import type { DispatchTarget } from './dispatch'
 /** Max length of a chair's question, in characters. Bounds prompt size / abuse. */
 export const MAX_QUESTION_LENGTH = 2000
 
+/**
+ * Dispatch statuses that count as in flight (occupying a ClaudeMCP job slot).
+ * Shared by the dispatch route (concurrency caps), the end route (cancel on
+ * session end), and the worker (bootstrap re-enqueue, run claim).
+ */
+export const IN_FLIGHT_DISPATCH_STATUSES: string[] = ['queued', 'running']
+
 /** Max cards serialized per column in the board-context snapshot. */
 export const MAX_CARDS_PER_COLUMN = 40
 

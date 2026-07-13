@@ -131,7 +131,9 @@
 .seg[aria-pressed='true'] {
   background: var(--accent); color: #fff;
 }
-.seg[disabled] { opacity: 0.4; cursor: not-allowed; }
+.seg[disabled],
+.seg[aria-disabled='true'] { opacity: 0.4; cursor: not-allowed; }
+.seg[aria-disabled='true']:hover { background: transparent; color: var(--fg-2); }
 
 .prompt {
   width: 100%;

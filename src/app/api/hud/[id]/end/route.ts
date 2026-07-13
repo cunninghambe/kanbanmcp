@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
+import { IN_FLIGHT_DISPATCH_STATUSES } from '@/lib/host-hud/config'
 
 // POST /api/hud/[id]/end — end a live HUD session. Human session only.
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     // Cancel any dispatches still in flight so their external ClaudeMCP jobs stop
     // (each worker propagates the cancellation to ClaudeMCP on its next poll).
     await prisma.agentDispatch.updateMany({
-      where: { hudSessionId: id, status: { in: ['queued', 'running'] } },
+      where: { hudSessionId: id, status: { in: IN_FLIGHT_DISPATCH_STATUSES } },
       data: { status: 'cancelled', finishedAt: new Date() },
     })
 
