@@ -256,3 +256,34 @@ export async function applyChangeSet(prisma: PrismaClient, changeSetId: string, 
 
   return { ok: true as const, status, applied, failures }
 }
+
+// ─── Lazy expiry ──────────────────────────────────────────────────────────────
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * TTL for `pending` ChangeSets, from the `CHANGESET_TTL_DAYS` env var.
+ * Unset/empty/non-numeric falls back to the default; a numeric value below
+ * the 1-day minimum is clamped up to it.
+ */
+export function changeSetTtlDays(): number {
+  const raw = process.env.CHANGESET_TTL_DAYS
+  if (!raw) return 14
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return 14
+  return Math.max(1, parsed)
+}
+
+/**
+ * Marks the org's stale `pending` ChangeSets `expired`. Only `pending` sets
+ * are eligible — `partially_applied` never expires, since a human has already
+ * started deciding on it. Returns the number of sets updated.
+ */
+export async function expireStaleChangeSets(db: PrismaClient, orgId: string, now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - changeSetTtlDays() * DAY_MS)
+  const result = await db.changeSet.updateMany({
+    where: { orgId, status: 'pending', createdAt: { lt: cutoff } },
+    data: { status: 'expired' },
+  })
+  return result.count
+}
