@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db'
 import { logActivity } from '@/lib/agent-activity'
 import { formatRecentMovements } from '@/lib/card-movement'
-import { createPendingChangeSet, changeItemInputSchema } from '@/lib/changesets'
+import { createPendingChangeSet, changeItemInputSchema, validateChangeItemsOrgScope } from '@/lib/changesets'
 import { buildDispatchPrompt, parseDispatchAnswer, isDispatchTarget } from './dispatch'
 import type { DispatchTarget } from './dispatch'
 import { IN_FLIGHT_DISPATCH_STATUSES, MAX_CARDS_PER_COLUMN, maxBoardContextChars } from './config'
@@ -118,11 +118,17 @@ async function maybeCreateChangeSet(
 ): Promise<string | null> {
   // Validate each suggested item against the op schema; drop anything invalid
   // rather than failing the whole answer.
-  const validItems = suggestion.items
+  const shapeValid = suggestion.items
     .map((it) => changeItemInputSchema.safeParse(it))
     .filter((r) => r.success)
     .map((r) => (r as { success: true; data: ReturnType<typeof changeItemInputSchema.parse> }).data)
 
+  if (shapeValid.length === 0) return null
+
+  // Org-scope every id referenced inside the payloads (cardId, columnId,
+  // boardId, targetCardId), dropping items that reference a foreign/nonexistent
+  // id — same "drop invalid, don't fail the answer" stance as the shape filter.
+  const { validItems } = await validateChangeItemsOrgScope(prisma, dispatch.orgId, shapeValid)
   if (validItems.length === 0) return null
 
   // Confirm the suggested board, if any, belongs to the org (prevent cross-org IDOR).
