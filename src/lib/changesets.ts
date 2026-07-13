@@ -215,6 +215,12 @@ export async function applyChangeSet(prisma: PrismaClient, changeSetId: string, 
   })
   if (!changeSet) return { ok: false as const, reason: 'not_found' as const }
   if (changeSet.status === 'applied') return { ok: false as const, reason: 'already_applied' as const }
+  // Only pending/partially_applied sets are appliable — expired and rejected
+  // sets (both introduced by the expiry sweep and decision recompute below)
+  // are terminal states a human can no longer act on via apply.
+  if (changeSet.status !== 'pending' && changeSet.status !== 'partially_applied') {
+    return { ok: false as const, reason: 'invalid_status' as const }
+  }
 
   const approve = args.approvedItemIds ? new Set(args.approvedItemIds) : null
   const toApply = changeSet.items.filter(
@@ -255,4 +261,35 @@ export async function applyChangeSet(prisma: PrismaClient, changeSetId: string, 
   })
 
   return { ok: true as const, status, applied, failures }
+}
+
+// ─── Lazy expiry ──────────────────────────────────────────────────────────────
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * TTL for `pending` ChangeSets, from the `CHANGESET_TTL_DAYS` env var.
+ * Unset/empty/non-numeric falls back to the default; a numeric value below
+ * the 1-day minimum is clamped up to it.
+ */
+export function changeSetTtlDays(): number {
+  const raw = process.env.CHANGESET_TTL_DAYS
+  if (!raw) return 14
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return 14
+  return Math.max(1, parsed)
+}
+
+/**
+ * Marks the org's stale `pending` ChangeSets `expired`. Only `pending` sets
+ * are eligible — `partially_applied` never expires, since a human has already
+ * started deciding on it. Returns the number of sets updated.
+ */
+export async function expireStaleChangeSets(db: PrismaClient, orgId: string, now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - changeSetTtlDays() * DAY_MS)
+  const result = await db.changeSet.updateMany({
+    where: { orgId, status: 'pending', createdAt: { lt: cutoff } },
+    data: { status: 'expired' },
+  })
+  return result.count
 }

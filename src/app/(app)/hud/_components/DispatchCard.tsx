@@ -28,7 +28,7 @@ const TARGET_ICON: Record<Dispatch['target'], LucideIcon> = {
   slack: Hash,
 }
 
-const STATUS_TONE: Record<string, 'ok' | 'warn' | 'err' | undefined> = {
+export const STATUS_TONE: Record<string, 'ok' | 'warn' | 'err' | undefined> = {
   done: 'ok',
   running: 'warn',
   queued: 'warn',
@@ -140,7 +140,7 @@ export function DispatchCard({
             <span style={{ flex: 1, fontSize: 12, color: 'var(--fg-2)' }}>
               not applied — awaiting your approval
             </span>
-            <Link href={`/hud/${hudId}/changes/${d.proposedChangeSetId}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Link href={`/changes/${d.proposedChangeSetId}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               review <ArrowRight size={12} />
             </Link>
           </div>
