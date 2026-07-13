@@ -86,6 +86,9 @@ test.describe('03 – subcard tree', () => {
     await expect(page.getByRole('dialog', { name: /Promote to top-level/i })).toBeVisible()
     await page.getByRole('button', { name: 'Promote' }).click()
 
-    await expect(subcardsSection.getByText('Sub-card Level 1')).not.toBeVisible({ timeout: 10_000 })
+    // Wider budget than the config default: this is the first call to the
+    // promote API route in the run, and Next dev (Turbopack) compiling it
+    // on-demand can outlast a routine assertion wait. See playwright.config.ts.
+    await expect(subcardsSection.getByText('Sub-card Level 1')).not.toBeVisible({ timeout: 30_000 })
   })
 })
