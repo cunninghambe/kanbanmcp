@@ -30,8 +30,10 @@ const mockPrisma = {
     findFirst: vi.fn(),
     findMany: vi.fn(),
     findUnique: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     delete: vi.fn(),
     aggregate: vi.fn(),
   },
@@ -477,8 +479,8 @@ describe('POST /api/hud/entries/[entryId]/card', () => {
       async (fn: (tx: typeof mockPrisma) => Promise<unknown>) =>
         fn({
           hudEntry: {
-            findUnique: mockPrisma.hudEntry.findUnique,
-            update: mockPrisma.hudEntry.update,
+            updateMany: mockPrisma.hudEntry.updateMany,
+            findUniqueOrThrow: mockPrisma.hudEntry.findUniqueOrThrow,
           },
           card: {
             aggregate: mockPrisma.card.aggregate,
@@ -493,7 +495,6 @@ describe('POST /api/hud/entries/[entryId]/card', () => {
     Object.assign(mockSession, { isApiKeyAuth: undefined, agentName: undefined })
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
     mockPrisma.hudEntry.findFirst.mockResolvedValue({ ...baseEntry })
-    mockPrisma.hudEntry.findUnique.mockResolvedValue({ cardId: null })
     mockPrisma.board.findFirst.mockResolvedValue({ id: 'board-1' })
     mockPrisma.column.findFirst.mockResolvedValue({ id: 'col-left', boardId: 'board-1', position: 0 })
     mockPrisma.card.aggregate.mockResolvedValue({ _max: { position: null } })
@@ -501,9 +502,11 @@ describe('POST /api/hud/entries/[entryId]/card', () => {
       id: 'card-new',
       ...data,
     }))
-    mockPrisma.hudEntry.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+    // The conditional claim: count 1 = won the race (default happy path).
+    mockPrisma.hudEntry.updateMany.mockResolvedValue({ count: 1 })
+    mockPrisma.hudEntry.findUniqueOrThrow.mockImplementation(async () => ({
       ...baseEntry,
-      ...data,
+      cardId: 'card-new',
     }))
     setupTransactionMock()
   })
@@ -589,17 +592,24 @@ describe('POST /api/hud/entries/[entryId]/card', () => {
     expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1)
   })
 
-  it('EDGE: idempotence — a concurrent convert caught inside the transaction returns 409', async () => {
-    mockPrisma.hudEntry.findUnique.mockResolvedValue({ cardId: 'race-card' })
+  it('IMPORTANT FIX: idempotence — losing the conditional cardId claim rolls back the transaction and returns 409 with nothing visible to the client', async () => {
+    // The claim (updateMany scoped to cardId: null) matches zero rows: a
+    // concurrent convert already won and committed first.
+    mockPrisma.hudEntry.updateMany.mockResolvedValue({ count: 0 })
     const { POST } = await import('../../src/app/api/hud/entries/[entryId]/card/route')
     const req = makeRequest('http://localhost/api/hud/entries/entry-1/card', 'POST')
     const res = await POST(req, { params: Promise.resolve({ entryId: 'entry-1' }) })
     expect(res.status).toBe(409)
-    expect(mockPrisma.card.create).not.toHaveBeenCalled()
+    const body = await res.json()
+    expect(body).toEqual({ error: 'Card already created for this entry' })
+    expect(body.card).toBeUndefined()
+    expect(body.entry).toBeUndefined()
+    // findUniqueOrThrow only runs after a won claim — never reached here.
+    expect(mockPrisma.hudEntry.findUniqueOrThrow).not.toHaveBeenCalled()
   })
 
-  it('IMPORTANT FIX: a unique-constraint violation (P2002) on cardId inside the transaction is caught and mapped to the same 409, exposing nothing to the client', async () => {
-    mockPrisma.hudEntry.update.mockRejectedValue(
+  it('IMPORTANT FIX: a unique-constraint violation (P2002) on the claim is caught as a belt-and-suspenders case, mapped to the same 409', async () => {
+    mockPrisma.hudEntry.updateMany.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`cardId`)', {
         code: 'P2002',
         clientVersion: '5.22.0',

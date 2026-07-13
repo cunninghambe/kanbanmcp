@@ -79,14 +79,25 @@ async function resolveTargetColumn(boardId: string, columnId: string | undefined
 
 type ConvertibleEntry = Pick<HudEntry, 'id' | 'text' | 'assigneeId' | 'dueDate'>
 
+/** Thrown to abort the transaction when the conditional cardId claim below loses the race. */
+class ConvertConflictError extends Error {
+  constructor() {
+    super('cardId already claimed by a concurrent convert')
+  }
+}
+
 /**
- * Creates the card and links it to the entry in one transaction. Re-checks
- * cardId inside the transaction (fast path) so a concurrent convert of the
- * same entry can't create two cards. `HudEntry.cardId` is also `@unique` at
- * the schema level as the DB-enforced backstop for that same race — if the
- * fast-path check is ever raced past, the transaction's write fails with
- * P2002 instead of silently succeeding, and that is treated the same as the
- * fast-path conflict. Returns null whichever guard catches the race.
+ * Creates the card and links it to the entry in one transaction. The link
+ * is a conditional claim — `updateMany` scoped to `cardId: null` — not a
+ * plain overwrite: under SQLite's single-writer serialization, a
+ * concurrent convert's claim can only run before or after this one
+ * commits, never interleaved, so at most one claim per entry can ever
+ * match. A lost claim throws `ConvertConflictError`, which rolls back the
+ * whole transaction (including the card just created above) and is
+ * reported as the same 409 as the route's fast-path pre-check. `cardId` is
+ * also `@unique` at the schema level as an extra belt — if that ever
+ * surfaces as P2002 it is handled the same way — but the conditional claim
+ * is what actually closes the race.
  */
 async function convertEntryToCard(
   entry: ConvertibleEntry,
@@ -99,9 +110,6 @@ async function convertEntryToCard(
 
   try {
     return await prisma.$transaction(async (tx) => {
-      const fresh = await tx.hudEntry.findUnique({ where: { id: entry.id }, select: { cardId: true } })
-      if (fresh?.cardId) return null
-
       const agg = await tx.card.aggregate({ where: { columnId }, _max: { position: true } })
       const card = await tx.card.create({
         data: {
@@ -115,10 +123,18 @@ async function convertEntryToCard(
           position: (agg._max.position ?? 0) + 1,
         },
       })
-      const updatedEntry = await tx.hudEntry.update({ where: { id: entry.id }, data: { cardId: card.id } })
+
+      const claim = await tx.hudEntry.updateMany({
+        where: { id: entry.id, cardId: null },
+        data: { cardId: card.id },
+      })
+      if (claim.count === 0) throw new ConvertConflictError()
+
+      const updatedEntry = await tx.hudEntry.findUniqueOrThrow({ where: { id: entry.id } })
       return { card, entry: updatedEntry }
     })
   } catch (err) {
+    if (err instanceof ConvertConflictError) return null
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return null
     throw err
   }
