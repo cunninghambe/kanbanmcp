@@ -1,4 +1,11 @@
-# Agent Instructions
+# Agent Instructions — headless ClaudeMCP build jobs ONLY
+
+> **Scope:** everything under "State Persistence", "Anti-Hallucination",
+> "Post-Compaction Recovery", and "Trust Hierarchy" below applies ONLY to
+> unattended `claude -p` jobs dispatched by the ClaudeMCP build server
+> (card-execution / HUD dispatch). If you are an interactive session or an
+> orchestrated subagent working from an explicit task brief, that brief is
+> authoritative — skip the state-file logging directives below entirely.
 
 ## State Persistence (Do This After Every Tool Call)
 After any significant action, append to `/tmp/tool-outputs.md`:
