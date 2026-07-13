@@ -14,6 +14,7 @@ export type Entry = {
   position: number
   checkedAt: string | null
   assigneeId: string | null
+  assigneeName: string | null
   dueDate: string | null
   cardId: string | null
   createdAt: string
@@ -27,7 +28,6 @@ type PostEntryResponse = {
   entry: Entry
   assigneeResolution?: AssigneeResolution
   candidates?: Candidate[]
-  error?: string
 }
 
 const CAPTURE_KINDS: { key: CaptureKind; label: string }[] = [
@@ -36,20 +36,25 @@ const CAPTURE_KINDS: { key: CaptureKind; label: string }[] = [
   { key: 'decision', label: 'decision' },
 ]
 
-/** POSTs/PATCHes JSON and returns the parsed body alongside `res.ok` — the
- * five entry-mutation call sites below all follow this shape. */
-async function requestJSON<T extends { error?: string }>(
-  url: string,
-  method: 'POST' | 'PATCH',
-  body: unknown
-): Promise<{ ok: boolean; data: T }> {
-  const res = await fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  const data = (await res.json().catch(() => ({}))) as T
-  return { ok: res.ok, data }
+type JSONResult<T> = { ok: true; data: T } | { ok: false; data: { error?: string } }
+
+/** POSTs/PATCHes JSON. A rejected fetch (network failure) is caught and
+ * reported through the same `ok: false` shape as a non-2xx response, so
+ * every call site has one failure path. The five entry-mutation call sites
+ * below all use this. */
+async function requestJSON<T>(url: string, method: 'POST' | 'PATCH', body: unknown): Promise<JSONResult<T>> {
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    return { ok: false, data: {} }
+  }
+  const data = await res.json().catch(() => ({}))
+  return res.ok ? { ok: true, data: data as T } : { ok: false, data: data as { error?: string } }
 }
 
 export function MeetingPanel({
@@ -164,6 +169,7 @@ function CaptureSection({
   const [kind, setKind] = useState<CaptureKind>('action')
   const [text, setText] = useState('')
   const [ambiguous, setAmbiguous] = useState<{ entryId: string; candidates: Candidate[] } | null>(null)
+  const [pickError, setPickError] = useState<string | null>(null)
 
   async function submit() {
     const value = text.trim()
@@ -174,6 +180,7 @@ function CaptureSection({
     })
     if (ok) {
       setText('')
+      setPickError(null)
       setAmbiguous(
         data.assigneeResolution === 'ambiguous' && data.candidates
           ? { entryId: data.entry.id, candidates: data.candidates }
@@ -185,8 +192,15 @@ function CaptureSection({
 
   async function pickCandidate(candidate: Candidate) {
     if (!ambiguous) return
-    await requestJSON(`/api/hud/entries/${ambiguous.entryId}`, 'PATCH', { assigneeId: candidate.id })
+    const { ok, data } = await requestJSON(`/api/hud/entries/${ambiguous.entryId}`, 'PATCH', {
+      assigneeId: candidate.id,
+    })
+    if (!ok) {
+      setPickError(data.error ?? 'Could not assign — try again')
+      return
+    }
     setAmbiguous(null)
+    setPickError(null)
     onMutate()
   }
 
@@ -196,7 +210,7 @@ function CaptureSection({
         capture
       </span>
 
-      <div className={styles.segs}>
+      <div className={styles.segs} role="group" aria-label="capture kind">
         {CAPTURE_KINDS.map((k) => (
           <button
             key={k.key}
@@ -229,13 +243,25 @@ function CaptureSection({
       {kind === 'action' && <p className={styles.mpHint}>@name due:fri · tokens parse to assignee/due</p>}
 
       {ambiguous && (
-        <div className={styles.mpCandidates}>
+        <div className={styles.mpCandidates} aria-live="polite">
           {ambiguous.candidates.map((c) => (
-            <button key={c.id} type="button" className={styles.mpCandidate} onClick={() => pickCandidate(c)}>
+            <button
+              key={c.id}
+              type="button"
+              className={styles.mpCandidate}
+              aria-label={`Assign to ${c.name}`}
+              onClick={() => pickCandidate(c)}
+            >
               {c.name}
             </button>
           ))}
         </div>
+      )}
+
+      {pickError && (
+        <p role="alert" className={styles.mpRowError}>
+          {pickError}
+        </p>
       )}
     </div>
   )
@@ -253,7 +279,7 @@ function LogSection({
   const [convertErrors, setConvertErrors] = useState<Record<string, string>>({})
 
   async function convert(entry: Entry) {
-    const { ok, data } = await requestJSON<{ entry: Entry; card: { id: string }; error?: string }>(
+    const { ok, data } = await requestJSON<{ entry: Entry; card: { id: string } }>(
       `/api/hud/entries/${entry.id}/card`,
       'POST',
       {}
@@ -288,7 +314,7 @@ function LogSection({
 
           {entry.kind === 'action' && (
             <div className={styles.mpRowMeta}>
-              {entry.assigneeId && <Chip>assigned</Chip>}
+              {entry.assigneeId && <Chip>{entry.assigneeName ? `@${entry.assigneeName}` : 'assigned'}</Chip>}
               {entry.dueDate && <Chip>due {entry.dueDate.slice(0, 10)}</Chip>}
               {boardId && !entry.cardId && (
                 <button

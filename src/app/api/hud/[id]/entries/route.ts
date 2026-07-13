@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { parseCapture } from '@/lib/host-hud/capture'
+import { resolveMemberNames } from '@/lib/host-hud/members'
 
 const ENTRY_KINDS = ['agenda', 'note', 'decision', 'action'] as const
 
@@ -35,7 +36,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       where: { hudSessionId: id },
       orderBy: [{ kind: 'asc' }, { position: 'asc' }, { createdAt: 'asc' }],
     })
-    return NextResponse.json({ entries })
+
+    const assigneeIds = entries.map((e) => e.assigneeId).filter((v): v is string => v !== null)
+    const memberNames = await resolveMemberNames(prisma, session.orgId, assigneeIds)
+    const withNames = entries.map((e) => ({
+      ...e,
+      assigneeName: e.assigneeId ? (memberNames.get(e.assigneeId) ?? null) : null,
+    }))
+
+    return NextResponse.json({ entries: withNames })
   } catch (err) {
     if (err instanceof NextResponse) return err
     console.error('GET /api/hud/[id]/entries error:', err)

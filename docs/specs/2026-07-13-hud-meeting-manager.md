@@ -140,6 +140,14 @@ DELETE /api/hud/entries/[entryId]            → { ok: true }
 POST   /api/hud/entries/[entryId]/card       → { entry, card } 201
 ```
 
+Each entry in the `GET` response gains `assigneeName: string | null` — resolved
+only for rows with `assigneeId` set, via the same batched, org-scoped
+`resolveMemberNames(db, orgId, userIds)` helper (`src/lib/host-hud/members.ts`)
+the digest route uses for action-item assignee names. One lookup per request,
+never per-row. The `POST`/`PATCH` responses are unchanged (`entry` echoes the
+raw `HudEntry` row, no `assigneeName`) — the chair-facing UI resolves the name
+on the next `GET` revalidation.
+
 Zod schemas:
 
 ```ts

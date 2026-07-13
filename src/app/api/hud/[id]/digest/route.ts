@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { buildDigest } from '@/lib/host-hud/digest'
+import { resolveMemberNames } from '@/lib/host-hud/members'
 
 // GET /api/hud/[id]/digest
 // Computed end-of-meeting digest (stats + markdown) for the wrap-up view.
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     ])
 
     const assigneeIds = entries.map((e) => e.assigneeId).filter((v): v is string => v !== null)
-    const memberNames = await resolveMemberNames(session.orgId, assigneeIds)
+    const memberNames = await resolveMemberNames(prisma, session.orgId, assigneeIds)
 
     const digest = buildDigest({
       session: { id: hud.id, title: hud.title, startedAt: hud.startedAt, endedAt: hud.endedAt },
@@ -65,16 +66,4 @@ async function resolveBoardName(orgId: string, boardId: string | null): Promise<
   if (!boardId) return null
   const board = await prisma.board.findFirst({ where: { id: boardId, orgId }, select: { name: true } })
   return board?.name ?? null
-}
-
-/** Batched, org-scoped lookup of display names for a set of assigneeIds — no N+1. */
-async function resolveMemberNames(orgId: string, userIds: string[]): Promise<Map<string, string>> {
-  const deduped = [...new Set(userIds)]
-  if (deduped.length === 0) return new Map()
-
-  const members = await prisma.orgMember.findMany({
-    where: { orgId, userId: { in: deduped } },
-    select: { userId: true, user: { select: { name: true } } },
-  })
-  return new Map(members.map((m) => [m.userId, m.user.name]))
 }

@@ -108,7 +108,7 @@ describe('GET /api/hud/[id]/entries', () => {
 
   it('returns entries ordered (kind, position, createdAt)', async () => {
     mockPrisma.hudSession.findFirst.mockResolvedValue({ id: 'hud-1' })
-    mockPrisma.hudEntry.findMany.mockResolvedValue([{ id: 'entry-1', kind: 'agenda' }])
+    mockPrisma.hudEntry.findMany.mockResolvedValue([{ id: 'entry-1', kind: 'agenda', assigneeId: null }])
 
     const { GET } = await import('../../src/app/api/hud/[id]/entries/route')
     const req = makeRequest('http://localhost/api/hud/hud-1/entries', 'GET')
@@ -129,6 +129,40 @@ describe('GET /api/hud/[id]/entries', () => {
     const req = makeRequest('http://localhost/api/hud/hud-1/entries', 'GET')
     const res = await GET(req, { params: Promise.resolve({ id: 'hud-1' }) })
     expect(res.status).toBe(404)
+  })
+
+  it('POSITIVE: resolves assigneeName for entries with assigneeId via a batched member lookup', async () => {
+    mockPrisma.hudSession.findFirst.mockResolvedValue({ id: 'hud-1' })
+    mockPrisma.hudEntry.findMany.mockResolvedValue([
+      { id: 'entry-1', kind: 'action', assigneeId: 'user-brad' },
+      { id: 'entry-2', kind: 'action', assigneeId: null },
+    ])
+    mockPrisma.orgMember.findMany.mockResolvedValue([
+      { userId: 'user-brad', orgId: 'org-1', role: 'MEMBER', user: { name: 'Brad Pitt' } },
+    ])
+
+    const { GET } = await import('../../src/app/api/hud/[id]/entries/route')
+    const req = makeRequest('http://localhost/api/hud/hud-1/entries', 'GET')
+    const res = await GET(req, { params: Promise.resolve({ id: 'hud-1' }) })
+    const body = await res.json()
+    expect(body.entries[0].assigneeName).toBe('Brad Pitt')
+    expect(body.entries[1].assigneeName).toBeNull()
+    expect(mockPrisma.orgMember.findMany).toHaveBeenCalledWith({
+      where: { orgId: 'org-1', userId: { in: ['user-brad'] } },
+      select: { userId: true, user: { select: { name: true } } },
+    })
+  })
+
+  it('EDGE: no entries have an assigneeId — the member lookup is skipped entirely', async () => {
+    mockPrisma.hudSession.findFirst.mockResolvedValue({ id: 'hud-1' })
+    mockPrisma.hudEntry.findMany.mockResolvedValue([{ id: 'entry-1', kind: 'agenda', assigneeId: null }])
+
+    const { GET } = await import('../../src/app/api/hud/[id]/entries/route')
+    const req = makeRequest('http://localhost/api/hud/hud-1/entries', 'GET')
+    const res = await GET(req, { params: Promise.resolve({ id: 'hud-1' }) })
+    const body = await res.json()
+    expect(body.entries[0].assigneeName).toBeNull()
+    expect(mockPrisma.orgMember.findMany).not.toHaveBeenCalled()
   })
 })
 

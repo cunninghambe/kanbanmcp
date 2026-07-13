@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { MeetingPanel } from '../../src/app/(app)/hud/_components/MeetingPanel'
@@ -21,6 +21,7 @@ function agenda(overrides: Partial<Entry> = {}): Entry {
     position: 1,
     checkedAt: null,
     assigneeId: null,
+    assigneeName: null,
     dueDate: null,
     cardId: null,
     createdAt: '2026-07-13T10:00:00.000Z',
@@ -36,6 +37,7 @@ function action(overrides: Partial<Entry> = {}): Entry {
     position: 0,
     checkedAt: null,
     assigneeId: null,
+    assigneeName: null,
     dueDate: null,
     cardId: null,
     createdAt: '2026-07-13T10:05:00.000Z',
@@ -206,10 +208,10 @@ describe('MeetingPanel — capture', () => {
     const input = screen.getByLabelText('Capture note, decision, or action')
     await user.type(input, '@brad call{Enter}')
 
-    expect(await screen.findByRole('button', { name: 'Brad' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Bradley' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Assign to Brad' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Assign to Bradley' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Brad' }))
+    await user.click(screen.getByRole('button', { name: 'Assign to Brad' }))
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
@@ -217,6 +219,90 @@ describe('MeetingPanel — capture', () => {
       expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ assigneeId: 'u-brad' }) })
     )
     expect(onMutate).toHaveBeenCalledTimes(2)
+  })
+
+  it('removes the candidates from the DOM after a successful pick', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.fn()
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        entry: action({ id: 'e-ambig' }),
+        assigneeResolution: 'ambiguous',
+        candidates: [{ id: 'u-brad', name: 'Brad' }],
+      }),
+    })
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ entry: action({ id: 'e-ambig' }) }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<MeetingPanel sessionId="s1" live boardId="b1" entries={[]} onMutate={vi.fn()} />)
+    const input = screen.getByLabelText('Capture note, decision, or action')
+    await user.type(input, '@brad call{Enter}')
+    await screen.findByRole('button', { name: 'Assign to Brad' })
+
+    await user.click(screen.getByRole('button', { name: 'Assign to Brad' }))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Assign to Brad' })).not.toBeInTheDocument())
+  })
+
+  it('keeps candidates mounted and shows an inline alert when the pick PATCH fails', async () => {
+    const user = userEvent.setup()
+    const onMutate = vi.fn()
+    const fetchMock = vi.fn()
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        entry: action({ id: 'e-ambig' }),
+        assigneeResolution: 'ambiguous',
+        candidates: [{ id: 'u-brad', name: 'Brad' }],
+      }),
+    })
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ error: 'Assignment failed' }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<MeetingPanel sessionId="s1" live boardId="b1" entries={[]} onMutate={onMutate} />)
+    const input = screen.getByLabelText('Capture note, decision, or action')
+    await user.type(input, '@brad call{Enter}')
+    await screen.findByRole('button', { name: 'Assign to Brad' })
+    onMutate.mockClear()
+
+    await user.click(screen.getByRole('button', { name: 'Assign to Brad' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Assignment failed')
+    expect(screen.getByRole('button', { name: 'Assign to Brad' })).toBeInTheDocument()
+    expect(onMutate).not.toHaveBeenCalled()
+  })
+
+  it('does not clear the capture input when the POST fails', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', mockFetchOnce({ ok: false, status: 500, json: { error: 'boom' } }))
+
+    render(<MeetingPanel sessionId="s1" live boardId="b1" entries={[]} onMutate={vi.fn()} />)
+    const input = screen.getByLabelText('Capture note, decision, or action')
+    await user.type(input, 'send contract{Enter}')
+
+    expect(input).toHaveValue('send contract')
+  })
+
+  it('reports a network failure through the same inline-alert path as a non-2xx response', async () => {
+    const user = userEvent.setup()
+    const onMutate = vi.fn()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('network down')))
+
+    render(
+      <MeetingPanel sessionId="s1" live boardId="b1" entries={[action({ id: 'e1', text: 'convertible' })]} onMutate={onMutate} />
+    )
+    await user.click(screen.getByRole('button', { name: 'Create card for "convertible"' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not create card')
+    expect(onMutate).not.toHaveBeenCalled()
+  })
+
+  it('groups the capture kind chips under an accessible group label', () => {
+    render(<MeetingPanel sessionId="s1" live boardId="b1" entries={[]} onMutate={vi.fn()} />)
+    expect(screen.getByRole('group', { name: 'capture kind' })).toBeInTheDocument()
   })
 
   it('disables kind chips and capture input when live is false', () => {
@@ -327,7 +413,7 @@ describe('MeetingPanel — log', () => {
     expect(onMutate).not.toHaveBeenCalled()
   })
 
-  it('shows assignee and due chips on action rows when set', () => {
+  it('shows a generic "assigned" chip and a due chip when assigneeName is not resolved', () => {
     render(
       <MeetingPanel
         sessionId="s1"
@@ -339,5 +425,19 @@ describe('MeetingPanel — log', () => {
     )
     expect(screen.getByText('assigned')).toBeInTheDocument()
     expect(screen.getByText('due 2026-07-17')).toBeInTheDocument()
+  })
+
+  it('shows "@name" on the assignee chip when assigneeName is resolved', () => {
+    render(
+      <MeetingPanel
+        sessionId="s1"
+        live
+        boardId="b1"
+        entries={[action({ id: 'e1', assigneeId: 'u-brad', assigneeName: 'Brad Pitt' })]}
+        onMutate={vi.fn()}
+      />
+    )
+    expect(screen.getByText('@Brad Pitt')).toBeInTheDocument()
+    expect(screen.queryByText('assigned')).not.toBeInTheDocument()
   })
 })
