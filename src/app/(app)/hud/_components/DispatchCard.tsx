@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import { LayoutGrid, HardDrive, Mail, Hash, X, ArrowRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Chip } from '@/components/design/Chip'
+import { sanitizeCitationUrl } from '@/lib/host-hud/dispatch'
 import styles from '../hud.module.css'
 
 export type Citation = { kind: string; id?: string; title?: string; url?: string; quote?: string }
@@ -100,21 +101,24 @@ export function DispatchCard({
             <span className="km-eyebrow" style={{ fontSize: 9 }}>
               evidence · {d.citations.length}
             </span>
-            {d.citations.map((c, i) => (
-              <div key={i} className={styles.cite}>
-                <span style={{ color: 'var(--fg-3)' }}>[{c.kind}]</span>
-                <span>
-                  {c.url ? (
-                    <a href={c.url} target="_blank" rel="noreferrer">
-                      {c.title ?? c.url}
-                    </a>
-                  ) : (
-                    c.title ?? c.id ?? '—'
-                  )}
-                  {c.quote ? <span style={{ color: 'var(--fg-3)' }}> — “{c.quote}”</span> : null}
-                </span>
-              </div>
-            ))}
+            {d.citations.map((c, i) => {
+              const href = sanitizeCitationUrl(c.url)
+              return (
+                <div key={i} className={styles.cite}>
+                  <span style={{ color: 'var(--fg-3)' }}>[{c.kind}]</span>
+                  <span>
+                    {href ? (
+                      <a href={href} target="_blank" rel="noreferrer">
+                        {c.title ?? href}
+                      </a>
+                    ) : (
+                      c.title ?? c.id ?? '—'
+                    )}
+                    {c.quote ? <span style={{ color: 'var(--fg-3)' }}> — “{c.quote}”</span> : null}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         )}
 
