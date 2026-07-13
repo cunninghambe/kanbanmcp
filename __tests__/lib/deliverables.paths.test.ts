@@ -114,7 +114,7 @@ describe('resolveProjectPath', () => {
   })
 
   it('second call within 60s uses cached read — reader is called only once', async () => {
-    const spy = vi.fn<[], Promise<string>>().mockResolvedValue(PROJECTS_JSON_TWO_ENTRIES)
+    const spy = vi.fn<() => Promise<string>>().mockResolvedValue(PROJECTS_JSON_TWO_ENTRIES)
     __setProjectsJsonReaderForTests(spy)
 
     await resolveProjectPath('spoonworks')
@@ -125,7 +125,7 @@ describe('resolveProjectPath', () => {
   })
 
   it('after 61s the next call re-reads projects.json', async () => {
-    const spy = vi.fn<[], Promise<string>>().mockResolvedValue(PROJECTS_JSON_TWO_ENTRIES)
+    const spy = vi.fn<() => Promise<string>>().mockResolvedValue(PROJECTS_JSON_TWO_ENTRIES)
     __setProjectsJsonReaderForTests(spy)
 
     await resolveProjectPath('spoonworks')
@@ -138,7 +138,7 @@ describe('resolveProjectPath', () => {
   })
 
   it('resetDeliverablesCacheForTests forces a re-read without advancing time', async () => {
-    const spy = vi.fn<[], Promise<string>>().mockResolvedValue(PROJECTS_JSON_TWO_ENTRIES)
+    const spy = vi.fn<() => Promise<string>>().mockResolvedValue(PROJECTS_JSON_TWO_ENTRIES)
     __setProjectsJsonReaderForTests(spy)
 
     await resolveProjectPath('spoonworks')

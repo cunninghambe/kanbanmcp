@@ -77,7 +77,7 @@ async function main() {
   })
 
   const base = Date.now()
-  const mk = (over: Record<string, unknown>) => ({
+  const mk = <T extends object>(over: T) => ({
     orgId: org.id,
     hudSessionId: hud.id,
     chairId: chair.id,
