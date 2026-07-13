@@ -56,16 +56,27 @@ test.describe('08 – your-queue dashboard', () => {
     await expect(page.getByText('Assigned To Me Card 1').first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test('clicking a queue row navigates to the board', async ({ page }) => {
+  test('clicking a queue row navigates to the card\'s real board and opens it', async ({ page }) => {
     await loginAsAdmin(page)
     await page.goto('/dashboard')
 
     // Queue rows are keyboard-accessible <button role="listitem"> elements whose
-    // click handler routes to /board/<cardId>.
+    // click handler routes to /board/<boardId>?card=<cardId> — the card's real
+    // board, deep-linked to open the card. (A card id is not a board id: routing
+    // to /board/<cardId> 404s and previously crashed the board page.)
     const row = page.getByText('Assigned To Me Card 1').first()
     await expect(row).toBeVisible({ timeout: 10_000 })
     await row.click()
 
-    await expect(page).toHaveURL(/\/board\//, { timeout: 10_000 })
+    await expect(page).toHaveURL(new RegExp(`/board/${boardId}\\?card=`), { timeout: 10_000 })
+
+    // The board actually rendered (not the "board not found" fallback a
+    // malformed board response would hit) and the deep-linked card opened.
+    await expect(page.getByRole('heading', { name: 'Demo Board', level: 1 })).toBeVisible({
+      timeout: 10_000,
+    })
+    const modal = page.getByRole('dialog')
+    await expect(modal).toBeVisible()
+    await expect(modal.locator('#card-title')).toHaveValue('Assigned To Me Card 1')
   })
 })
