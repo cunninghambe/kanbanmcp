@@ -100,11 +100,11 @@ describe('WrapUp — stats', () => {
 })
 
 describe('WrapUp — pending proposals', () => {
-  it('links pending proposals to /changes/<id> and excludes non-pending sets', async () => {
+  it('links pending proposals to /changes/<id>?from=<hud session> and excludes non-pending sets', async () => {
     render(<WrapUp sessionId="s1" />)
 
     const link = await screen.findByRole('link', { name: /Move 3 cards to Done/ })
-    expect(link).toHaveAttribute('href', '/changes/cs-pending')
+    expect(link).toHaveAttribute('href', '/changes/cs-pending?from=%2Fhud%2Fs1')
     expect(screen.queryByText(/Update priority/)).not.toBeInTheDocument()
   })
 })

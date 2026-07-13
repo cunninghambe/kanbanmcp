@@ -144,7 +144,10 @@ export function DispatchCard({
             <span style={{ flex: 1, fontSize: 12, color: 'var(--fg-2)' }}>
               not applied — awaiting your approval
             </span>
-            <Link href={`/changes/${d.proposedChangeSetId}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Link
+              href={`/changes/${d.proposedChangeSetId}?from=${encodeURIComponent(`/hud/${hudId}`)}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            >
               review <ArrowRight size={12} />
             </Link>
           </div>

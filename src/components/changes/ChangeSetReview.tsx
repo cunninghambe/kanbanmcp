@@ -143,7 +143,7 @@ export function ChangeSetReview({ changeSetId, backHref = '/changes' }: { change
         }
       />
       <div style={{ padding: 24, maxWidth: 820, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {error ? (
+        {error && !data ? (
           <div className="km-mono" role="alert" style={{ fontSize: 12, color: 'var(--err)', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span>couldn&apos;t load changes</span>
             <button className="km-btn km-btn--ghost km-btn--sm" onClick={() => mutate()}>
