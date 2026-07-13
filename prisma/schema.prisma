@@ -503,7 +503,7 @@ model HudEntry {
   checkedAt    DateTime? // agenda: when checked off
   assigneeId   String? // action: resolved org member
   dueDate      DateTime? // action: parsed due date
-  cardId       String? // action: card created from this entry
+  cardId       String? @unique // action: card created from this entry — unique guard for convert idempotence (SQLite allows multiple NULLs)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

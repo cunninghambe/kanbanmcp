@@ -44,9 +44,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ entryId: 
     }
 
     const fields = parsed.data
-    const isCheckedOnlyAgendaPatch =
-      entry.kind === 'agenda' && 'checked' in fields && Object.keys(fields).length === 1
-    if (entry.hudSession.status !== 'live' && !isCheckedOnlyAgendaPatch) {
+    if ('checked' in fields && entry.kind !== 'agenda') {
+      return apiError(400, 'checked applies only to agenda entries')
+    }
+    const isCheckedOnlyPatch = 'checked' in fields && Object.keys(fields).length === 1
+    if (entry.hudSession.status !== 'live' && !isCheckedOnlyPatch) {
       return apiError(409, 'HUD session is not live')
     }
 

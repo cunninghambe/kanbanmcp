@@ -78,7 +78,7 @@ model HudEntry {
   checkedAt    DateTime? // agenda: when checked off
   assigneeId   String? // action: resolved org member
   dueDate      DateTime? // action: parsed due date
-  cardId       String? // action: card created from this entry
+  cardId       String? @unique // action: card created from this entry — unique guard for convert idempotence (SQLite allows multiple NULLs on a unique index)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -169,11 +169,21 @@ POST semantics by kind:
   plus `candidates: {id, name}[]` (max 5) when ambiguous.
 - `agenda` / `note` / `decision`: text stored verbatim (no token parsing).
 
+PATCH `checked` is agenda-only: patching `checked` on any entry whose `kind`
+is not `agenda` → 400 `'checked applies only to agenda entries'`, regardless
+of session status (checked before the live/ended gate).
+
 Assignee resolution (server, in the route): case-insensitive prefix match of
 `assigneeQuery` against org members' `name` and `email` local-part. Exactly one
 match → set `assigneeId`; zero → `'none'`; multiple → `'ambiguous'`, entry
 saved unassigned. Members come from the same query the existing
 `/api/orgs/[orgId]/members` route uses.
+
+PATCH `assigneeId` is accepted from the chair as-is, with no org-membership
+validation against it — an explicitly accepted trust decision: the caller is
+already a verified org MEMBER editing their own session, and the normal path
+to an `assigneeId` is the candidates list returned by the ambiguous-assignee
+flow, which only ever contains valid member ids.
 
 Session-state gates:
 - POST entries / PATCH / DELETE: session must be `live`, else 409 — EXCEPT

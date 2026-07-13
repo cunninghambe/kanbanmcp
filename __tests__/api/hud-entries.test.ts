@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import { Prisma } from '@prisma/client'
 
 const mockSession = {
   userId: 'user-1',
@@ -43,6 +44,9 @@ const mockPrisma = {
     update: vi.fn().mockResolvedValue({}),
   },
   column: {
+    findFirst: vi.fn(),
+  },
+  board: {
     findFirst: vi.fn(),
   },
   card: {
@@ -206,6 +210,35 @@ describe('POST /api/hud/[id]/entries', () => {
     expect(body.candidates.length).toBeLessThanOrEqual(5)
   })
 
+  it('NEGATIVE: an @mention that matches no org member resolves to none, unassigned, no candidates key', async () => {
+    const { POST } = await import('../../src/app/api/hud/[id]/entries/route')
+    const req = makeRequest('http://localhost/api/hud/hud-1/entries', 'POST', {
+      kind: 'action',
+      text: '@nobody call them',
+    })
+    const res = await POST(req, { params: Promise.resolve({ id: 'hud-1' }) })
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.entry.assigneeId).toBeNull()
+    expect(body.assigneeResolution).toBe('none')
+    expect(body.candidates).toBeUndefined()
+  })
+
+  it('NEGATIVE: an action entry with no @mention at all resolves to none, unassigned', async () => {
+    const { POST } = await import('../../src/app/api/hud/[id]/entries/route')
+    const req = makeRequest('http://localhost/api/hud/hud-1/entries', 'POST', {
+      kind: 'action',
+      text: 'ship the deck due:2026-08-01',
+    })
+    const res = await POST(req, { params: Promise.resolve({ id: 'hud-1' }) })
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.entry.assigneeId).toBeNull()
+    expect(body.assigneeResolution).toBe('none')
+    expect(body.candidates).toBeUndefined()
+    expect(mockPrisma.orgMember.findMany).not.toHaveBeenCalled()
+  })
+
   it('EDGE: default position is max+1 within (session, kind)', async () => {
     mockPrisma.hudEntry.aggregate.mockResolvedValue({ _max: { position: 3 } })
     const { POST } = await import('../../src/app/api/hud/[id]/entries/route')
@@ -328,7 +361,22 @@ describe('PATCH /api/hud/entries/[entryId]', () => {
     expect(res.status).toBe(409)
   })
 
-  it('EDGE: 409 when the session has ended and the entry is not an agenda item, even with only checked', async () => {
+  it('MINOR FIX: returns 400 when checked is patched on a non-agenda entry on a LIVE session', async () => {
+    mockPrisma.hudEntry.findFirst.mockResolvedValue({
+      id: 'entry-1',
+      kind: 'note',
+      hudSession: { status: 'live' },
+    })
+    const { PATCH } = await import('../../src/app/api/hud/entries/[entryId]/route')
+    const req = makeRequest('http://localhost/api/hud/entries/entry-1', 'PATCH', { checked: true })
+    const res = await PATCH(req, { params: Promise.resolve({ entryId: 'entry-1' }) })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe('checked applies only to agenda entries')
+    expect(mockPrisma.hudEntry.update).not.toHaveBeenCalled()
+  })
+
+  it('MINOR FIX: returns 400 (not 409) when checked is patched on a non-agenda entry on an ENDED session — checked is agenda-only regardless of session status', async () => {
     mockPrisma.hudEntry.findFirst.mockResolvedValue({
       id: 'entry-1',
       kind: 'note',
@@ -337,7 +385,9 @@ describe('PATCH /api/hud/entries/[entryId]', () => {
     const { PATCH } = await import('../../src/app/api/hud/entries/[entryId]/route')
     const req = makeRequest('http://localhost/api/hud/entries/entry-1', 'PATCH', { checked: true })
     const res = await PATCH(req, { params: Promise.resolve({ entryId: 'entry-1' }) })
-    expect(res.status).toBe(409)
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toBe('checked applies only to agenda entries')
   })
 
   it('returns 400 for an empty patch body', async () => {
@@ -444,6 +494,7 @@ describe('POST /api/hud/entries/[entryId]/card', () => {
     mockPrisma.orgMember.findUnique.mockResolvedValue(membership)
     mockPrisma.hudEntry.findFirst.mockResolvedValue({ ...baseEntry })
     mockPrisma.hudEntry.findUnique.mockResolvedValue({ cardId: null })
+    mockPrisma.board.findFirst.mockResolvedValue({ id: 'board-1' })
     mockPrisma.column.findFirst.mockResolvedValue({ id: 'col-left', boardId: 'board-1', position: 0 })
     mockPrisma.card.aggregate.mockResolvedValue({ _max: { position: null } })
     mockPrisma.card.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -491,6 +542,21 @@ describe('POST /api/hud/entries/[entryId]/card', () => {
     expect(body.error).toBe('Attach a board to create cards')
   })
 
+  it('MINOR FIX: returns 404 when the session boardId does not resolve to a board in this org (defense in depth)', async () => {
+    mockPrisma.board.findFirst.mockResolvedValue(null)
+    const { POST } = await import('../../src/app/api/hud/entries/[entryId]/card/route')
+    const req = makeRequest('http://localhost/api/hud/entries/entry-1/card', 'POST')
+    const res = await POST(req, { params: Promise.resolve({ entryId: 'entry-1' }) })
+    expect(res.status).toBe(404)
+    const body = await res.json()
+    expect(body.error).toBe('Board not found')
+    expect(mockPrisma.board.findFirst).toHaveBeenCalledWith({
+      where: { id: 'board-1', orgId: 'org-1' },
+      select: { id: true },
+    })
+    expect(mockPrisma.card.create).not.toHaveBeenCalled()
+  })
+
   it('returns 409 when entry.cardId is already set (pre-check)', async () => {
     mockPrisma.hudEntry.findFirst.mockResolvedValue({ ...baseEntry, cardId: 'card-existing' })
     const { POST } = await import('../../src/app/api/hud/entries/[entryId]/card/route')
@@ -530,6 +596,24 @@ describe('POST /api/hud/entries/[entryId]/card', () => {
     const res = await POST(req, { params: Promise.resolve({ entryId: 'entry-1' }) })
     expect(res.status).toBe(409)
     expect(mockPrisma.card.create).not.toHaveBeenCalled()
+  })
+
+  it('IMPORTANT FIX: a unique-constraint violation (P2002) on cardId inside the transaction is caught and mapped to the same 409, exposing nothing to the client', async () => {
+    mockPrisma.hudEntry.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`cardId`)', {
+        code: 'P2002',
+        clientVersion: '5.22.0',
+        meta: { target: ['cardId'] },
+      })
+    )
+    const { POST } = await import('../../src/app/api/hud/entries/[entryId]/card/route')
+    const req = makeRequest('http://localhost/api/hud/entries/entry-1/card', 'POST')
+    const res = await POST(req, { params: Promise.resolve({ entryId: 'entry-1' }) })
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body).toEqual({ error: 'Card already created for this entry' })
+    expect(body.card).toBeUndefined()
+    expect(body.entry).toBeUndefined()
   })
 
   it('EDGE: text over 200 chars is truncated for the title, full text goes into the description', async () => {

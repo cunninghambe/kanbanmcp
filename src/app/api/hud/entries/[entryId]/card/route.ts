@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import type { Card, HudEntry } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
@@ -29,6 +30,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ entryId: s
     if (entry.kind !== 'action') return apiError(400, 'Only action entries can be converted to a card')
     const boardId = entry.hudSession.boardId
     if (!boardId) return apiError(409, 'Attach a board to create cards')
+
+    // Defense in depth: the session's boardId is a soft link (no Prisma
+    // relation), so re-verify it still resolves to a board in this org
+    // before trusting it, mirroring the create_card op in changesets.ts.
+    const board = await prisma.board.findFirst({ where: { id: boardId, orgId: session.orgId }, select: { id: true } })
+    if (!board) return apiError(404, 'Board not found')
+
     if (entry.cardId) return apiError(409, 'Card already created for this entry')
 
     const parsed = convertSchema.safeParse(await req.json().catch(() => ({})))
@@ -73,9 +81,12 @@ type ConvertibleEntry = Pick<HudEntry, 'id' | 'text' | 'assigneeId' | 'dueDate'>
 
 /**
  * Creates the card and links it to the entry in one transaction. Re-checks
- * cardId inside the transaction (not just the route's pre-check) so a
- * concurrent convert of the same entry can't create two cards; returns null
- * when that race is detected.
+ * cardId inside the transaction (fast path) so a concurrent convert of the
+ * same entry can't create two cards. `HudEntry.cardId` is also `@unique` at
+ * the schema level as the DB-enforced backstop for that same race — if the
+ * fast-path check is ever raced past, the transaction's write fails with
+ * P2002 instead of silently succeeding, and that is treated the same as the
+ * fast-path conflict. Returns null whichever guard catches the race.
  */
 async function convertEntryToCard(
   entry: ConvertibleEntry,
@@ -86,24 +97,29 @@ async function convertEntryToCard(
   const title = entry.text.length > TITLE_MAX ? entry.text.slice(0, TITLE_MAX) : entry.text
   const description = entry.text.length > TITLE_MAX ? entry.text : undefined
 
-  return prisma.$transaction(async (tx) => {
-    const fresh = await tx.hudEntry.findUnique({ where: { id: entry.id }, select: { cardId: true } })
-    if (fresh?.cardId) return null
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const fresh = await tx.hudEntry.findUnique({ where: { id: entry.id }, select: { cardId: true } })
+      if (fresh?.cardId) return null
 
-    const agg = await tx.card.aggregate({ where: { columnId }, _max: { position: true } })
-    const card = await tx.card.create({
-      data: {
-        title,
-        description,
-        columnId,
-        boardId,
-        assigneeId: entry.assigneeId,
-        dueDate: entry.dueDate,
-        createdById,
-        position: (agg._max.position ?? 0) + 1,
-      },
+      const agg = await tx.card.aggregate({ where: { columnId }, _max: { position: true } })
+      const card = await tx.card.create({
+        data: {
+          title,
+          description,
+          columnId,
+          boardId,
+          assigneeId: entry.assigneeId,
+          dueDate: entry.dueDate,
+          createdById,
+          position: (agg._max.position ?? 0) + 1,
+        },
+      })
+      const updatedEntry = await tx.hudEntry.update({ where: { id: entry.id }, data: { cardId: card.id } })
+      return { card, entry: updatedEntry }
     })
-    const updatedEntry = await tx.hudEntry.update({ where: { id: entry.id }, data: { cardId: card.id } })
-    return { card, entry: updatedEntry }
-  })
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return null
+    throw err
+  }
 }
