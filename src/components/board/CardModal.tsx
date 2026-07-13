@@ -145,7 +145,7 @@ function SectionHeader({ children, count, action }: {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Eyebrow size={9}>/// {children}</Eyebrow>
+        <Eyebrow size={9}>{`/// ${children}`}</Eyebrow>
         {count !== undefined && (
           <span className="km-mono" style={{ fontSize: 10, color: 'var(--fg-3)', letterSpacing: '0.06em' }}>
             {count}
@@ -953,7 +953,7 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
             {/* Metadata */}
             <RailSection>
               <div style={{ padding: '14px 16px 6px' }}>
-                <Eyebrow size={9}>/// metadata</Eyebrow>
+                <Eyebrow size={9}>{'/// metadata'}</Eyebrow>
               </div>
               <KV label="created">
                 <span className="km-mono" style={{ fontSize: 11 }}>
