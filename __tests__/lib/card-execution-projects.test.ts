@@ -79,7 +79,7 @@ describe('isProjectRegistered', () => {
   })
 
   it('first call hits the underlying listClaudeProjects and returns true when slug is present', async () => {
-    const spy = vi.fn<[], Promise<string[]>>().mockResolvedValue(['spoonworks', 'other-project'])
+    const spy = vi.fn<() => Promise<string[]>>().mockResolvedValue(['spoonworks', 'other-project'])
     __setListProjectsForTests(spy)
 
     const result = await isProjectRegistered('spoonworks')
@@ -89,7 +89,7 @@ describe('isProjectRegistered', () => {
   })
 
   it('first call returns false when slug is absent', async () => {
-    const spy = vi.fn<[], Promise<string[]>>().mockResolvedValue(['other-project'])
+    const spy = vi.fn<() => Promise<string[]>>().mockResolvedValue(['other-project'])
     __setListProjectsForTests(spy)
 
     const result = await isProjectRegistered('spoonworks')
@@ -99,7 +99,7 @@ describe('isProjectRegistered', () => {
   })
 
   it('second call within 60s uses the cache and does NOT hit the underlying function', async () => {
-    const spy = vi.fn<[], Promise<string[]>>().mockResolvedValue(['spoonworks'])
+    const spy = vi.fn<() => Promise<string[]>>().mockResolvedValue(['spoonworks'])
     __setListProjectsForTests(spy)
 
     await isProjectRegistered('spoonworks')
@@ -114,7 +114,7 @@ describe('isProjectRegistered', () => {
   })
 
   it('after 60s the next call re-fetches from the underlying function', async () => {
-    const spy = vi.fn<[], Promise<string[]>>().mockResolvedValue(['spoonworks'])
+    const spy = vi.fn<() => Promise<string[]>>().mockResolvedValue(['spoonworks'])
     __setListProjectsForTests(spy)
 
     await isProjectRegistered('spoonworks')
@@ -128,7 +128,7 @@ describe('isProjectRegistered', () => {
   })
 
   it('resetProjectCacheForTests forces a re-fetch on the very next call', async () => {
-    const spy = vi.fn<[], Promise<string[]>>().mockResolvedValue(['spoonworks'])
+    const spy = vi.fn<() => Promise<string[]>>().mockResolvedValue(['spoonworks'])
     __setListProjectsForTests(spy)
 
     await isProjectRegistered('spoonworks')
@@ -143,7 +143,7 @@ describe('isProjectRegistered', () => {
 
   it('propagates errors thrown by the underlying listClaudeProjects without swallowing them', async () => {
     const networkError = new Error('ECONNREFUSED — ClaudeMCP unreachable')
-    const spy = vi.fn<[], Promise<string[]>>().mockRejectedValue(networkError)
+    const spy = vi.fn<() => Promise<string[]>>().mockRejectedValue(networkError)
     __setListProjectsForTests(spy)
 
     await expect(isProjectRegistered('spoonworks')).rejects.toThrow(
