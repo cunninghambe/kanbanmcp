@@ -10,6 +10,8 @@ import type { Target } from '../_components/AgentConsole'
 import { DispatchCard } from '../_components/DispatchCard'
 import type { Dispatch } from '../_components/DispatchCard'
 import { SituationRail } from '../_components/SituationRail'
+import { MeetingPanel } from '../_components/MeetingPanel'
+import type { Entry } from '../_components/MeetingPanel'
 import styles from '../hud.module.css'
 
 const fetcher = (url: string) =>
@@ -43,6 +45,11 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
     `/api/changesets?hudSessionId=${id}`,
     fetcher,
     swrOpts(5000)
+  )
+  const { data: entriesData, mutate: mutateEntries } = useSWR<{ entries: Entry[] }>(
+    `/api/hud/${id}/entries`,
+    fetcher,
+    swrOpts(10000)
   )
 
   const session = data?.session
@@ -139,7 +146,7 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
       </header>
 
       <div className={styles.body}>
-        <aside className={styles.rail}>
+        <aside className={styles.rail} aria-label="situation">
           <SituationRail pertinent={pertinent} inFlight={inFlight} pending={pending} boardId={session?.boardId ?? null} />
         </aside>
 
@@ -168,6 +175,16 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
             </div>
           )}
         </main>
+
+        <aside className={styles.meeting} aria-label="meeting">
+          <MeetingPanel
+            sessionId={id}
+            live={!!live}
+            boardId={session?.boardId ?? null}
+            entries={entriesData?.entries ?? []}
+            onMutate={() => mutateEntries()}
+          />
+        </aside>
       </div>
     </div>
   )
