@@ -71,7 +71,10 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type MockFn = ReturnType<typeof vi.fn>
+// vitest 4: bare `vi.fn()` types as an uncallable Mock union; pin the procedure
+// generic so the mock client stays assignable to the worker's McpClient seam.
+type AnyProc = (...args: any[]) => any
+type MockFn = ReturnType<typeof vi.fn<AnyProc>>
 
 type McpClient = {
   submitClaudeBuild: MockFn
@@ -131,9 +134,9 @@ function makeExec(overrides: Record<string, unknown> = {}) {
 
 function makeMcp(pollOutput: string): McpClient {
   return {
-    submitClaudeBuild: vi.fn().mockResolvedValue({ jobId: 'job-m3', state: 'enqueued' }),
-    pollClaudeJobStatus: vi.fn().mockResolvedValue({ state: 'done', exitCode: 0, output: pollOutput }),
-    listClaudeProjects: vi.fn().mockResolvedValue(['spoonworks']),
+    submitClaudeBuild: vi.fn<AnyProc>().mockResolvedValue({ jobId: 'job-m3', state: 'enqueued' }),
+    pollClaudeJobStatus: vi.fn<AnyProc>().mockResolvedValue({ state: 'done', exitCode: 0, output: pollOutput }),
+    listClaudeProjects: vi.fn<AnyProc>().mockResolvedValue(['spoonworks']),
   }
 }
 
