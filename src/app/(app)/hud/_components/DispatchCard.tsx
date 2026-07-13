@@ -28,7 +28,7 @@ const TARGET_ICON: Record<Dispatch['target'], LucideIcon> = {
   slack: Hash,
 }
 
-const STATUS_TONE: Record<string, 'ok' | 'warn' | 'err' | undefined> = {
+export const STATUS_TONE: Record<string, 'ok' | 'warn' | 'err' | undefined> = {
   done: 'ok',
   running: 'warn',
   queued: 'warn',

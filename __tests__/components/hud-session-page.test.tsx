@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 // React 18 does not have `use()` — stub it so the page can render in jsdom.
@@ -19,15 +19,31 @@ vi.mock('react', async (importOriginal) => {
 })
 
 const sessionState = vi.hoisted(() => ({ status: 'live' as 'live' | 'ended' }))
+const entryFixture = vi.hoisted(() => ({
+  id: 'e1',
+  kind: 'note' as const,
+  text: 'Wiring check note',
+  position: 0,
+  checkedAt: null,
+  assigneeId: null,
+  dueDate: null,
+  cardId: null,
+  createdAt: '2026-07-13T10:00:00.000Z',
+}))
 
 vi.mock('swr', () => ({
-  default: vi.fn(() => ({
-    data: {
-      session: { id: 'h1', title: 'T', status: sessionState.status, boardId: 'b1', startedAt: new Date().toISOString() },
-      dispatches: [],
-    },
-    mutate: vi.fn(),
-  })),
+  default: vi.fn((key: unknown) => {
+    if (typeof key === 'string' && key.endsWith('/entries')) {
+      return { data: { entries: [entryFixture] }, mutate: vi.fn() }
+    }
+    return {
+      data: {
+        session: { id: 'h1', title: 'T', status: sessionState.status, boardId: 'b1', startedAt: new Date().toISOString() },
+        dispatches: [],
+      },
+      mutate: vi.fn(),
+    }
+  }),
 }))
 vi.mock('../../src/hooks/useHudStream', () => ({ useHudStream: vi.fn() }))
 vi.mock('../../src/app/(app)/hud/_components/AgentConsole', () => ({
@@ -118,5 +134,19 @@ describe('HUD session page — end session confirm', () => {
     await user.click(screen.getByRole('button', { name: 'confirm end?' }))
 
     expect(fetchMock).toHaveBeenCalledWith('/api/hud/h1/end', expect.objectContaining({ method: 'POST' }))
+  })
+})
+
+describe('HUD session page — entries wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('passes fetched entries through to the meeting panel', async () => {
+    const Page = (await import('../../src/app/(app)/hud/[id]/page')).default
+    render(<Page params={{ id: 'h1' } as unknown as Promise<{ id: string }>} />)
+
+    const meetingZone = await screen.findByRole('complementary', { name: 'meeting' })
+    expect(within(meetingZone).getByText(entryFixture.text)).toBeInTheDocument()
   })
 })

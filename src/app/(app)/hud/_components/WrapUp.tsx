@@ -1,21 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { Chip } from '@/components/design/Chip'
+import { STATUS_TONE } from './DispatchCard'
 import type { Digest, DigestDispatch, DigestStats } from '@/lib/host-hud/digest'
 import styles from '../hud.module.css'
 
 type Proposal = { id: string; status: string; summary: string | null; itemCount: number }
 
-const DISPATCH_STATUS_TONE: Record<string, 'ok' | 'warn' | 'err' | undefined> = {
-  done: 'ok',
-  running: 'warn',
-  queued: 'warn',
-  failed: 'err',
-  cancelled: undefined,
-}
+const COPIED_FLASH_MS = 2000
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -24,12 +19,20 @@ const fetcher = (url: string) =>
   })
 
 export function WrapUp({ sessionId }: { sessionId: string }) {
-  const { data: digestData } = useSWR<{ digest: Digest }>(`/api/hud/${sessionId}/digest`, fetcher)
+  const {
+    data: digestData,
+    error: digestError,
+    mutate: mutateDigest,
+  } = useSWR<{ digest: Digest }>(`/api/hud/${sessionId}/digest`, fetcher)
   const { data: changesetData } = useSWR<{ changeSets: Proposal[] }>(
     `/api/changesets?hudSessionId=${sessionId}`,
     fetcher
   )
   const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+  }, [])
 
   const digest = digestData?.digest
   const pendingProposals = (changesetData?.changeSets ?? []).filter((c) => c.status === 'pending')
@@ -38,7 +41,8 @@ export function WrapUp({ sessionId }: { sessionId: string }) {
     if (!digest) return
     await navigator.clipboard.writeText(digest.markdown)
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
+    copiedTimer.current = setTimeout(() => setCopied(false), COPIED_FLASH_MS)
   }
 
   return (
@@ -55,12 +59,25 @@ export function WrapUp({ sessionId }: { sessionId: string }) {
         {copied ? 'copied ✓' : ''}
       </span>
 
+      {digestError && <DigestErrorState onRetry={() => mutateDigest()} />}
+      {!digestError && !digest && <p className={styles.mpHint}>loading digest…</p>}
       {digest && <StatsRow stats={digest.stats} />}
 
       <ProposalsSection proposals={pendingProposals} />
 
       {digest && <DispatchHistory dispatches={digest.dispatches} />}
     </>
+  )
+}
+
+function DigestErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <p role="alert" className={styles.mpRowError}>
+      couldn&apos;t load digest —{' '}
+      <button type="button" className="km-btn km-btn--sm" onClick={onRetry}>
+        retry
+      </button>
+    </p>
   )
 }
 
@@ -136,7 +153,7 @@ function DispatchHistory({ dispatches }: { dispatches: DigestDispatch[] }) {
           <div className={styles.mpRowHead}>
             <span className={styles.mpKind}>{d.target}</span>
             <span className={styles.mpRowText}>{d.question}</span>
-            <Chip tone={DISPATCH_STATUS_TONE[d.status]}>{d.status}</Chip>
+            <Chip tone={STATUS_TONE[d.status]}>{d.status}</Chip>
           </div>
         </div>
       ))}

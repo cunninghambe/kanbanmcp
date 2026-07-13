@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
@@ -12,7 +12,7 @@ vi.mock('@/components/design/Chip', () => ({
   Chip: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }))
 
-const { digestFixture, changeSetsFixture } = vi.hoisted(() => {
+const { digestFixture, changeSetsFixture, digestState, digestMutate } = vi.hoisted(() => {
   const digestFixture = {
     stats: {
       durationMs: 1_800_000,
@@ -65,7 +65,9 @@ const { digestFixture, changeSetsFixture } = vi.hoisted(() => {
       createdAt: '2026-07-13T09:00:00.000Z',
     },
   ]
-  return { digestFixture, changeSetsFixture }
+  const digestState: { error: Error | null } = { error: null }
+  const digestMutate = vi.fn()
+  return { digestFixture, changeSetsFixture, digestState, digestMutate }
 })
 
 vi.mock('swr', () => ({
@@ -73,9 +75,17 @@ vi.mock('swr', () => ({
     if (typeof key === 'string' && key.startsWith('/api/changesets')) {
       return { data: { changeSets: changeSetsFixture }, mutate: vi.fn() }
     }
-    return { data: { digest: digestFixture }, mutate: vi.fn() }
+    if (digestState.error) {
+      return { data: undefined, error: digestState.error, mutate: digestMutate }
+    }
+    return { data: { digest: digestFixture }, error: undefined, mutate: digestMutate }
   }),
 }))
+
+beforeEach(() => {
+  digestState.error = null
+  digestMutate.mockClear()
+})
 
 describe('WrapUp — stats', () => {
   it('renders stat tiles computed from the digest', async () => {
@@ -110,6 +120,19 @@ describe('WrapUp — dispatch history', () => {
     expect(screen.getByText('drive')).toBeInTheDocument()
     expect(screen.getByText('failed')).toBeInTheDocument()
     expect(screen.queryByText('Card A moved to Done.')).not.toBeInTheDocument()
+  })
+})
+
+describe('WrapUp — digest error state', () => {
+  it('shows a retry affordance when the digest fails to load, and retry calls mutate', async () => {
+    digestState.error = new Error('500')
+    const user = userEvent.setup()
+    render(<WrapUp sessionId="s1" />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn.t load digest/i)
+    await user.click(screen.getByRole('button', { name: 'retry' }))
+
+    expect(digestMutate).toHaveBeenCalled()
   })
 })
 
