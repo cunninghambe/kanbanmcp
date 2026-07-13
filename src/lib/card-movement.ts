@@ -37,6 +37,15 @@ export async function recordCardMovement(
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
+const SESSION_MOVEMENTS_CAP = 8
+
+async function loadColumnNames(prisma: PrismaClient, boardId: string): Promise<Map<string, string>> {
+  const columns = await prisma.column.findMany({
+    where: { boardId },
+    select: { id: true, name: true },
+  })
+  return new Map(columns.map((c) => [c.id, c.name]))
+}
 
 export async function formatRecentMovements(
   prisma: PrismaClient,
@@ -54,11 +63,7 @@ export async function formatRecentMovements(
   })
   if (movements.length === 0) return ''
 
-  const columns = await prisma.column.findMany({
-    where: { boardId: args.boardId },
-    select: { id: true, name: true },
-  })
-  const colName = new Map(columns.map((c) => [c.id, c.name]))
+  const colName = await loadColumnNames(prisma, args.boardId)
   const column = (id: string | null) => (id ? (colName.get(id) ?? id) : '(new)')
 
   const userIds = [...new Set(movements.filter((m) => m.movedByKind === 'user').map((m) => m.movedById))]
@@ -85,4 +90,41 @@ export async function formatRecentMovements(
     lines.push(`  (movements before ${earliest.movedAt.toISOString().slice(0, 10)} are not tracked)`)
   }
   return lines.join('\n')
+}
+
+export type SessionMovement = {
+  cardId: string
+  cardTitle: string
+  fromColumn: string | null
+  toColumn: string
+  movedAt: Date
+}
+
+/**
+ * Structured, newest-first movement rows since a timestamp (e.g. a HUD session's
+ * startedAt) — the pertinent rail's "moved this session" group. Org-scoped, capped
+ * at SESSION_MOVEMENTS_CAP.
+ */
+export async function listMovementsSince(
+  db: PrismaClient,
+  args: { boardId: string; orgId: string; since: Date; limit?: number }
+): Promise<SessionMovement[]> {
+  const limit = Math.min(args.limit ?? SESSION_MOVEMENTS_CAP, SESSION_MOVEMENTS_CAP)
+
+  const movements = await db.cardMovement.findMany({
+    where: { boardId: args.boardId, orgId: args.orgId, movedAt: { gte: args.since } },
+    orderBy: { movedAt: 'desc' },
+    take: limit,
+    include: { card: { select: { title: true } } },
+  })
+  if (movements.length === 0) return []
+
+  const colName = await loadColumnNames(db, args.boardId)
+  return movements.map((m) => ({
+    cardId: m.cardId,
+    cardTitle: m.card?.title ?? m.cardId,
+    fromColumn: m.fromColumnId ? (colName.get(m.fromColumnId) ?? m.fromColumnId) : null,
+    toColumn: colName.get(m.toColumnId) ?? m.toColumnId,
+    movedAt: m.movedAt,
+  }))
 }

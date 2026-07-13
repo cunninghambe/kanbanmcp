@@ -5,11 +5,14 @@ import { AlertTriangle, Clock, Activity, GitPullRequestArrow } from 'lucide-reac
 import styles from '../hud.module.css'
 
 type PertinentCard = { id: string; title: string; priority: string; columnName: string; ageDays: number }
+type SessionMovement = { cardId: string; cardTitle: string; fromColumn: string | null; toColumn: string; movedAt: string }
 type Pertinent = {
   board: { id: string; name: string } | null
   overdue: PertinentCard[]
   stalled: PertinentCard[]
-  counts: { overdue: number; stalled: number; aging: number; total: number }
+  dueSoon: PertinentCard[]
+  movedThisSession: SessionMovement[]
+  counts: { overdue: number; stalled: number; aging: number; total: number; dueSoon: number; movedThisSession: number }
 }
 
 export function SituationRail({
@@ -23,7 +26,7 @@ export function SituationRail({
   pending: number
   boardId: string | null
 }) {
-  const counts = pertinent?.counts ?? { overdue: 0, stalled: 0, aging: 0, total: 0 }
+  const counts = pertinent?.counts ?? { overdue: 0, stalled: 0, aging: 0, total: 0, dueSoon: 0, movedThisSession: 0 }
 
   return (
     <>
@@ -56,6 +59,12 @@ export function SituationRail({
       )}
       {pertinent && pertinent.stalled.length > 0 && (
         <CardGroup title="stalled" tone="warn" cards={pertinent.stalled} boardId={boardId} />
+      )}
+      {pertinent && pertinent.dueSoon.length > 0 && (
+        <CardGroup title="due this week" tone="accent" cards={pertinent.dueSoon} boardId={boardId} />
+      )}
+      {pertinent && pertinent.movedThisSession.length > 0 && (
+        <MovementGroup movements={pertinent.movedThisSession} boardId={boardId} />
       )}
       {pertinent && boardId && pertinent.overdue.length === 0 && pertinent.stalled.length === 0 && (
         <p className="km-mono" style={{ fontSize: 10, color: 'var(--ok)' }}>● nothing overdue or stalled</p>
@@ -111,13 +120,16 @@ function CardGroup({
   boardId,
 }: {
   title: string
-  tone: 'err' | 'warn'
+  tone: 'err' | 'warn' | 'accent'
   cards: PertinentCard[]
   boardId: string | null
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span className="km-eyebrow" style={{ fontSize: 9, color: tone === 'err' ? 'var(--err)' : 'var(--warn)' }}>
+      <span
+        className="km-eyebrow"
+        style={{ fontSize: 9, color: tone === 'err' ? 'var(--err)' : tone === 'warn' ? 'var(--warn)' : 'var(--accent)' }}
+      >
         {title} · {cards.length}
       </span>
       {cards.slice(0, 6).map((c) => {
@@ -128,11 +140,43 @@ function CardGroup({
           </>
         )
         return boardId ? (
-          <Link key={c.id} href={`/board/${boardId}`} className={styles.pcard}>
+          <Link key={c.id} href={`/board/${boardId}?card=${c.id}`} className={styles.pcard}>
             {inner}
           </Link>
         ) : (
           <div key={c.id} className={styles.pcard}>
+            {inner}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function MovementGroup({
+  movements,
+  boardId,
+}: {
+  movements: SessionMovement[]
+  boardId: string | null
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span className="km-eyebrow" style={{ fontSize: 9, color: 'var(--accent)' }}>
+        moved this session · {movements.length}
+      </span>
+      {movements.slice(0, 6).map((m) => {
+        const inner = (
+          <span className={styles.pcard__title}>
+            {m.cardTitle}: {m.fromColumn ?? 'new'} → {m.toColumn}
+          </span>
+        )
+        return boardId ? (
+          <Link key={`${m.cardId}-${m.movedAt}`} href={`/board/${boardId}?card=${m.cardId}`} className={styles.pcard}>
+            {inner}
+          </Link>
+        ) : (
+          <div key={`${m.cardId}-${m.movedAt}`} className={styles.pcard}>
             {inner}
           </div>
         )

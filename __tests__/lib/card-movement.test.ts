@@ -110,3 +110,67 @@ describe('formatRecentMovements', () => {
     expect(out).toContain('by AgentX')
   })
 })
+
+describe('listMovementsSince', () => {
+  function prismaWith(movements: unknown[], columns: unknown[]) {
+    return {
+      cardMovement: { findMany: vi.fn().mockResolvedValue(movements) },
+      column: { findMany: vi.fn().mockResolvedValue(columns) },
+    } as unknown as never
+  }
+
+  it('returns structured rows newest-first, org/board-scoped since a timestamp (positive)', async () => {
+    const since = new Date('2026-07-13T14:00:00Z')
+    const prisma = prismaWith(
+      [
+        { cardId: 'c2', fromColumnId: 'col-1', toColumnId: 'col-2', movedAt: new Date('2026-07-13T15:30:00Z'), card: { title: 'Card Two' } },
+        { cardId: 'c1', fromColumnId: 'col-1', toColumnId: 'col-1', movedAt: new Date('2026-07-13T14:30:00Z'), card: { title: 'Card One' } },
+      ],
+      [{ id: 'col-1', name: 'Backlog' }, { id: 'col-2', name: 'In Progress' }]
+    )
+    const { listMovementsSince } = await import('../../src/lib/card-movement')
+    const out = await listMovementsSince(prisma, { boardId: 'board-1', orgId: 'org-1', since })
+
+    expect(out).toEqual([
+      { cardId: 'c2', cardTitle: 'Card Two', fromColumn: 'Backlog', toColumn: 'In Progress', movedAt: new Date('2026-07-13T15:30:00Z') },
+      { cardId: 'c1', cardTitle: 'Card One', fromColumn: 'Backlog', toColumn: 'Backlog', movedAt: new Date('2026-07-13T14:30:00Z') },
+    ])
+    expect((prisma as unknown as { cardMovement: { findMany: ReturnType<typeof vi.fn> } }).cardMovement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { boardId: 'board-1', orgId: 'org-1', movedAt: { gte: since } },
+        orderBy: { movedAt: 'desc' },
+        take: 8,
+      })
+    )
+  })
+
+  it('returns an empty array when there are no movements since the timestamp (negative)', async () => {
+    const prisma = prismaWith([], [])
+    const { listMovementsSince } = await import('../../src/lib/card-movement')
+    const out = await listMovementsSince(prisma, { boardId: 'board-1', orgId: 'org-1', since: new Date() })
+    expect(out).toEqual([])
+  })
+
+  it('caps the default and an explicit larger limit at 8 (boundary)', async () => {
+    const prisma = prismaWith([], [])
+    const { listMovementsSince } = await import('../../src/lib/card-movement')
+    await listMovementsSince(prisma, { boardId: 'board-1', orgId: 'org-1', since: new Date() })
+    await listMovementsSince(prisma, { boardId: 'board-1', orgId: 'org-1', since: new Date(), limit: 50 })
+
+    const calls = (prisma as unknown as { cardMovement: { findMany: ReturnType<typeof vi.fn> } }).cardMovement.findMany.mock.calls
+    expect(calls[0][0]).toMatchObject({ take: 8 })
+    expect(calls[1][0]).toMatchObject({ take: 8 })
+  })
+
+  it('reports a null fromColumn for a card that had no prior column (edge)', async () => {
+    const prisma = prismaWith(
+      [{ cardId: 'c1', fromColumnId: null, toColumnId: 'col-1', movedAt: new Date('2026-07-13T14:30:00Z'), card: { title: 'New Card' } }],
+      [{ id: 'col-1', name: 'Backlog' }]
+    )
+    const { listMovementsSince } = await import('../../src/lib/card-movement')
+    const out = await listMovementsSince(prisma, { boardId: 'board-1', orgId: 'org-1', since: new Date('2026-07-13T00:00:00Z') })
+    expect(out).toEqual([
+      { cardId: 'c1', cardTitle: 'New Card', fromColumn: null, toColumn: 'Backlog', movedAt: new Date('2026-07-13T14:30:00Z') },
+    ])
+  })
+})

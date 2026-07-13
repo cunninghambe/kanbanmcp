@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { preload } from 'swr'
 import useSWR from 'swr'
 import { Filter, Plus } from 'lucide-react'
@@ -30,8 +30,18 @@ interface MemberEntry {
 }
 
 export default function BoardPage() {
+  return (
+    <Suspense fallback={null}>
+      <BoardPageContent />
+    </Suspense>
+  )
+}
+
+function BoardPageContent() {
   const params = useParams()
   const boardId = params.boardId as string
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { board, columns, isLoading, moveCard, mutate } = useBoard(boardId)
   const { user, org } = useSession()
 
@@ -101,6 +111,33 @@ export default function BoardPage() {
   function handleCardClick(cardId: string) {
     preloadCardData(cardId)
     setSelectedCardId(cardId)
+  }
+
+  // Deep-link: `?card=<id>` opens that card's modal once the board has loaded,
+  // provided the card actually exists on this board. Unknown/foreign ids are
+  // ignored silently. Applies once per page load, not on every board refetch.
+  const deepLinkAppliedRef = useRef(false)
+  useEffect(() => {
+    const cardParam = searchParams.get('card')
+    const canApply =
+      !deepLinkAppliedRef.current &&
+      !isLoading &&
+      !!board &&
+      !!cardParam &&
+      columns.some((col) => col.cards.some((c) => c.id === cardParam))
+    if (canApply) {
+      deepLinkAppliedRef.current = true
+      setSelectedCardId(cardParam)
+    }
+  }, [isLoading, board, columns, searchParams])
+
+  function closeCardModal() {
+    setSelectedCardId(null)
+    if (!searchParams.get('card')) return
+    const nextParams = new URLSearchParams(searchParams.toString())
+    nextParams.delete('card')
+    const query = nextParams.toString()
+    router.replace(query ? `/board/${boardId}?${query}` : `/board/${boardId}`)
   }
 
   async function handleAddCard(columnId: string, title: string) {
@@ -266,11 +303,11 @@ export default function BoardPage() {
       <CardModal
         cardId={selectedCardId}
         boardId={boardId}
-        onClose={() => setSelectedCardId(null)}
+        onClose={closeCardModal}
         onUpdate={() => mutate()}
         onDelete={() => {
           mutate()
-          setSelectedCardId(null)
+          closeCardModal()
         }}
       />
 
