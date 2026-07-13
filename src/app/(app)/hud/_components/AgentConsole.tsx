@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import useSWR from 'swr'
 import { LayoutGrid, HardDrive, Mail, Hash, Send } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import styles from '../hud.module.css'
@@ -13,6 +14,11 @@ const TARGETS: { key: Target; label: string; icon: LucideIcon }[] = [
   { key: 'email', label: 'email', icon: Mail },
   { key: 'slack', label: 'slack', icon: Hash },
 ]
+
+const ALL_TARGETS: Target[] = TARGETS.map((t) => t.key)
+
+const configFetcher = (url: string): Promise<{ enabledTargets: Target[] }> =>
+  fetch(url).then((r) => (r.ok ? r.json() : { enabledTargets: ALL_TARGETS }))
 
 const SUGGESTIONS: Record<Target, string[]> = {
   board: ['What is overdue and stalled here?', 'Which cards moved since last week?', 'Summarise open work by assignee.'],
@@ -30,12 +36,24 @@ export function AgentConsole({
   busy: boolean
   onDispatch: (target: Target, question: string) => void
 }) {
-  const [target, setTarget] = useState<Target>('board')
+  const [selectedTarget, setSelectedTarget] = useState<Target>('board')
   const [question, setQuestion] = useState('')
+
+  // Which targets this deployment's external agent can actually answer. Until the
+  // config loads we optimistically allow all four (the server still enforces).
+  const { data: config } = useSWR<{ enabledTargets: Target[] }>('/api/hud/config', configFetcher)
+  const enabledTargets = config?.enabledTargets ?? ALL_TARGETS
+
+  // Derive the effective target during render (no setState-in-effect): if the
+  // selected one is disabled, fall back to the first enabled target (prefer board)
+  // so the chair never has a disabled target selected.
+  const target: Target = enabledTargets.includes(selectedTarget)
+    ? selectedTarget
+    : (enabledTargets.includes('board') ? 'board' : enabledTargets[0]) ?? 'board'
 
   function submit() {
     const q = question.trim()
-    if (!q || !live || busy) return
+    if (!q || !live || busy || !enabledTargets.includes(target)) return
     onDispatch(target, q)
     setQuestion('')
   }
@@ -54,14 +72,16 @@ export function AgentConsole({
       <div className={styles.segs}>
         {TARGETS.map((t) => {
           const Icon = t.icon
+          const available = enabledTargets.includes(t.key)
           return (
             <button
               key={t.key}
               type="button"
               className={styles.seg}
               aria-pressed={target === t.key}
-              disabled={!live}
-              onClick={() => setTarget(t.key)}
+              disabled={!live || !available}
+              title={available ? undefined : `${t.label} is not enabled for this deployment`}
+              onClick={() => setSelectedTarget(t.key)}
             >
               <Icon size={12} />
               {t.label}
