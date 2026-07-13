@@ -60,13 +60,13 @@ describe('ChangesIndexPage', () => {
     const user = userEvent.setup()
     render(<ChangesIndexPage />)
 
-    await user.click(screen.getByRole('tab', { name: 'applied' }))
+    await user.click(screen.getByRole('button', { name: 'applied' }))
     expect(lastSWRKey()).toBe('/api/changesets?status=applied')
 
-    await user.click(screen.getByRole('tab', { name: 'rejected' }))
+    await user.click(screen.getByRole('button', { name: 'rejected' }))
     expect(lastSWRKey()).toBe('/api/changesets?status=rejected')
 
-    await user.click(screen.getByRole('tab', { name: 'expired' }))
+    await user.click(screen.getByRole('button', { name: 'expired' }))
     expect(lastSWRKey()).toBe('/api/changesets?status=expired')
   })
 
@@ -74,18 +74,23 @@ describe('ChangesIndexPage', () => {
     const user = userEvent.setup()
     render(<ChangesIndexPage />)
 
-    await user.click(screen.getByRole('tab', { name: 'all' }))
+    await user.click(screen.getByRole('button', { name: 'all' }))
     expect(lastSWRKey()).toBe('/api/changesets')
   })
 
-  it('marks the active filter tab as selected', async () => {
+  it('marks the active filter chip as pressed', async () => {
     const user = userEvent.setup()
     render(<ChangesIndexPage />)
 
-    expect(screen.getByRole('tab', { name: 'pending' })).toHaveAttribute('aria-selected', 'true')
-    await user.click(screen.getByRole('tab', { name: 'applied' }))
-    expect(screen.getByRole('tab', { name: 'applied' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: 'pending' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('button', { name: 'pending' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'applied' }))
+    expect(screen.getByRole('button', { name: 'applied' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'pending' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('groups the filter chips under an accessible group label', () => {
+    render(<ChangesIndexPage />)
+    expect(screen.getByRole('group', { name: 'Filter changes by status' })).toBeInTheDocument()
   })
 
   it('renders a row linking to /changes/<id>', () => {
@@ -122,5 +127,18 @@ describe('ChangesIndexPage', () => {
   it('shows an empty state when there are no change sets', () => {
     render(<ChangesIndexPage />)
     expect(screen.getByText('no change sets')).toBeInTheDocument()
+  })
+
+  it('shows a retry affordance instead of "loading…" forever when the fetch fails', async () => {
+    const user = userEvent.setup()
+    const mutate = vi.fn()
+    mockUseSWR.mockReturnValue(mockSWR({ data: undefined, error: new Error('500'), mutate }))
+    render(<ChangesIndexPage />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/couldn't load changes/i)
+    expect(screen.queryByText('loading…')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'retry' }))
+    expect(mutate).toHaveBeenCalled()
   })
 })

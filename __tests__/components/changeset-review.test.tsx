@@ -209,4 +209,98 @@ describe('ChangeSetReview', () => {
     render(<ChangeSetReview changeSetId="cs-1" />)
     expect(screen.getByText('loading…')).toBeInTheDocument()
   })
+
+  it('shows a retry affordance instead of "loading…" forever when the fetch fails', async () => {
+    const user = userEvent.setup()
+    const mutate = vi.fn()
+    mockUseSWR.mockReturnValue(mockSWR({ data: undefined, error: new Error('500'), mutate }))
+    render(<ChangeSetReview changeSetId="cs-1" />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/couldn't load changes/i)
+    expect(screen.queryByText('loading…')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'retry' }))
+    expect(mutate).toHaveBeenCalled()
+  })
+
+  it('apply: renders the server error message on a non-2xx response and re-enables the button', async () => {
+    const user = userEvent.setup()
+    mockUseSWR.mockReturnValue(mockSWR({ data: changeSet() }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 500, statusText: 'Internal Server Error', json: async () => ({ error: 'apply boom' }) })
+    )
+
+    render(<ChangeSetReview changeSetId="cs-1" />)
+    await user.click(screen.getByRole('checkbox', { name: /select:/i }))
+    await user.click(screen.getByRole('button', { name: 'apply selected' }))
+
+    expect(await screen.findByText('apply boom')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'apply selected' })).not.toBeDisabled()
+  })
+
+  it('apply: surfaces a message instead of an unhandled rejection when the network request fails', async () => {
+    const user = userEvent.setup()
+    mockUseSWR.mockReturnValue(mockSWR({ data: changeSet() }))
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+
+    render(<ChangeSetReview changeSetId="cs-1" />)
+    await user.click(screen.getByRole('checkbox', { name: /select:/i }))
+    await user.click(screen.getByRole('button', { name: 'apply selected' }))
+
+    expect(await screen.findByText('network down')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'apply selected' })).not.toBeDisabled()
+  })
+
+  it('reject: renders the server error message on a non-2xx response and re-enables the button', async () => {
+    const user = userEvent.setup()
+    mockUseSWR.mockReturnValue(mockSWR({ data: changeSet() }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 400, statusText: 'Bad Request', json: async () => ({ error: 'reject boom' }) })
+    )
+
+    render(<ChangeSetReview changeSetId="cs-1" />)
+    await user.click(screen.getByRole('checkbox', { name: /select:/i }))
+    await user.click(screen.getByRole('button', { name: 'reject selected' }))
+
+    expect(await screen.findByText('reject boom')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'reject selected' })).not.toBeDisabled()
+  })
+
+  it('reject: surfaces a message instead of an unhandled rejection when the network request fails', async () => {
+    const user = userEvent.setup()
+    mockUseSWR.mockReturnValue(mockSWR({ data: changeSet() }))
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+
+    render(<ChangeSetReview changeSetId="cs-1" />)
+    await user.click(screen.getByRole('checkbox', { name: /select:/i }))
+    await user.click(screen.getByRole('button', { name: 'reject selected' }))
+
+    expect(await screen.findByText('network down')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'reject selected' })).not.toBeDisabled()
+  })
+
+  it('clears the transient result banner once the changeset status actually changes', async () => {
+    const user = userEvent.setup()
+    const mutate = vi.fn()
+    mockUseSWR.mockReturnValue(mockSWR({ data: changeSet({ status: 'pending' }), mutate }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ status: 'applied', failures: 0 }) })
+    )
+
+    const { rerender } = render(<ChangeSetReview changeSetId="cs-1" />)
+    await user.click(screen.getByRole('checkbox', { name: /select:/i }))
+    await user.click(screen.getByRole('button', { name: 'apply selected' }))
+    expect(await screen.findByText(/Applied — status: applied/)).toBeInTheDocument()
+
+    // Simulate the revalidated data (triggered by mutate()) landing with the new status.
+    mockUseSWR.mockReturnValue(
+      mockSWR({ data: changeSet({ status: 'applied', items: [item({ decision: 'approved' })] }), mutate })
+    )
+    rerender(<ChangeSetReview changeSetId="cs-1" />)
+
+    expect(screen.queryByText(/Applied — status: applied/)).not.toBeInTheDocument()
+  })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { Topbar } from '@/components/design/Topbar'
@@ -40,9 +40,30 @@ const STATUS_TONE: Record<string, 'ok' | 'warn' | 'err' | undefined> = {
   expired: undefined,
 }
 
+type PostResult<T> = { ok: true; body: T } | { ok: false; message: string }
+
+/**
+ * POSTs JSON and normalizes both HTTP-error and network-level failures into
+ * the same shape, so apply() and reject() handle errors identically.
+ */
+async function postJson<T>(url: string, body: unknown): Promise<PostResult<T>> {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const json = (await res.json().catch(() => ({}))) as T & { error?: string }
+    if (!res.ok) return { ok: false, message: json.error ?? res.statusText }
+    return { ok: true, body: json }
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'Network error' }
+  }
+}
+
 export function ChangeSetReview({ changeSetId, backHref = '/changes' }: { changeSetId: string; backHref?: string }) {
   const router = useRouter()
-  const { data, mutate } = useSWR<{ changeSet: ChangeSet }>(`/api/changesets/${changeSetId}`, fetcher)
+  const { data, error, mutate } = useSWR<{ changeSet: ChangeSet }>(`/api/changesets/${changeSetId}`, fetcher)
 
   const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [applying, setApplying] = useState(false)
@@ -51,6 +72,18 @@ export function ChangeSetReview({ changeSetId, backHref = '/changes' }: { change
 
   const cs = data?.changeSet
   const isPending = cs?.status === 'pending' || cs?.status === 'partially_applied'
+
+  // Once the underlying changeset status actually moves (a fresh apply/reject
+  // decision landing), the status Chip above already reflects it — drop the
+  // now-redundant transient result banner instead of leaving it stale.
+  const currentStatus = cs?.status
+  const previousStatus = useRef(currentStatus)
+  useEffect(() => {
+    if (currentStatus && previousStatus.current !== undefined && previousStatus.current !== currentStatus) {
+      setResult(null)
+    }
+    previousStatus.current = currentStatus
+  }, [currentStatus])
 
   function toggle(itemId: string) {
     setChecked((c) => ({ ...c, [itemId]: !c[itemId] }))
@@ -66,23 +99,18 @@ export function ChangeSetReview({ changeSetId, backHref = '/changes' }: { change
     if (approvedItemIds.length === 0) return
     setApplying(true)
     setResult(null)
-    try {
-      const res = await fetch(`/api/changesets/${changeSetId}/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approvedItemIds }),
-      })
-      const body = (await res.json().catch(() => ({}))) as { status?: string; failures?: number; error?: string }
-      if (!res.ok) {
-        setResult(body.error ?? res.statusText)
-      } else {
-        setResult(`Applied — status: ${body.status}${body.failures ? `, ${body.failures} failed` : ''}`)
-        setChecked({})
-        mutate()
-      }
-    } finally {
-      setApplying(false)
+    const outcome = await postJson<{ status?: string; failures?: number }>(
+      `/api/changesets/${changeSetId}/apply`,
+      { approvedItemIds }
+    )
+    if (outcome.ok) {
+      setResult(`Applied — status: ${outcome.body.status}${outcome.body.failures ? `, ${outcome.body.failures} failed` : ''}`)
+      setChecked({})
+      mutate()
+    } else {
+      setResult(outcome.message)
     }
+    setApplying(false)
   }
 
   async function reject() {
@@ -90,23 +118,17 @@ export function ChangeSetReview({ changeSetId, backHref = '/changes' }: { change
     if (itemIds.length === 0) return
     setRejecting(true)
     setResult(null)
-    try {
-      const res = await fetch(`/api/changesets/${changeSetId}/decisions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decisions: itemIds.map((itemId) => ({ itemId, decision: 'rejected' })) }),
-      })
-      const body = (await res.json().catch(() => ({}))) as { error?: string }
-      if (!res.ok) {
-        setResult(body.error ?? res.statusText)
-      } else {
-        setResult(`Rejected ${itemIds.length} item${itemIds.length === 1 ? '' : 's'}`)
-        setChecked({})
-        mutate()
-      }
-    } finally {
-      setRejecting(false)
+    const outcome = await postJson(`/api/changesets/${changeSetId}/decisions`, {
+      decisions: itemIds.map((itemId) => ({ itemId, decision: 'rejected' })),
+    })
+    if (outcome.ok) {
+      setResult(`Rejected ${itemIds.length} item${itemIds.length === 1 ? '' : 's'}`)
+      setChecked({})
+      mutate()
+    } else {
+      setResult(outcome.message)
     }
+    setRejecting(false)
   }
 
   return (
@@ -121,7 +143,14 @@ export function ChangeSetReview({ changeSetId, backHref = '/changes' }: { change
         }
       />
       <div style={{ padding: 24, maxWidth: 820, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {!cs ? (
+        {error ? (
+          <div className="km-mono" role="alert" style={{ fontSize: 12, color: 'var(--err)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span>couldn&apos;t load changes</span>
+            <button className="km-btn km-btn--ghost km-btn--sm" onClick={() => mutate()}>
+              retry
+            </button>
+          </div>
+        ) : !cs ? (
           <div className="km-mono" style={{ fontSize: 12, color: 'var(--fg-3)' }}>loading…</div>
         ) : (
           <>

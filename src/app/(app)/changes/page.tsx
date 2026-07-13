@@ -34,7 +34,7 @@ const FILTERS = ['pending', 'applied', 'rejected', 'expired', 'all'] as const
 type FilterStatus = (typeof FILTERS)[number]
 
 function formatAge(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
+  const diffMs = Math.max(0, Date.now() - new Date(iso).getTime())
   const mins = Math.floor(diffMs / 60_000)
   if (mins < 60) return `${mins}m`
   const hrs = Math.floor(mins / 60)
@@ -45,7 +45,7 @@ function formatAge(iso: string): string {
 export default function ChangesIndexPage() {
   const [filter, setFilter] = useState<FilterStatus>('pending')
   const query = filter === 'all' ? '' : `?status=${filter}`
-  const { data } = useSWR<{ changeSets: ChangeSetSummary[] }>(`/api/changesets${query}`, fetcher)
+  const { data, error, mutate } = useSWR<{ changeSets: ChangeSetSummary[] }>(`/api/changesets${query}`, fetcher)
 
   const changeSets = data?.changeSets ?? []
 
@@ -53,15 +53,15 @@ export default function ChangesIndexPage() {
     <>
       <Topbar title="Changes" breadcrumb="// agents propose · humans approve" />
 
-      <div role="tablist" aria-label="Filter changes by status" style={{ display: 'flex', gap: 8, padding: '14px 24px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)' }}>
+      {/* Toggle buttons, not status badges — raw km-chip styling instead of the read-only Chip component. */}
+      <div role="group" aria-label="Filter changes by status" style={{ display: 'flex', gap: 8, padding: '14px 24px', borderBottom: '1px solid var(--line)', background: 'var(--bg-1)' }}>
         {FILTERS.map((f) => {
           const active = filter === f
           return (
             <button
               key={f}
               type="button"
-              role="tab"
-              aria-selected={active}
+              aria-pressed={active}
               onClick={() => setFilter(f)}
               className="km-chip"
               style={{
@@ -82,7 +82,14 @@ export default function ChangesIndexPage() {
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
             <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>{'/// change sets'}</span>
           </div>
-          {!data ? (
+          {error ? (
+            <div className="km-mono" role="alert" style={{ padding: 16, fontSize: 12, color: 'var(--err)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span>couldn&apos;t load changes</span>
+              <button className="km-btn km-btn--ghost km-btn--sm" onClick={() => mutate()}>
+                retry
+              </button>
+            </div>
+          ) : !data ? (
             <div className="km-mono" style={{ padding: 16, fontSize: 12, color: 'var(--fg-3)' }}>loading…</div>
           ) : changeSets.length === 0 ? (
             <div className="km-mono" style={{ padding: 16, fontSize: 12, color: 'var(--fg-3)' }}>no change sets</div>
