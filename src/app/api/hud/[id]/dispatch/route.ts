@@ -4,10 +4,20 @@ import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { enqueueDispatch } from '@/lib/host-hud/worker'
 import { DISPATCH_TARGETS } from '@/lib/host-hud/dispatch'
+import {
+  IN_FLIGHT_DISPATCH_STATUSES,
+  MAX_QUESTION_LENGTH,
+  isTargetEnabled,
+  maxInflightPerSession,
+  maxInflightPerOrg,
+} from '@/lib/host-hud/config'
 
 const dispatchSchema = z.object({
   target: z.enum(DISPATCH_TARGETS),
-  question: z.string().min(1, 'question is required'),
+  question: z
+    .string()
+    .min(1, 'question is required')
+    .max(MAX_QUESTION_LENGTH, `question must be at most ${MAX_QUESTION_LENGTH} characters`),
 })
 
 // GET /api/hud/[id]/dispatch — list this session's dispatches.
@@ -58,6 +68,26 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const parsed = dispatchSchema.safeParse(await req.json())
     if (!parsed.success) {
       return NextResponse.json({ error: 'Validation failed', issues: parsed.error.issues }, { status: 400 })
+    }
+
+    // Capability gate: reject a target this deployment has not enabled, so the
+    // chair gets a clear error instead of a confusing mid-meeting agent failure.
+    if (!isTargetEnabled(parsed.data.target)) {
+      return apiError(400, `Target "${parsed.data.target}" is not enabled for this deployment`)
+    }
+
+    // Concurrency caps: each dispatch is a real, paid external ClaudeMCP job.
+    // Best-effort (non-transactional) count — a small transient overshoot under
+    // concurrent POSTs is acceptable for a single-chair HUD.
+    const [sessionInFlight, orgInFlight] = await Promise.all([
+      prisma.agentDispatch.count({ where: { hudSessionId: id, status: { in: IN_FLIGHT_DISPATCH_STATUSES } } }),
+      prisma.agentDispatch.count({ where: { orgId: session.orgId, status: { in: IN_FLIGHT_DISPATCH_STATUSES } } }),
+    ])
+    if (sessionInFlight >= maxInflightPerSession()) {
+      return apiError(429, `This session already has ${sessionInFlight} agents in flight (max ${maxInflightPerSession()})`)
+    }
+    if (orgInFlight >= maxInflightPerOrg()) {
+      return apiError(429, `Your organization already has ${orgInFlight} agents in flight (max ${maxInflightPerOrg()})`)
     }
 
     const dispatch = await prisma.agentDispatch.create({

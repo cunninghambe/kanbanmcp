@@ -4,6 +4,7 @@ import { formatRecentMovements } from '@/lib/card-movement'
 import { createPendingChangeSet, changeItemInputSchema } from '@/lib/changesets'
 import { buildDispatchPrompt, parseDispatchAnswer, isDispatchTarget } from './dispatch'
 import type { DispatchTarget } from './dispatch'
+import { IN_FLIGHT_DISPATCH_STATUSES, MAX_CARDS_PER_COLUMN, maxBoardContextChars } from './config'
 import * as defaultMcp from './mcp-client'
 import type { DispatchMcpClient } from './mcp-client'
 
@@ -41,6 +42,47 @@ const TERMINAL = new Set(['done', 'failed', 'cancelled'])
 
 // ─── Board context (read-only snapshot for the board target) ─────────────────
 
+type BoardCard = { id: string; title: string; priority: string; dueDate: Date | null }
+type BoardSnapshot = {
+  name: string
+  id: string
+  columns: Array<{ name: string; id: string; cards: BoardCard[] }>
+}
+
+/**
+ * Serializes a board snapshot into the read-only prompt context, bounding both
+ * the number of cards per column and the total length so an enormous board can
+ * never inflate the external prompt (and its token cost) without limit. Pure.
+ */
+export function renderBoardContext(
+  board: BoardSnapshot,
+  movements: string | undefined,
+  opts: { maxCardsPerColumn: number; maxChars: number }
+): string {
+  const lines: string[] = [`Board "${board.name}" (id ${board.id}):`]
+  for (const col of board.columns) {
+    lines.push(`Column "${col.name}" (id ${col.id}):`)
+    if (col.cards.length === 0) lines.push('  (no cards)')
+    const shown = col.cards.slice(0, opts.maxCardsPerColumn)
+    for (const c of shown) {
+      const due = c.dueDate ? ` due ${c.dueDate.toISOString().slice(0, 10)}` : ''
+      lines.push(`  - [${c.id}] ${c.title} (priority ${c.priority}${due})`)
+    }
+    if (col.cards.length > opts.maxCardsPerColumn) {
+      lines.push(`  … (${col.cards.length - shown.length} more cards omitted)`)
+    }
+  }
+  const body = lines.join('\n')
+  const full = movements ? `${body}\n\n${movements}` : body
+  return truncateContext(full, opts.maxChars)
+}
+
+function truncateContext(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  const marker = '\n… [board context truncated]'
+  return text.slice(0, Math.max(0, maxChars - marker.length)) + marker
+}
+
 async function buildBoardContext(boardId: string, orgId: string): Promise<string | undefined> {
   const board = await prisma.board.findFirst({
     where: { id: boardId, orgId },
@@ -50,7 +92,10 @@ async function buildBoardContext(boardId: string, orgId: string): Promise<string
         include: {
           cards: {
             orderBy: { position: 'asc' },
-            select: { id: true, title: true, priority: true, dueDate: true, assigneeId: true },
+            // Fetch at most one past the cap so we can flag "more omitted"
+            // without pulling an unbounded number of rows into memory.
+            take: MAX_CARDS_PER_COLUMN + 1,
+            select: { id: true, title: true, priority: true, dueDate: true },
           },
         },
       },
@@ -58,18 +103,11 @@ async function buildBoardContext(boardId: string, orgId: string): Promise<string
   })
   if (!board) return undefined
 
-  const lines: string[] = [`Board "${board.name}" (id ${board.id}):`]
-  for (const col of board.columns) {
-    lines.push(`Column "${col.name}" (id ${col.id}):`)
-    if (col.cards.length === 0) lines.push('  (no cards)')
-    for (const c of col.cards) {
-      const due = c.dueDate ? ` due ${c.dueDate.toISOString().slice(0, 10)}` : ''
-      lines.push(`  - [${c.id}] ${c.title} (priority ${c.priority}${due})`)
-    }
-  }
   const movements = await formatRecentMovements(prisma, { boardId: board.id, orgId })
-  const body = lines.join('\n')
-  return movements ? `${body}\n\n${movements}` : body
+  return renderBoardContext(board, movements, {
+    maxCardsPerColumn: MAX_CARDS_PER_COLUMN,
+    maxChars: maxBoardContextChars(),
+  })
 }
 
 // ─── Suggestion → pending ChangeSet ──────────────────────────────────────────
@@ -130,10 +168,16 @@ async function processDispatch(dispatchId: string): Promise<void> {
   }
   const target: DispatchTarget = dispatch.target
 
-  await prisma.agentDispatch.update({
-    where: { id: dispatchId },
+  // Conditional claim: only transition to running while still in flight. A
+  // cancel that lands between the initial read and this write flips the status
+  // to `cancelled`, the claim matches nothing, and we bail without overwriting
+  // it. (In-flight — not just `queued` — so bootstrapWorker's re-enqueue of
+  // `running` dispatches interrupted by a restart can still reclaim them.)
+  const claimed = await prisma.agentDispatch.updateMany({
+    where: { id: dispatchId, status: { in: IN_FLIGHT_DISPATCH_STATUSES } },
     data: { status: 'running', startedAt: new Date() },
   })
+  if (claimed.count === 0) return
   logActivity(dispatch.orgId, 'Host Meeting HUD', 'dispatch_agent', 'agent_dispatch', dispatch.id, {
     target,
   }).catch(() => {})
@@ -169,7 +213,12 @@ async function processDispatch(dispatchId: string): Promise<void> {
       where: { id: dispatchId },
       select: { status: true },
     })
-    if (!current || current.status === 'cancelled') return
+    if (!current || current.status === 'cancelled') {
+      // The chair (or an ending session) cancelled this dispatch. Propagate to
+      // ClaudeMCP so the external job stops burning tokens, then bow out.
+      if (current?.status === 'cancelled') await cancelExternalJob(jobId)
+      return
+    }
 
     let status: Awaited<ReturnType<DispatchMcpClient['pollDispatchStatus']>>
     try {
@@ -221,6 +270,15 @@ async function finishDispatch(
   })
 }
 
+/** Best-effort cancellation of the external ClaudeMCP job; never throws. */
+async function cancelExternalJob(jobId: string): Promise<void> {
+  try {
+    await mcp().cancelDispatch(jobId)
+  } catch (err) {
+    console.warn('[host-hud] cancel propagation failed', err instanceof Error ? err.message : err)
+  }
+}
+
 async function failDispatch(dispatchId: string, err: unknown): Promise<void> {
   const msg = err instanceof Error ? err.message : String(err)
   await prisma.agentDispatch.update({
@@ -253,7 +311,7 @@ export async function bootstrapWorker(): Promise<void> {
   if (process.env.HUD_DISABLE_DISPATCH_BOOTSTRAP === '1') return
 
   const pending = await prisma.agentDispatch.findMany({
-    where: { status: { in: ['queued', 'running'] } },
+    where: { status: { in: IN_FLIGHT_DISPATCH_STATUSES } },
     select: { id: true },
   })
   for (const d of pending) enqueueDispatch(d.id)

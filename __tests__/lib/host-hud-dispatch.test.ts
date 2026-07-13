@@ -3,6 +3,7 @@ import {
   buildDispatchPrompt,
   parseDispatchAnswer,
   isDispatchTarget,
+  sanitizeCitationUrl,
 } from '../../src/lib/host-hud/dispatch'
 
 describe('isDispatchTarget', () => {
@@ -85,5 +86,70 @@ describe('parseDispatchAnswer', () => {
     expect(parsed.answer).toBe('just a plain answer')
     expect(parsed.citations).toEqual([])
     expect(parsed.suggestion).toBeNull()
+  })
+
+  it('strips an unsafe javascript: citation url to undefined', () => {
+    const parsed = parseDispatchAnswer(
+      JSON.stringify({
+        answer: 'see link',
+        citations: [{ kind: 'doc', title: 'evil', url: 'javascript:alert(1)' }],
+        confidence: null,
+        suggestion: null,
+      })
+    )
+    expect(parsed.citations).toHaveLength(1)
+    expect(parsed.citations[0].url).toBeUndefined()
+    expect(parsed.citations[0].title).toBe('evil')
+  })
+
+  it('keeps a safe https citation url intact', () => {
+    const parsed = parseDispatchAnswer(
+      JSON.stringify({
+        answer: 'a',
+        citations: [{ kind: 'doc', title: 't', url: 'https://example.com/doc' }],
+        confidence: null,
+        suggestion: null,
+      })
+    )
+    expect(parsed.citations[0].url).toBe('https://example.com/doc')
+  })
+})
+
+describe('sanitizeCitationUrl', () => {
+  // POSITIVE — safe, allow-listed absolute URLs pass through.
+  it('passes http, https, and mailto absolute URLs', () => {
+    expect(sanitizeCitationUrl('https://example.com/a?b=1#c')).toBe('https://example.com/a?b=1#c')
+    expect(sanitizeCitationUrl('http://example.com')).toBe('http://example.com/')
+    expect(sanitizeCitationUrl('mailto:legal@example.com')).toBe('mailto:legal@example.com')
+  })
+
+  // NEGATIVE — the FP boundary: script/data/other schemes and non-absolute refs.
+  it('rejects dangerous or non-allow-listed URL forms', () => {
+    expect(sanitizeCitationUrl('javascript:alert(1)')).toBeUndefined()
+    expect(sanitizeCitationUrl('data:text/html,<script>1</script>')).toBeUndefined()
+    expect(sanitizeCitationUrl('vbscript:msgbox(1)')).toBeUndefined()
+    expect(sanitizeCitationUrl('file:///etc/passwd')).toBeUndefined()
+    expect(sanitizeCitationUrl('/relative/path')).toBeUndefined()
+    expect(sanitizeCitationUrl('//protocol-relative.example.com')).toBeUndefined()
+    expect(sanitizeCitationUrl('ftp://example.com/x')).toBeUndefined()
+  })
+
+  // EDGE — whitespace, uppercase scheme, embedded control chars.
+  it('trims surrounding whitespace and accepts case-insensitive schemes', () => {
+    expect(sanitizeCitationUrl('  https://example.com/x  ')).toBe('https://example.com/x')
+    expect(sanitizeCitationUrl('HTTPS://Example.com/Path')).toBe('https://example.com/Path')
+    // A leading control char before the scheme must not sneak past parsing.
+    expect(sanitizeCitationUrl('\tjavascript:alert(1)')).toBeUndefined()
+  })
+
+  // DEGRADED — malformed / non-string inputs never throw; always undefined.
+  it('returns undefined for empty and non-string inputs', () => {
+    expect(sanitizeCitationUrl('')).toBeUndefined()
+    expect(sanitizeCitationUrl('   ')).toBeUndefined()
+    expect(sanitizeCitationUrl('not a url')).toBeUndefined()
+    expect(sanitizeCitationUrl(null)).toBeUndefined()
+    expect(sanitizeCitationUrl(undefined)).toBeUndefined()
+    expect(sanitizeCitationUrl(42)).toBeUndefined()
+    expect(sanitizeCitationUrl({})).toBeUndefined()
   })
 })
