@@ -26,6 +26,7 @@ function toQueueRow(card: AssignmentCard): QueueRow {
   return {
     id: card.id.slice(-6).toUpperCase(),
     cardId: card.id,
+    boardId: card.boardId,
     title: card.title,
     priority: card.priority,
     boardName: card.boardName,
@@ -157,7 +158,7 @@ export default function DashboardPage() {
   const aiPending = aiReviews.filter((r) => r.status === 'pending').length
 
   function handleRowClick(row: QueueRow) {
-    router.push(`/board/${row.cardId}`)
+    router.push(`/board/${row.boardId}?card=${row.cardId}`)
   }
 
   const topbarRight = (
