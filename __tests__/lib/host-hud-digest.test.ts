@@ -128,10 +128,12 @@ describe('buildDigest', () => {
 
     expect(markdown).toContain('- [x] Review roadmap')
     expect(markdown).toContain('- [ ] Discuss budget')
-    expect(markdown).toContain('- [x] send contract — @Brad Pitt, due 2026-07-15 (card: card-1)')
+    // Action checkboxes are always unchecked — an action item is a task, not
+    // "done"; `(card: id)` alone carries the has-a-card signal.
+    expect(markdown).toContain('- [ ] send contract — @Brad Pitt, due 2026-07-15 (card: card-1)')
     expect(markdown).toContain('- [ ] schedule kickoff — @Nadia Ray, due 2026-07-20')
     expect(markdown).toContain('- Move 3 cards to Done — pending, 3 items')
-    expect(markdown).toContain('- (no summary) — applied, 1 items')
+    expect(markdown).toContain('- (no summary) — applied, 1 item')
 
     // Zero notes in this fixture -> the whole section, including its header, is absent.
     expect(markdown).not.toContain('## Notes')
@@ -228,5 +230,34 @@ describe('buildDigest', () => {
     expect(digest.actions[0].assigneeName).toBeNull()
     expect(digest.markdown).toContain('- [ ] follow up')
     expect(digest.markdown).not.toContain('@')
+  })
+
+  it('DEGRADATION: a multi-line decision renders as a single markdown row with no injected header/rows', () => {
+    const digest = buildDigest(
+      fullFixtureInput({
+        entries: [entry({ kind: 'decision', text: 'Line one\r\nLine two\n## Fake header\n- fake row' })],
+      })
+    )
+    // The structured (non-markdown) shape keeps the raw text untouched.
+    expect(digest.decisions[0].text).toBe('Line one\r\nLine two\n## Fake header\n- fake row')
+
+    const rows = digest.markdown.split('\n')
+    expect(rows).toContain('- Line one Line two ## Fake header - fake row')
+    expect(digest.markdown).not.toMatch(/^## Fake header$/m)
+  })
+
+  it('POSITIVE: sections render in the spec-mandated order (Decisions, Action items, Agenda, Notes, Agent dispatches, Proposed changes)', () => {
+    const input = fullFixtureInput({
+      entries: [...fullFixtureInput().entries, entry({ kind: 'note', text: 'parking lot: revisit pricing' })],
+    })
+    const { markdown } = buildDigest(input)
+
+    const headers = ['## Decisions', '## Action items', '## Agenda (1/2)', '## Notes', '## Agent dispatches (3)', '## Proposed changes']
+    const positions = headers.map((h) => markdown.indexOf(h))
+
+    expect(positions.every((p) => p !== -1)).toBe(true)
+    for (let i = 1; i < positions.length; i++) {
+      expect(positions[i]).toBeGreaterThan(positions[i - 1])
+    }
   })
 })

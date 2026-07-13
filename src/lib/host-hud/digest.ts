@@ -144,23 +144,25 @@ function renderMarkdown(input: DigestInput, stats: DigestStats, sections: Digest
   if (input.boardName !== null) lines.push(`**Board:** ${input.boardName}`)
 
   const blocks = [
-    section(sections.decisions.length > 0, '## Decisions', sections.decisions.map((d) => `- ${d.text}`)),
+    section(sections.decisions.length > 0, '## Decisions', sections.decisions.map((d) => `- ${sanitizeLine(d.text)}`)),
     section(sections.actions.length > 0, '## Action items', sections.actions.map(formatActionLine)),
     section(
       stats.agendaTotal > 0,
       `## Agenda (${stats.agendaDone}/${stats.agendaTotal})`,
-      sections.agenda.map((a) => `- [${a.checked ? 'x' : ' '}] ${a.text}`)
+      sections.agenda.map((a) => `- [${a.checked ? 'x' : ' '}] ${sanitizeLine(a.text)}`)
     ),
-    section(sections.notes.length > 0, '## Notes', sections.notes.map((n) => `- ${n.text}`)),
+    section(sections.notes.length > 0, '## Notes', sections.notes.map((n) => `- ${sanitizeLine(n.text)}`)),
     section(
       sections.dispatches.length > 0,
       `## Agent dispatches (${sections.dispatches.length})`,
-      sections.dispatches.map((d) => `- **${d.target}** ${d.question} — ${d.status}`)
+      sections.dispatches.map((d) => `- **${d.target}** ${sanitizeLine(d.question)} — ${d.status}`)
     ),
     section(
       sections.changeSets.length > 0,
       '## Proposed changes',
-      sections.changeSets.map((c) => `- ${c.summary ?? '(no summary)'} — ${c.status}, ${c.itemCount} items`)
+      sections.changeSets.map(
+        (c) => `- ${sanitizeLine(c.summary ?? '(no summary)')} — ${c.status}, ${pluralizeItems(c.itemCount)}`
+      )
     ),
   ].filter((b): b is MarkdownBlock => b !== null)
 
@@ -173,7 +175,12 @@ function section(active: boolean, header: string, rows: string[]): MarkdownBlock
   return active ? { header, rows } : null
 }
 
-/** `- [ ] text — @assignee, due YYYY-MM-DD (card: id)`, each fragment omitted when null. */
+/**
+ * `- [ ] text — @assignee, due YYYY-MM-DD (card: id)`, each fragment omitted
+ * when null. The checkbox is always unchecked — an action item is a task,
+ * not something "done"; the `(card: id)` fragment alone carries the
+ * has-a-card signal.
+ */
 function formatActionLine(action: DigestAction): string {
   const middle = [
     action.assigneeName ? `@${action.assigneeName}` : null,
@@ -184,7 +191,16 @@ function formatActionLine(action: DigestAction): string {
   const cardFragment = action.cardId ? `(card: ${action.cardId})` : null
   const suffixParts = [middle || null, cardFragment].filter((f): f is string => f !== null)
   const suffix = suffixParts.length > 0 ? ` — ${suffixParts.join(' ')}` : ''
-  return `- [${action.cardId ? 'x' : ' '}] ${action.text}${suffix}`
+  return `- [ ] ${sanitizeLine(action.text)}${suffix}`
+}
+
+/** Collapses embedded newlines to spaces so one entry never spans multiple markdown lines. */
+function sanitizeLine(text: string): string {
+  return text.replace(/\r?\n/g, ' ')
+}
+
+function pluralizeItems(itemCount: number): string {
+  return `${itemCount} item${itemCount === 1 ? '' : 's'}`
 }
 
 function formatWhenLine(startedAt: Date, endedAt: Date | null, durationMs: number | null): string {
@@ -193,6 +209,7 @@ function formatWhenLine(startedAt: Date, endedAt: Date | null, durationMs: numbe
   return `**When:** ${started} → ${formatLocal(endedAt)} (${formatDuration(durationMs)})`
 }
 
+// v1: renders in the server process's local timezone, not the chair's — acceptable for now.
 function formatLocal(date: Date): string {
   return date.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
 }
