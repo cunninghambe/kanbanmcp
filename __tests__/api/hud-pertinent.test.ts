@@ -172,6 +172,34 @@ describe('GET /api/hud/[id]/pertinent', () => {
     expect(mockPrisma.cardMovement.findMany).not.toHaveBeenCalled()
   })
 
+  it('EDGE: a session with a boardId whose board no longer resolves (deleted/foreign-org) returns the same zeroed shape', async () => {
+    mockPrisma.board.findFirst.mockResolvedValue(null)
+    const { body } = await getPertinent()
+    expect(body.board).toBeNull()
+    expect(body.dueSoon).toEqual([])
+    expect(body.movedThisSession).toEqual([])
+    expect(body.counts).toEqual({ overdue: 0, stalled: 0, aging: 0, total: 0, dueSoon: 0, movedThisSession: 0 })
+    expect(mockPrisma.cardMovement.findMany).not.toHaveBeenCalled()
+  })
+
+  it('POSITIVE: a card that is both stalled and due-soon appears in both groups, counted once in counts.total', async () => {
+    mockPrisma.board.findFirst.mockResolvedValue({
+      id: 'board-1',
+      name: 'Board',
+      columns: [{
+        cards: [card({
+          id: 'c-both',
+          updatedAt: new Date(NOW.getTime() - 10 * DAY_MS),
+          dueDate: new Date(NOW.getTime() + 2 * DAY_MS),
+        })],
+      }],
+    })
+    const { body } = await getPertinent()
+    expect(body.stalled.map((c: { id: string }) => c.id)).toEqual(['c-both'])
+    expect(body.dueSoon.map((c: { id: string }) => c.id)).toEqual(['c-both'])
+    expect(body.counts.total).toBe(1)
+  })
+
   it('NEGATIVE: returns 404 for a HUD session in another org', async () => {
     mockPrisma.hudSession.findFirst.mockResolvedValue(null)
     const { res } = await getPertinent()

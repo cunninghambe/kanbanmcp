@@ -111,4 +111,32 @@ describe('SituationRail', () => {
 
     expect(screen.getByText('No Board Card').closest('a')).toBeNull()
   })
+
+  it('NEGATIVE: without a boardId, movement rows render without links', () => {
+    render(
+      <SituationRail
+        pertinent={pertinent({
+          movedThisSession: [{ cardId: 'c-7', cardTitle: 'No Board Move', fromColumn: 'Backlog', toColumn: 'Doing', movedAt: '2026-07-13T10:00:00.000Z' }],
+        })}
+        inFlight={0}
+        pending={0}
+        boardId={null}
+      />
+    )
+
+    expect(screen.getByText('No Board Move: Backlog → Doing').closest('a')).toBeNull()
+  })
+
+  it('EDGE: the "nothing needs attention" message is suppressed when a due-soon or moved group is populated', () => {
+    render(
+      <SituationRail
+        pertinent={pertinent({ dueSoon: [{ id: 'c-8', title: 'Due Card', priority: 'medium', columnName: 'Doing', ageDays: 0 }] })}
+        inFlight={0}
+        pending={0}
+        boardId="board-1"
+      />
+    )
+
+    expect(screen.queryByText(/nothing needs attention/)).not.toBeInTheDocument()
+  })
 })

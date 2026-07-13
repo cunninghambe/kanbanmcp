@@ -11,9 +11,10 @@ import '@testing-library/jest-dom'
 
 const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn() }))
 const searchParamsState = vi.hoisted(() => ({ value: '' }))
+const routeState = vi.hoisted(() => ({ boardId: 'board-1' }))
 
 vi.mock('next/navigation', () => ({
-  useParams: () => ({ boardId: 'board-1' }),
+  useParams: () => ({ boardId: routeState.boardId }),
   useRouter: () => router,
   useSearchParams: () => new URLSearchParams(searchParamsState.value),
 }))
@@ -66,6 +67,7 @@ vi.mock('@/components/board/CardModal', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  routeState.boardId = 'board-1'
   searchParamsState.value = ''
   boardState.board = { id: 'board-1', name: 'Test Board' }
   boardState.columns = [{ id: 'col-1', cards: [{ id: 'card-1' }, { id: 'card-2' }] }]
@@ -107,5 +109,42 @@ describe('Board page — card deep link', () => {
     expect(router.replace).toHaveBeenCalledWith('/board/board-1')
     expect(router.push).not.toHaveBeenCalled()
     expect(screen.queryByTestId('card-modal')).not.toBeInTheDocument()
+  })
+
+  it('EDGE: waits for the board to finish loading before applying the deep link', async () => {
+    searchParamsState.value = 'card=card-1'
+    boardState.isLoading = true
+    boardState.board = null
+    boardState.columns = []
+    const Page = (await import('../../src/app/(app)/board/[boardId]/page')).default
+    const { rerender } = render(<Page />)
+
+    expect(screen.queryByTestId('card-modal')).not.toBeInTheDocument()
+    expect(screen.getByText(/loading board/)).toBeInTheDocument()
+
+    boardState.isLoading = false
+    boardState.board = { id: 'board-1', name: 'Test Board' }
+    boardState.columns = [{ id: 'col-1', cards: [{ id: 'card-1' }, { id: 'card-2' }] }]
+    rerender(<Page />)
+
+    await waitFor(() => expect(screen.getByTestId('card-modal')).toHaveTextContent('card-1'))
+  })
+
+  it('IMPORTANT: resets the deep-link latch when boardId changes, so a cross-board navigation still opens the new ?card=', async () => {
+    searchParamsState.value = 'card=card-1'
+    const Page = (await import('../../src/app/(app)/board/[boardId]/page')).default
+    const { rerender } = render(<Page />)
+
+    expect(await screen.findByTestId('card-modal')).toHaveTextContent('card-1')
+
+    // App Router preserves this component instance across a param-only navigation
+    // to a different board — simulate switching boards, each carrying its own ?card=.
+    routeState.boardId = 'board-2'
+    searchParamsState.value = 'card=card-9'
+    boardState.board = { id: 'board-2', name: 'Other Board' }
+    boardState.columns = [{ id: 'col-9', cards: [{ id: 'card-9' }] }]
+    rerender(<Page />)
+
+    await waitFor(() => expect(screen.getByTestId('card-modal')).toHaveTextContent('card-9'))
   })
 })

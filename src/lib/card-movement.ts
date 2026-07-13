@@ -107,14 +107,12 @@ export type SessionMovement = {
  */
 export async function listMovementsSince(
   db: PrismaClient,
-  args: { boardId: string; orgId: string; since: Date; limit?: number }
+  args: { boardId: string; orgId: string; since: Date }
 ): Promise<SessionMovement[]> {
-  const limit = Math.min(args.limit ?? SESSION_MOVEMENTS_CAP, SESSION_MOVEMENTS_CAP)
-
   const movements = await db.cardMovement.findMany({
     where: { boardId: args.boardId, orgId: args.orgId, movedAt: { gte: args.since } },
     orderBy: { movedAt: 'desc' },
-    take: limit,
+    take: SESSION_MOVEMENTS_CAP,
     include: { card: { select: { title: true } } },
   })
   if (movements.length === 0) return []

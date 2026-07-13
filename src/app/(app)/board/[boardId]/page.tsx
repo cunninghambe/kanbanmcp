@@ -115,8 +115,15 @@ function BoardPageContent() {
 
   // Deep-link: `?card=<id>` opens that card's modal once the board has loaded,
   // provided the card actually exists on this board. Unknown/foreign ids are
-  // ignored silently. Applies once per page load, not on every board refetch.
+  // ignored silently. Applies once per board, not on every board refetch — but
+  // the App Router reuses this component instance across param-only
+  // navigation (e.g. switching boards from a link), so the latch must reset
+  // whenever boardId changes or a later deep link on a new board would be
+  // silently dropped.
   const deepLinkAppliedRef = useRef(false)
+  useEffect(() => {
+    deepLinkAppliedRef.current = false
+  }, [boardId])
   useEffect(() => {
     const cardParam = searchParams.get('card')
     const canApply =

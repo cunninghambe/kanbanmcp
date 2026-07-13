@@ -66,9 +66,14 @@ export function SituationRail({
       {pertinent && pertinent.movedThisSession.length > 0 && (
         <MovementGroup movements={pertinent.movedThisSession} boardId={boardId} />
       )}
-      {pertinent && boardId && pertinent.overdue.length === 0 && pertinent.stalled.length === 0 && (
-        <p className="km-mono" style={{ fontSize: 10, color: 'var(--ok)' }}>● nothing overdue or stalled</p>
-      )}
+      {pertinent &&
+        boardId &&
+        pertinent.overdue.length === 0 &&
+        pertinent.stalled.length === 0 &&
+        pertinent.dueSoon.length === 0 &&
+        pertinent.movedThisSession.length === 0 && (
+          <p className="km-mono" style={{ fontSize: 10, color: 'var(--ok)' }}>● nothing needs attention</p>
+        )}
 
       <p className="km-mono" style={{ fontSize: 9, color: 'var(--fg-3)', lineHeight: 1.5, marginTop: 'auto', paddingTop: 12, borderTop: '1px solid var(--line)' }}>
         agents never change the board live. anything they suggest waits for your approval.

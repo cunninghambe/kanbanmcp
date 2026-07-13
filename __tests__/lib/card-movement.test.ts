@@ -151,15 +151,14 @@ describe('listMovementsSince', () => {
     expect(out).toEqual([])
   })
 
-  it('caps the default and an explicit larger limit at 8 (boundary)', async () => {
+  it('always queries with the fixed cap of 8 (boundary)', async () => {
     const prisma = prismaWith([], [])
     const { listMovementsSince } = await import('../../src/lib/card-movement')
     await listMovementsSince(prisma, { boardId: 'board-1', orgId: 'org-1', since: new Date() })
-    await listMovementsSince(prisma, { boardId: 'board-1', orgId: 'org-1', since: new Date(), limit: 50 })
 
-    const calls = (prisma as unknown as { cardMovement: { findMany: ReturnType<typeof vi.fn> } }).cardMovement.findMany.mock.calls
-    expect(calls[0][0]).toMatchObject({ take: 8 })
-    expect(calls[1][0]).toMatchObject({ take: 8 })
+    expect((prisma as unknown as { cardMovement: { findMany: ReturnType<typeof vi.fn> } }).cardMovement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 8 })
+    )
   })
 
   it('reports a null fromColumn for a card that had no prior column (edge)', async () => {
