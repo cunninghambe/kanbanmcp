@@ -210,7 +210,7 @@ describe('ChangeSetReview', () => {
     expect(screen.getByText('loading…')).toBeInTheDocument()
   })
 
-  it('shows a retry affordance instead of "loading…" forever when the fetch fails', async () => {
+  it('shows a retry affordance instead of "loading…" forever when the fetch fails with no data', async () => {
     const user = userEvent.setup()
     const mutate = vi.fn()
     mockUseSWR.mockReturnValue(mockSWR({ data: undefined, error: new Error('500'), mutate }))
@@ -221,6 +221,14 @@ describe('ChangeSetReview', () => {
 
     await user.click(screen.getByRole('button', { name: 'retry' }))
     expect(mutate).toHaveBeenCalled()
+  })
+
+  it('renders the loaded data instead of the error panel when a background revalidation fails but stale data exists', () => {
+    mockUseSWR.mockReturnValue(mockSWR({ data: changeSet(), error: new Error('500') }))
+    render(<ChangeSetReview changeSetId="cs-1" />)
+
+    expect(screen.getByText('Move "Fix login bug" from Backlog to In Progress')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('apply: renders the server error message on a non-2xx response and re-enables the button', async () => {

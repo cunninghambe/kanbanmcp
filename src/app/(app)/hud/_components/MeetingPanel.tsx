@@ -327,7 +327,11 @@ function LogSection({
                 </button>
               )}
               {boardId && entry.cardId && (
-                <Link href={`/board/${boardId}`} className="km-mono" style={{ fontSize: 10, color: 'var(--accent)' }}>
+                <Link
+                  href={`/board/${boardId}?card=${entry.cardId}`}
+                  className="km-mono"
+                  style={{ fontSize: 10, color: 'var(--accent)' }}
+                >
                   view card →
                 </Link>
               )}

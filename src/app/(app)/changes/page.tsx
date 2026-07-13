@@ -82,7 +82,7 @@ export default function ChangesIndexPage() {
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
             <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>{'/// change sets'}</span>
           </div>
-          {error ? (
+          {error && !data ? (
             <div className="km-mono" role="alert" style={{ padding: 16, fontSize: 12, color: 'var(--err)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span>couldn&apos;t load changes</span>
               <button className="km-btn km-btn--ghost km-btn--sm" onClick={() => mutate()}>

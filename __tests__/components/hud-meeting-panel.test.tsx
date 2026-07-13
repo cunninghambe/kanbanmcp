@@ -360,7 +360,7 @@ describe('MeetingPanel — log', () => {
       />
     )
     expect(screen.queryByRole('button', { name: /Create card/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /view card/ })).toHaveAttribute('href', '/board/b1')
+    expect(screen.getByRole('link', { name: /view card/ })).toHaveAttribute('href', '/board/b1?card=card-1')
   })
 
   it('"→ card" always stays enabled when live is false', () => {

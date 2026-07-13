@@ -36,6 +36,7 @@ export function WrapUp({ sessionId }: { sessionId: string }) {
 
   const digest = digestData?.digest
   const pendingProposals = (changesetData?.changeSets ?? []).filter((c) => c.status === 'pending')
+  const proposalFrom = encodeURIComponent(`/hud/${sessionId}`)
 
   async function copyDigest() {
     if (!digest) return
@@ -63,7 +64,7 @@ export function WrapUp({ sessionId }: { sessionId: string }) {
       {!digestError && !digest && <p className={styles.mpHint}>loading digest…</p>}
       {digest && <StatsRow stats={digest.stats} />}
 
-      <ProposalsSection proposals={pendingProposals} />
+      <ProposalsSection proposals={pendingProposals} from={proposalFrom} />
 
       {digest && <DispatchHistory dispatches={digest.dispatches} />}
     </>
@@ -120,7 +121,7 @@ function Stat({ label, value, srLabel }: { label: string; value: string; srLabel
   )
 }
 
-function ProposalsSection({ proposals }: { proposals: Proposal[] }) {
+function ProposalsSection({ proposals, from }: { proposals: Proposal[]; from: string }) {
   return (
     <div className={styles.mpSection}>
       <span className="km-eyebrow" style={{ fontSize: 9, color: 'var(--fg-3)' }}>
@@ -130,7 +131,7 @@ function ProposalsSection({ proposals }: { proposals: Proposal[] }) {
       {proposals.length === 0 && <p className={styles.mpHint}>no pending proposals.</p>}
 
       {proposals.map((p) => (
-        <Link key={p.id} href={`/changes/${p.id}`} className={styles.pcard}>
+        <Link key={p.id} href={`/changes/${p.id}?from=${from}`} className={styles.pcard}>
           <span className={styles.pcard__title}>{p.summary ?? '(no summary)'}</span>
           <span className={styles.pcard__tag}>{p.itemCount} items</span>
         </Link>

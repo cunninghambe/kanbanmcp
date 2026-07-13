@@ -129,7 +129,7 @@ describe('ChangesIndexPage', () => {
     expect(screen.getByText('no change sets')).toBeInTheDocument()
   })
 
-  it('shows a retry affordance instead of "loading…" forever when the fetch fails', async () => {
+  it('shows a retry affordance instead of "loading…" forever when the fetch fails with no data', async () => {
     const user = userEvent.setup()
     const mutate = vi.fn()
     mockUseSWR.mockReturnValue(mockSWR({ data: undefined, error: new Error('500'), mutate }))
@@ -140,5 +140,13 @@ describe('ChangesIndexPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'retry' }))
     expect(mutate).toHaveBeenCalled()
+  })
+
+  it('renders the loaded rows instead of the error panel when a background revalidation fails but stale data exists', () => {
+    mockUseSWR.mockReturnValue(mockSWR({ data: { changeSets: [changeSet()] }, error: new Error('500') }))
+    render(<ChangesIndexPage />)
+
+    expect(screen.getByText('Move 3 cards to Done')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
