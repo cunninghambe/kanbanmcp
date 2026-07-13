@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { buildDigest } from '@/lib/host-hud/digest'
 import { resolveMemberNames } from '@/lib/host-hud/members'
+import { expireStaleChangeSets } from '@/lib/changesets'
 
 // GET /api/hud/[id]/digest
 // Computed end-of-meeting digest (stats + markdown) for the wrap-up view.
@@ -19,6 +20,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       select: { id: true, title: true, startedAt: true, endedAt: true, boardId: true },
     })
     if (!hud) return apiError(404, 'HUD session not found')
+
+    // Same lazy sweep GET /api/changesets runs, so the digest's own
+    // proposals/proposalsPending stats never disagree with the pending list
+    // a chair sees on a stale-reopened session.
+    await expireStaleChangeSets(prisma, session.orgId, new Date())
 
     const [boardName, entries, dispatches, changeSets] = await Promise.all([
       resolveBoardName(session.orgId, hud.boardId),

@@ -32,6 +32,7 @@ const mockPrisma = {
   },
   changeSet: {
     findMany: vi.fn(),
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
   },
   board: {
     findFirst: vi.fn(),
@@ -90,8 +91,24 @@ describe('GET /api/hud/[id]/digest', () => {
     mockPrisma.hudEntry.findMany.mockResolvedValue([])
     mockPrisma.agentDispatch.findMany.mockResolvedValue([])
     mockPrisma.changeSet.findMany.mockResolvedValue([])
+    mockPrisma.changeSet.updateMany.mockResolvedValue({ count: 0 })
     mockPrisma.board.findFirst.mockResolvedValue({ name: 'Product Board' })
     mockPrisma.orgMember.findMany.mockResolvedValue([])
+  })
+
+  it('POSITIVE: sweeps expired changesets before reading the session\'s changesets', async () => {
+    const { GET } = await import('../../src/app/api/hud/[id]/digest/route')
+    const req = makeRequest('http://localhost/api/hud/hud-1/digest')
+    const res = await GET(req, { params: Promise.resolve({ id: 'hud-1' }) })
+    expect(res.status).toBe(200)
+
+    expect(mockPrisma.changeSet.updateMany).toHaveBeenCalledWith({
+      where: { orgId: 'org-1', status: 'pending', createdAt: { lt: expect.any(Date) } },
+      data: { status: 'expired' },
+    })
+    const sweepOrder = mockPrisma.changeSet.updateMany.mock.invocationCallOrder[0]
+    const readOrder = mockPrisma.changeSet.findMany.mock.invocationCallOrder[0]
+    expect(sweepOrder).toBeLessThan(readOrder)
   })
 
   it('POSITIVE: returns 200 { digest } for a live session', async () => {

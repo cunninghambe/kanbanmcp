@@ -118,6 +118,55 @@ function Stat({
   return <div className={styles.stat}>{content}</div>
 }
 
+/** Deep-links a rail row to the card's modal on its board. */
+function cardHref(boardId: string, cardId: string): string {
+  return `/board/${boardId}?card=${cardId}`
+}
+
+/**
+ * Shared header + capped-list + link-or-div shell for the rail's card and
+ * movement groups. Row content is supplied per-group via `renderRow`; only
+ * the key/deep-link id and the row markup differ between groups.
+ */
+function Group<T>({
+  title,
+  titleColor,
+  items,
+  boardId,
+  keyFor,
+  cardIdFor,
+  renderRow,
+}: {
+  title: string
+  titleColor: string
+  items: T[]
+  boardId: string | null
+  keyFor: (item: T) => string
+  cardIdFor: (item: T) => string
+  renderRow: (item: T) => React.ReactNode
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span className="km-eyebrow" style={{ fontSize: 9, color: titleColor }}>
+        {title} · {items.length}
+      </span>
+      {items.slice(0, 6).map((item) => {
+        const key = keyFor(item)
+        const row = renderRow(item)
+        return boardId ? (
+          <Link key={key} href={cardHref(boardId, cardIdFor(item))} className={styles.pcard}>
+            {row}
+          </Link>
+        ) : (
+          <div key={key} className={styles.pcard}>
+            {row}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function CardGroup({
   title,
   tone,
@@ -130,31 +179,20 @@ function CardGroup({
   boardId: string | null
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span
-        className="km-eyebrow"
-        style={{ fontSize: 9, color: tone === 'err' ? 'var(--err)' : tone === 'warn' ? 'var(--warn)' : 'var(--accent)' }}
-      >
-        {title} · {cards.length}
-      </span>
-      {cards.slice(0, 6).map((c) => {
-        const inner = (
-          <>
-            <span className={styles.pcard__title}>{c.title}</span>
-            <span className={styles.pcard__tag}>{c.ageDays}d</span>
-          </>
-        )
-        return boardId ? (
-          <Link key={c.id} href={`/board/${boardId}?card=${c.id}`} className={styles.pcard}>
-            {inner}
-          </Link>
-        ) : (
-          <div key={c.id} className={styles.pcard}>
-            {inner}
-          </div>
-        )
-      })}
-    </div>
+    <Group
+      title={title}
+      titleColor={tone === 'err' ? 'var(--err)' : tone === 'warn' ? 'var(--warn)' : 'var(--accent)'}
+      items={cards}
+      boardId={boardId}
+      keyFor={(c) => c.id}
+      cardIdFor={(c) => c.id}
+      renderRow={(c) => (
+        <>
+          <span className={styles.pcard__title}>{c.title}</span>
+          <span className={styles.pcard__tag}>{c.ageDays}d</span>
+        </>
+      )}
+    />
   )
 }
 
@@ -166,26 +204,18 @@ function MovementGroup({
   boardId: string | null
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span className="km-eyebrow" style={{ fontSize: 9, color: 'var(--accent)' }}>
-        moved this session · {movements.length}
-      </span>
-      {movements.slice(0, 6).map((m) => {
-        const inner = (
-          <span className={styles.pcard__title}>
-            {m.cardTitle}: {m.fromColumn ?? 'new'} → {m.toColumn}
-          </span>
-        )
-        return boardId ? (
-          <Link key={`${m.cardId}-${m.movedAt}`} href={`/board/${boardId}?card=${m.cardId}`} className={styles.pcard}>
-            {inner}
-          </Link>
-        ) : (
-          <div key={`${m.cardId}-${m.movedAt}`} className={styles.pcard}>
-            {inner}
-          </div>
-        )
-      })}
-    </div>
+    <Group
+      title="moved this session"
+      titleColor="var(--accent)"
+      items={movements}
+      boardId={boardId}
+      keyFor={(m) => `${m.cardId}-${m.movedAt}`}
+      cardIdFor={(m) => m.cardId}
+      renderRow={(m) => (
+        <span className={styles.pcard__title}>
+          {m.cardTitle}: {m.fromColumn ?? 'new'} → {m.toColumn}
+        </span>
+      )}
+    />
   )
 }
