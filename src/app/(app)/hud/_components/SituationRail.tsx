@@ -42,7 +42,7 @@ export function SituationRail({
         <Stat icon={<AlertTriangle size={12} />} label="overdue" value={counts.overdue} tone="err" />
         <Stat icon={<Clock size={12} />} label="stalled" value={counts.stalled} tone="warn" />
         <Stat icon={<Activity size={12} />} label="agents live" value={inFlight} tone={inFlight ? 'ok' : 'default'} />
-        <Stat icon={<GitPullRequestArrow size={12} />} label="proposals" value={pending} tone={pending ? 'accent' : 'default'} />
+        <Stat icon={<GitPullRequestArrow size={12} />} label="proposals" value={pending} tone={pending ? 'accent' : 'default'} href="/changes" />
       </div>
 
       {!boardId && (
@@ -73,16 +73,18 @@ function Stat({
   label,
   value,
   tone,
+  href,
 }: {
   icon: React.ReactNode
   label: string
   value: number
   tone: 'err' | 'warn' | 'ok' | 'accent' | 'default'
+  href?: string
 }) {
   const color =
     tone === 'err' ? 'var(--err)' : tone === 'warn' ? 'var(--warn)' : tone === 'ok' ? 'var(--ok)' : tone === 'accent' ? 'var(--accent)' : 'var(--fg-0)'
-  return (
-    <div className={styles.stat}>
+  const content = (
+    <>
       <span className="km-eyebrow" style={{ fontSize: 9, display: 'flex', alignItems: 'center', gap: 5, color: 'var(--fg-3)' }}>
         <span style={{ color }}>{icon}</span>
         {label}
@@ -90,8 +92,16 @@ function Stat({
       <span className={styles.statValue} style={{ color }}>
         {String(value).padStart(2, '0')}
       </span>
-    </div>
+    </>
   )
+  if (href) {
+    return (
+      <Link href={href} className={styles.stat} style={{ textDecoration: 'none', color: 'inherit' }} aria-label={`${label}: ${value}. View changes.`}>
+        {content}
+      </Link>
+    )
+  }
+  return <div className={styles.stat}>{content}</div>
 }
 
 function CardGroup({
