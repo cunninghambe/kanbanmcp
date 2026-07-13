@@ -7,8 +7,10 @@ import { expireStaleChangeSets } from '@/lib/changesets'
 
 // GET /api/hud/[id]/digest
 // Computed end-of-meeting digest (stats + markdown) for the wrap-up view.
-// Read-only, so no isApiKeyAuth gate. Works on live sessions too — the chair
-// can peek mid-meeting (digest.stats.durationMs is null until the session ends).
+// No isApiKeyAuth gate — same authz pattern as /api/changesets, whose lazy
+// expiry sweep this route also runs (an idempotent, org-scoped write, not a
+// board mutation). Works on live sessions too — the chair can peek
+// mid-meeting (digest.stats.durationMs is null until the session ends).
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
   try {

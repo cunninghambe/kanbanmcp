@@ -68,6 +68,42 @@ describe('ChangeSetReviewPage — ?from= back-nav', () => {
     expect(review).toHaveAttribute('data-back-href', '')
   })
 
+  it('NEGATIVE: a leading backslash (/\\evil.com — normalized to a protocol-relative reference by the URL parser) is dropped', async () => {
+    searchParamsState.value = `from=${encodeURIComponent('/\\evil.com')}`
+    const Page = (await import('../../src/app/(app)/changes/[changeSetId]/page')).default
+    render(<Page params={{ changeSetId: 'cs-1' } as unknown as Promise<{ changeSetId: string }>} />)
+
+    const review = await screen.findByTestId('review')
+    expect(review).toHaveAttribute('data-back-href', '')
+  })
+
+  it('NEGATIVE: a tab-injected from= (/\\t//evil.com — collapses to a protocol-relative reference) is dropped', async () => {
+    searchParamsState.value = `from=${encodeURIComponent('/\t//evil.com')}`
+    const Page = (await import('../../src/app/(app)/changes/[changeSetId]/page')).default
+    render(<Page params={{ changeSetId: 'cs-1' } as unknown as Promise<{ changeSetId: string }>} />)
+
+    const review = await screen.findByTestId('review')
+    expect(review).toHaveAttribute('data-back-href', '')
+  })
+
+  it('NEGATIVE: a newline-injected from= (/\\n//evil.com — collapses to a protocol-relative reference) is dropped', async () => {
+    searchParamsState.value = `from=${encodeURIComponent('/\n//evil.com')}`
+    const Page = (await import('../../src/app/(app)/changes/[changeSetId]/page')).default
+    render(<Page params={{ changeSetId: 'cs-1' } as unknown as Promise<{ changeSetId: string }>} />)
+
+    const review = await screen.findByTestId('review')
+    expect(review).toHaveAttribute('data-back-href', '')
+  })
+
+  it('POSITIVE: a normal internal path preserves its query and hash', async () => {
+    searchParamsState.value = `from=${encodeURIComponent('/hud/abc?x=1#y')}`
+    const Page = (await import('../../src/app/(app)/changes/[changeSetId]/page')).default
+    render(<Page params={{ changeSetId: 'cs-1' } as unknown as Promise<{ changeSetId: string }>} />)
+
+    const review = await screen.findByTestId('review')
+    expect(review).toHaveAttribute('data-back-href', '/hud/abc?x=1#y')
+  })
+
   it('EDGE: no from= param at all leaves backHref unset', async () => {
     const Page = (await import('../../src/app/(app)/changes/[changeSetId]/page')).default
     render(<Page params={{ changeSetId: 'cs-1' } as unknown as Promise<{ changeSetId: string }>} />)
