@@ -2,6 +2,7 @@ import { slugifyBoardName } from './projects'
 import { buildEnrichedSpec, parseDeliverableOutput, resolveProjectPath, attachDeliverableArtifact, assertSafeDeliverablePath } from './deliverables'
 import { postDeliverySummaryComment, postProtocolWarningComment, postExecutionComment } from './comments'
 import { withKeyedLock } from '@/lib/keyed-mutex'
+import { captureException, setTag } from '@/lib/uh-oh-client'
 import type { submitClaudeBuild, pollClaudeJobStatus, listClaudeProjects } from './mcp-client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -87,7 +88,16 @@ let generation = 0
 
 function enqueue(fn: () => Promise<void>): void {
   queueTail = queueTail.then(fn).catch((err: unknown) => {
+    // Top-level catch for this in-process queue chain: nothing upstream (no
+    // request, no onRequestError) will otherwise see this error.
     console.error('[card-execution] unhandled queue error', err)
+    // setTag/captureException/setTag(null) run synchronously with no await in
+    // between, so this is atomic w.r.t. other concurrently in-flight requests
+    // on Node's single-threaded event loop - safe despite the client's tag
+    // state being a process-wide singleton, not per-call scoped.
+    setTag('worker', 'card-execution')
+    captureException(err, { mechanism: 'js-global' })
+    setTag('worker', null)
   })
 }
 
@@ -322,7 +332,15 @@ function scheduleDelayedPollTick(jobId: string, cardId: string, execId: string, 
     const timer = setTimeout(() => {
       pendingTimers.delete(timer)
       runPollTick(jobId, cardId, execId)
-        .catch((err: unknown) => console.error('[card-execution] poll tick error', err))
+        .catch((err: unknown) => {
+          // Top-level catch for this delayed poll tick: it is chained onto
+          // queueTail directly (not via enqueue()), so nothing upstream will
+          // otherwise see this error.
+          console.error('[card-execution] poll tick error', err)
+          setTag('worker', 'card-execution')
+          captureException(err, { mechanism: 'js-global' })
+          setTag('worker', null)
+        })
         .finally(resolve)
     }, delay)
     pendingTimers.add(timer)

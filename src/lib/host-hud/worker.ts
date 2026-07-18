@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { logActivity } from '@/lib/agent-activity'
 import { formatRecentMovements } from '@/lib/card-movement'
 import { createPendingChangeSet, changeItemInputSchema, validateChangeItemsOrgScope } from '@/lib/changesets'
+import { captureException } from '@/lib/uh-oh-client'
 import { buildDispatchPrompt, parseDispatchAnswer, isDispatchTarget } from './dispatch'
 import type { DispatchTarget } from './dispatch'
 import { IN_FLIGHT_DISPATCH_STATUSES, MAX_CARDS_PER_COLUMN, maxBoardContextChars } from './config'
@@ -260,6 +261,7 @@ async function finishDispatch(
       proposedChangeSetId = await maybeCreateChangeSet(dispatch, parsed.suggestion)
     } catch (err) {
       console.error('[host-hud] failed to create changeset from suggestion', err)
+      captureException(err, { mechanism: 'js-manual' })
     }
   }
 
@@ -299,7 +301,12 @@ async function failDispatch(dispatchId: string, err: unknown): Promise<void> {
 export function enqueueDispatch(dispatchId: string): void {
   if (inFlight.has(dispatchId)) return
   const p = processDispatch(dispatchId)
-    .catch((err) => console.error('[host-hud] unhandled dispatch error', dispatchId, err))
+    .catch((err) => {
+      // Top-level catch for this detached background task: nothing upstream
+      // (no request, no onRequestError) will otherwise see this error.
+      console.error('[host-hud] unhandled dispatch error', dispatchId, err)
+      captureException(err, { mechanism: 'js-global' })
+    })
     .finally(() => inFlight.delete(dispatchId))
   inFlight.set(dispatchId, p)
 }
