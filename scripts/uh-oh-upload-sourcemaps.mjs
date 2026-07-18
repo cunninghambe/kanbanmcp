@@ -1,5 +1,5 @@
 // GENERATED FILE - vendored from uh-oh scripts/vendor-sourcemap-uploader.mjs (uh-oh-upload-sourcemaps.mjs).
-// Do not hand-edit. Regenerate: node scripts/vendor-sourcemap-uploader.mjs --out C:/Users/cunni/AppData/Local/Temp/claude/G--My-Drive-Claude/a323d038-a19c-4c6d-96c4-0f35d5b8c1c2/scratchpad/vendor-snap/uh-oh-upload-sourcemaps.mjs
+// Do not hand-edit. Regenerate: node scripts/vendor-sourcemap-uploader.mjs --out scripts/uh-oh-upload-sourcemaps.mjs
 // Self-contained: zero dependencies, node:fs/path/process + built-in fetch only.
 
 // uh-oh source map uploader (self-contained, zero dependencies).
@@ -141,9 +141,12 @@ async function upsertRelease(serverBase, token, projectId, version, build, platf
 async function uploadOne(serverBase, token, releaseId, item) {
   const form = new FormData();
   const buf = readFileSync(item.absPath);
-  form.append('file', new Blob([buf]), basename(item.absPath));
+  // Fields BEFORE the file part: the server only sees multipart fields that
+  // arrive ahead of the file in the stream, so a large map appended first
+  // starves platform/bundlePath and gets a 400.
   form.append('platform', item.platform);
   form.append('bundlePath', item.bundlePath);
+  form.append('file', new Blob([buf]), basename(item.absPath));
   const headers = {};
   headers[TOKEN_HEADER] = token;
   const res = await fetch(serverBase + '/api/releases/' + releaseId + '/symbols', {
