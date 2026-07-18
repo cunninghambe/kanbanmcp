@@ -7,6 +7,8 @@ import pkg from './package.json'
 import { init } from '@/lib/uh-oh-client'
 
 init({
+  // Privacy-first usage analytics (cookie-less; no client IDs). v0.6.
+  analytics: { auto: true },
   dsn: process.env.NEXT_PUBLIC_UH_OH_DSN,
   release: `${pkg.version}+0`,
   environment: process.env.NODE_ENV,
