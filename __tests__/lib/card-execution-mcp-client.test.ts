@@ -34,20 +34,22 @@ function mcpError(message: string): string {
   })
 }
 
-function makeFetchOk(body: string): ReturnType<typeof vi.fn> {
+// vitest 4: bare `vi.fn()` is no longer assignable to `typeof fetch`; cast at
+// the factory boundary so `global.fetch =` call sites stay clean.
+function makeFetchOk(body: string): typeof fetch {
   return vi.fn().mockResolvedValue({
     ok: true,
     status: 200,
     text: async () => body,
-  } as unknown as Response)
+  } as unknown as Response) as unknown as typeof fetch
 }
 
-function makeFetchError(status: number): ReturnType<typeof vi.fn> {
+function makeFetchError(status: number): typeof fetch {
   return vi.fn().mockResolvedValue({
     ok: false,
     status,
     text: async () => `Internal Server Error`,
-  } as unknown as Response)
+  } as unknown as Response) as unknown as typeof fetch
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +221,7 @@ describe('mcp-client (card-execution)', () => {
         ok: true,
         status: 200,
         text: async () => malformed,
-      } as unknown as Response)
+      } as unknown as Response) as unknown as typeof fetch
 
       await expect(
         submitClaudeBuild({ project: 'kanban', spec: 'spec', branch: 'agent/card-00000000' })
@@ -231,7 +233,7 @@ describe('mcp-client (card-execution)', () => {
         ok: true,
         status: 200,
         text: async () => malformed,
-      } as unknown as Response)
+      } as unknown as Response) as unknown as typeof fetch
 
       await expect(pollClaudeJobStatus('abc')).rejects.toThrow(/malformed|data:|parse/i)
     })
@@ -241,7 +243,7 @@ describe('mcp-client (card-execution)', () => {
         ok: true,
         status: 200,
         text: async () => malformed,
-      } as unknown as Response)
+      } as unknown as Response) as unknown as typeof fetch
 
       await expect(listClaudeProjects()).rejects.toThrow(/malformed|data:|parse/i)
     })

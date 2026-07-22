@@ -2,7 +2,7 @@
 
 import React, { useId, useRef, useState } from 'react'
 import useSWR from 'swr'
-import { FileText, Image, File, Upload, X, Cloud } from 'lucide-react'
+import { FileText, Image as ImageIcon, File, Upload, X, Cloud } from 'lucide-react'
 import { Pip } from '@/components/design/Pip'
 import type { ArtifactResponse, AiReviewSummary } from '@/lib/artifacts'
 
@@ -12,7 +12,7 @@ const ALLOWED_ACCEPT =
   'application/pdf,text/*,image/png,image/jpeg,image/webp,application/json,application/x-yaml,text/markdown'
 
 function mimeIcon(mime: string) {
-  if (mime.startsWith('image/')) return <Image size={14} color="var(--fg-3)" />
+  if (mime.startsWith('image/')) return <ImageIcon size={14} color="var(--fg-3)" />
   if (mime === 'application/pdf' || mime.startsWith('text/')) return <FileText size={14} color="var(--fg-3)" />
   return <File size={14} color="var(--fg-3)" />
 }

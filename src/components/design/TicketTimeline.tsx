@@ -89,7 +89,7 @@ export function TicketTimeline({ comments, activity, onPostComment }: TicketTime
     <div style={{ border: '1px solid var(--line)', background: 'var(--bg-1)' }}>
       {/* Header */}
       <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
-        <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>/// activity</span>
+        <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>{'/// activity'}</span>
       </div>
 
       {allEvents.length === 0 ? (

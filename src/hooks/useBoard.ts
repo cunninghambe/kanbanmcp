@@ -5,7 +5,10 @@ import type { BoardWithColumns, ColumnWithCards } from '@/types'
 
 const fetcher = (url: string) =>
   fetch(url)
-    .then((r) => r.json())
+    .then((r) => {
+      if (!r.ok) throw new Error(String(r.status))
+      return r.json()
+    })
     .then((json) => json.board ?? json)
 
 export function useBoard(boardId: string | null) {

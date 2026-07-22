@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useEffect, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { RadioTower } from 'lucide-react'
 import { Chip } from '@/components/design/Chip'
@@ -10,7 +10,12 @@ import type { Target } from '../_components/AgentConsole'
 import { DispatchCard } from '../_components/DispatchCard'
 import type { Dispatch } from '../_components/DispatchCard'
 import { SituationRail } from '../_components/SituationRail'
+import { MeetingPanel } from '../_components/MeetingPanel'
+import type { Entry } from '../_components/MeetingPanel'
+import { WrapUp } from '../_components/WrapUp'
 import styles from '../hud.module.css'
+
+const CONFIRM_END_TIMEOUT_MS = 4000
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -44,6 +49,11 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
     fetcher,
     swrOpts(5000)
   )
+  const { data: entriesData, mutate: mutateEntries } = useSWR<{ entries: Entry[] }>(
+    `/api/hud/${id}/entries`,
+    fetcher,
+    swrOpts(10000)
+  )
 
   const session = data?.session
 
@@ -51,14 +61,20 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
 
   const [busy, setBusy] = useState(false)
   const [dispatchError, setDispatchError] = useState<string | null>(null)
+  const [confirmEnd, setConfirmEnd] = useState(false)
+  const confirmEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [, force] = useState(0)
   useEffect(() => {
     const t = setInterval(() => force((n) => n + 1), 1000)
     return () => clearInterval(t)
   }, [])
+  useEffect(() => () => {
+    if (confirmEndTimer.current) clearTimeout(confirmEndTimer.current)
+  }, [])
 
   const dispatches = data?.dispatches ?? []
   const live = session?.status === 'live'
+  const ended = session?.status === 'ended'
   const inFlight = dispatches.filter((d) => d.status === 'running' || d.status === 'queued').length
   const pending = (changeData?.changeSets ?? []).filter((c) => c.status === 'pending').length
 
@@ -92,6 +108,17 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
   async function endSession() {
     await fetch(`/api/hud/${id}/end`, { method: 'POST' })
     mutate()
+  }
+
+  function handleEndClick() {
+    if (confirmEndTimer.current) clearTimeout(confirmEndTimer.current)
+    if (!confirmEnd) {
+      setConfirmEnd(true)
+      confirmEndTimer.current = setTimeout(() => setConfirmEnd(false), CONFIRM_END_TIMEOUT_MS)
+      return
+    }
+    setConfirmEnd(false)
+    endSession()
   }
 
   return (
@@ -131,43 +158,59 @@ export default function HudSessionPage({ params }: { params: Promise<{ id: strin
             {session?.status ?? '…'}
           </Chip>
           {live && (
-            <button className="km-btn km-btn--sm" onClick={endSession}>
-              end session
+            <button className="km-btn km-btn--sm" onClick={handleEndClick}>
+              {confirmEnd ? 'confirm end?' : 'end session'}
             </button>
           )}
         </div>
       </header>
 
       <div className={styles.body}>
-        <aside className={styles.rail}>
+        <aside className={styles.rail} aria-label="situation">
           <SituationRail pertinent={pertinent} inFlight={inFlight} pending={pending} boardId={session?.boardId ?? null} />
         </aside>
 
         <main className={styles.main}>
-          <AgentConsole live={!!live} busy={busy} onDispatch={dispatch} />
-
-          {dispatchError && (
-            <div role="alert" className="km-mono" style={{ margin: '8px 0', fontSize: 11, color: 'var(--danger, #f87171)' }}>
-              {dispatchError}
-            </div>
-          )}
-
-          {dispatches.length === 0 ? (
-            <div className={styles.empty}>
-              <RadioTower size={22} style={{ color: 'var(--fg-3)' }} />
-              <div className="km-eyebrow" style={{ fontSize: 10 }}>no agents dispatched</div>
-              <p className="km-mono" style={{ fontSize: 11, color: 'var(--fg-3)', maxWidth: 340, lineHeight: 1.5 }}>
-                Ask a question above and an agent will fetch the answer while you stay in the meeting.
-              </p>
-            </div>
+          {ended ? (
+            <WrapUp sessionId={id} />
           ) : (
-            <div className={styles.fleet}>
-              {dispatches.map((d) => (
-                <DispatchCard key={d.id} dispatch={d} hudId={id} onCancel={cancel} />
-              ))}
-            </div>
+            <>
+              <AgentConsole live={!!live} busy={busy} onDispatch={dispatch} />
+
+              {dispatchError && (
+                <div role="alert" className="km-mono" style={{ margin: '8px 0', fontSize: 11, color: 'var(--danger, #f87171)' }}>
+                  {dispatchError}
+                </div>
+              )}
+
+              {dispatches.length === 0 ? (
+                <div className={styles.empty}>
+                  <RadioTower size={22} style={{ color: 'var(--fg-3)' }} />
+                  <div className="km-eyebrow" style={{ fontSize: 10 }}>no agents dispatched</div>
+                  <p className="km-mono" style={{ fontSize: 11, color: 'var(--fg-3)', maxWidth: 340, lineHeight: 1.5 }}>
+                    Ask a question above and an agent will fetch the answer while you stay in the meeting.
+                  </p>
+                </div>
+              ) : (
+                <div className={styles.fleet}>
+                  {dispatches.map((d) => (
+                    <DispatchCard key={d.id} dispatch={d} hudId={id} onCancel={cancel} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </main>
+
+        <aside className={styles.meeting} aria-label="meeting">
+          <MeetingPanel
+            sessionId={id}
+            live={!!live}
+            boardId={session?.boardId ?? null}
+            entries={entriesData?.entries ?? []}
+            onMutate={() => mutateEntries()}
+          />
+        </aside>
       </div>
     </div>
   )

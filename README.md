@@ -65,6 +65,54 @@ npm run dev                       # http://localhost:3002
 | `npm run db:push` | Apply schema to SQLite (non-destructive) |
 | `npm run db:seed` | Seed demo org + admin user + sample board (idempotent) |
 | `npm run db:seed-ai-reviewer` | Seed the AI Reviewer service user |
+| `npm run upload-sourcemaps` | Manually re-run the uh-oh source map upload + cleanup (see Deploy) without rebuilding |
+
+## Deploy
+
+Production runs under pm2 as `kanban` (`scripts/start.sh` is the pm2 entrypoint:
+it applies pending Prisma migrations non-destructively, then `exec`s
+`next start`). The `surfacemcp-kanbanmcp` app in `ecosystem.config.cjs` is an
+unrelated dev-tooling MCP surface, not this app.
+
+The documented deploy sequence, run on the host (e.g. `/opt/kanban`):
+
+```bash
+git pull                # or checkout the release branch
+npx prisma generate
+npm run build            # also runs postbuild (see below)
+pm2 restart kanban
+```
+
+### uh-oh source maps
+
+`npm run build` automatically triggers `postbuild`
+(`scripts/uh-oh-postbuild.mjs`), which uploads that build's `.next` source
+maps to the uh-oh server and deletes the browser copies, using the same
+`<version>+0` release string the app's own `instrumentation.ts` reports
+crashes under.
+
+- **To enable it for a deploy:** export `UH_OH_SERVER_URL`,
+  `UH_OH_SYMBOL_TOKEN`, and `UH_OH_PROJECT` in the shell that runs
+  `npm run build` (deploy-time only - see `.env.example`; the running app
+  never reads them, so do not add them to the app's runtime env / pm2 env).
+- **If they are unset,** the build produces no source maps at all
+  (`next.config.js` gates `productionBrowserSourceMaps` /
+  `experimental.serverSourceMaps` on their presence) and the upload script
+  prints one line and exits 0 - a normal deploy is unaffected either way.
+
+**Public-map safety guarantee:** `next start` serves `.next/static` as-is, so
+a browser `.js.map` left on disk after a build would be publicly fetchable.
+Two independent layers prevent that:
+1. Maps are only ever generated when the three envs above are present at
+   build time (otherwise there is nothing to leak in the first place).
+2. When they are generated, `scripts/uh-oh-postbuild.mjs` always finishes
+   with an unconditional sweep of `.next/static/**/*.js.map`, regardless of
+   whether the upload fully succeeded, partially failed (the vendored
+   uploader's `--delete-browser-maps` only deletes what it actually
+   uploaded), or was skipped - so no deploy can ship a public source map.
+
+Server-side maps (`.next/server/**`) are never served over HTTP by
+`next start`, so they are uploaded but not swept.
 
 ## Architecture
 

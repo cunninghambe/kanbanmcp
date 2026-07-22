@@ -455,6 +455,7 @@ model HudSession {
   endedAt   DateTime?
 
   dispatches AgentDispatch[]
+  entries    HudEntry[]
 
   @@index([orgId, status])
   @@map("hud_sessions")
@@ -488,6 +489,28 @@ model AgentDispatch {
   @@index([hudSessionId, status])
   @@index([status])
   @@map("agent_dispatches")
+}
+
+model HudEntry {
+  id           String    @id @default(cuid())
+  orgId        String
+  hudSessionId String
+  authorId     String // human User id — entries are never agent-authored
+  // values: agenda | note | decision | action
+  kind         String
+  text         String
+  position     Int       @default(0) // ordering within (session, kind)
+  checkedAt    DateTime? // agenda: when checked off
+  assigneeId   String? // action: resolved org member
+  dueDate      DateTime? // action: parsed due date
+  cardId       String? @unique // action: card created from this entry — unique guard for convert idempotence (SQLite allows multiple NULLs)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  hudSession HudSession @relation(fields: [hudSessionId], references: [id], onDelete: Cascade)
+
+  @@index([hudSessionId, kind, position])
+  @@map("hud_entries")
 }
 
 // ─── ChangeSet (chair-approved board mutations) ──────────────────────────────

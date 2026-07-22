@@ -214,7 +214,7 @@ export default function TicketDetailPage() {
           {/* Ticket header */}
           <div style={{ border: '1px solid var(--line)', background: 'var(--bg-1)' }}>
             <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>
-              <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>/// ticket</span>
+              <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>{'/// ticket'}</span>
             </div>
             <div style={{ padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -275,7 +275,7 @@ export default function TicketDetailPage() {
               padding: '10px 16px', borderBottom: '1px solid var(--line)',
               background: 'var(--bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}>
-              <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>/// description</span>
+              <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>{'/// description'}</span>
               {!editingDesc && (
                 <button
                   className="km-btn km-btn--sm km-btn--ghost"

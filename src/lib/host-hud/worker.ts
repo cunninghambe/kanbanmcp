@@ -1,9 +1,11 @@
 import { prisma } from '@/lib/db'
 import { logActivity } from '@/lib/agent-activity'
 import { formatRecentMovements } from '@/lib/card-movement'
-import { createPendingChangeSet, changeItemInputSchema } from '@/lib/changesets'
+import { createPendingChangeSet, changeItemInputSchema, validateChangeItemsOrgScope } from '@/lib/changesets'
+import { captureException } from '@/lib/uh-oh-client'
 import { buildDispatchPrompt, parseDispatchAnswer, isDispatchTarget } from './dispatch'
 import type { DispatchTarget } from './dispatch'
+import { IN_FLIGHT_DISPATCH_STATUSES, MAX_CARDS_PER_COLUMN, maxBoardContextChars } from './config'
 import * as defaultMcp from './mcp-client'
 import type { DispatchMcpClient } from './mcp-client'
 
@@ -41,6 +43,47 @@ const TERMINAL = new Set(['done', 'failed', 'cancelled'])
 
 // ─── Board context (read-only snapshot for the board target) ─────────────────
 
+type BoardCard = { id: string; title: string; priority: string; dueDate: Date | null }
+type BoardSnapshot = {
+  name: string
+  id: string
+  columns: Array<{ name: string; id: string; cards: BoardCard[] }>
+}
+
+/**
+ * Serializes a board snapshot into the read-only prompt context, bounding both
+ * the number of cards per column and the total length so an enormous board can
+ * never inflate the external prompt (and its token cost) without limit. Pure.
+ */
+export function renderBoardContext(
+  board: BoardSnapshot,
+  movements: string | undefined,
+  opts: { maxCardsPerColumn: number; maxChars: number }
+): string {
+  const lines: string[] = [`Board "${board.name}" (id ${board.id}):`]
+  for (const col of board.columns) {
+    lines.push(`Column "${col.name}" (id ${col.id}):`)
+    if (col.cards.length === 0) lines.push('  (no cards)')
+    const shown = col.cards.slice(0, opts.maxCardsPerColumn)
+    for (const c of shown) {
+      const due = c.dueDate ? ` due ${c.dueDate.toISOString().slice(0, 10)}` : ''
+      lines.push(`  - [${c.id}] ${c.title} (priority ${c.priority}${due})`)
+    }
+    if (col.cards.length > opts.maxCardsPerColumn) {
+      lines.push(`  … (${col.cards.length - shown.length} more cards omitted)`)
+    }
+  }
+  const body = lines.join('\n')
+  const full = movements ? `${body}\n\n${movements}` : body
+  return truncateContext(full, opts.maxChars)
+}
+
+function truncateContext(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  const marker = '\n… [board context truncated]'
+  return text.slice(0, Math.max(0, maxChars - marker.length)) + marker
+}
+
 async function buildBoardContext(boardId: string, orgId: string): Promise<string | undefined> {
   const board = await prisma.board.findFirst({
     where: { id: boardId, orgId },
@@ -50,7 +93,10 @@ async function buildBoardContext(boardId: string, orgId: string): Promise<string
         include: {
           cards: {
             orderBy: { position: 'asc' },
-            select: { id: true, title: true, priority: true, dueDate: true, assigneeId: true },
+            // Fetch at most one past the cap so we can flag "more omitted"
+            // without pulling an unbounded number of rows into memory.
+            take: MAX_CARDS_PER_COLUMN + 1,
+            select: { id: true, title: true, priority: true, dueDate: true },
           },
         },
       },
@@ -58,18 +104,11 @@ async function buildBoardContext(boardId: string, orgId: string): Promise<string
   })
   if (!board) return undefined
 
-  const lines: string[] = [`Board "${board.name}" (id ${board.id}):`]
-  for (const col of board.columns) {
-    lines.push(`Column "${col.name}" (id ${col.id}):`)
-    if (col.cards.length === 0) lines.push('  (no cards)')
-    for (const c of col.cards) {
-      const due = c.dueDate ? ` due ${c.dueDate.toISOString().slice(0, 10)}` : ''
-      lines.push(`  - [${c.id}] ${c.title} (priority ${c.priority}${due})`)
-    }
-  }
   const movements = await formatRecentMovements(prisma, { boardId: board.id, orgId })
-  const body = lines.join('\n')
-  return movements ? `${body}\n\n${movements}` : body
+  return renderBoardContext(board, movements, {
+    maxCardsPerColumn: MAX_CARDS_PER_COLUMN,
+    maxChars: maxBoardContextChars(),
+  })
 }
 
 // ─── Suggestion → pending ChangeSet ──────────────────────────────────────────
@@ -80,11 +119,17 @@ async function maybeCreateChangeSet(
 ): Promise<string | null> {
   // Validate each suggested item against the op schema; drop anything invalid
   // rather than failing the whole answer.
-  const validItems = suggestion.items
+  const shapeValid = suggestion.items
     .map((it) => changeItemInputSchema.safeParse(it))
     .filter((r) => r.success)
     .map((r) => (r as { success: true; data: ReturnType<typeof changeItemInputSchema.parse> }).data)
 
+  if (shapeValid.length === 0) return null
+
+  // Org-scope every id referenced inside the payloads (cardId, columnId,
+  // boardId, targetCardId), dropping items that reference a foreign/nonexistent
+  // id — same "drop invalid, don't fail the answer" stance as the shape filter.
+  const { validItems } = await validateChangeItemsOrgScope(prisma, dispatch.orgId, shapeValid)
   if (validItems.length === 0) return null
 
   // Confirm the suggested board, if any, belongs to the org (prevent cross-org IDOR).
@@ -130,10 +175,16 @@ async function processDispatch(dispatchId: string): Promise<void> {
   }
   const target: DispatchTarget = dispatch.target
 
-  await prisma.agentDispatch.update({
-    where: { id: dispatchId },
+  // Conditional claim: only transition to running while still in flight. A
+  // cancel that lands between the initial read and this write flips the status
+  // to `cancelled`, the claim matches nothing, and we bail without overwriting
+  // it. (In-flight — not just `queued` — so bootstrapWorker's re-enqueue of
+  // `running` dispatches interrupted by a restart can still reclaim them.)
+  const claimed = await prisma.agentDispatch.updateMany({
+    where: { id: dispatchId, status: { in: IN_FLIGHT_DISPATCH_STATUSES } },
     data: { status: 'running', startedAt: new Date() },
   })
+  if (claimed.count === 0) return
   logActivity(dispatch.orgId, 'mhud', 'dispatch_agent', 'agent_dispatch', dispatch.id, {
     target,
   }).catch(() => {})
@@ -149,21 +200,15 @@ async function processDispatch(dispatchId: string): Promise<void> {
   }
   const prompt = buildDispatchPrompt({ target, question: dispatch.question, context })
 
-  // Submit to ClaudeMCP — unless this dispatch was interrupted mid-flight and
-  // re-enqueued by bootstrapWorker (it already carries a jobId). In that case we
-  // resume polling the existing upstream job rather than orphan it with a new one.
+  // Submit to ClaudeMCP.
   let jobId: string
-  if (dispatch.jobId) {
-    jobId = dispatch.jobId
-  } else {
-    try {
-      const submitted = await mcp().submitDispatch({ prompt, timeoutMs: maxDispatchMs() })
-      jobId = submitted.jobId
-      await prisma.agentDispatch.update({ where: { id: dispatchId }, data: { jobId } })
-    } catch (err) {
-      await failDispatch(dispatchId, err)
-      return
-    }
+  try {
+    const submitted = await mcp().submitDispatch({ prompt, timeoutMs: maxDispatchMs() })
+    jobId = submitted.jobId
+    await prisma.agentDispatch.update({ where: { id: dispatchId }, data: { jobId } })
+  } catch (err) {
+    await failDispatch(dispatchId, err)
+    return
   }
 
   // Poll until terminal, deadline, or chair cancellation.
@@ -175,7 +220,12 @@ async function processDispatch(dispatchId: string): Promise<void> {
       where: { id: dispatchId },
       select: { status: true },
     })
-    if (!current || current.status === 'cancelled') return
+    if (!current || current.status === 'cancelled') {
+      // The chair (or an ending session) cancelled this dispatch. Propagate to
+      // ClaudeMCP so the external job stops burning tokens, then bow out.
+      if (current?.status === 'cancelled') await cancelExternalJob(jobId)
+      return
+    }
 
     let status: Awaited<ReturnType<DispatchMcpClient['pollDispatchStatus']>>
     try {
@@ -211,6 +261,7 @@ async function finishDispatch(
       proposedChangeSetId = await maybeCreateChangeSet(dispatch, parsed.suggestion)
     } catch (err) {
       console.error('[host-hud] failed to create changeset from suggestion', err)
+      captureException(err, { mechanism: 'js-manual' })
     }
   }
 
@@ -227,6 +278,15 @@ async function finishDispatch(
   })
 }
 
+/** Best-effort cancellation of the external ClaudeMCP job; never throws. */
+async function cancelExternalJob(jobId: string): Promise<void> {
+  try {
+    await mcp().cancelDispatch(jobId)
+  } catch (err) {
+    console.warn('[host-hud] cancel propagation failed', err instanceof Error ? err.message : err)
+  }
+}
+
 async function failDispatch(dispatchId: string, err: unknown): Promise<void> {
   const msg = err instanceof Error ? err.message : String(err)
   await prisma.agentDispatch.update({
@@ -241,7 +301,12 @@ async function failDispatch(dispatchId: string, err: unknown): Promise<void> {
 export function enqueueDispatch(dispatchId: string): void {
   if (inFlight.has(dispatchId)) return
   const p = processDispatch(dispatchId)
-    .catch((err) => console.error('[host-hud] unhandled dispatch error', dispatchId, err))
+    .catch((err) => {
+      // Top-level catch for this detached background task: nothing upstream
+      // (no request, no onRequestError) will otherwise see this error.
+      console.error('[host-hud] unhandled dispatch error', dispatchId, err)
+      captureException(err, { mechanism: 'js-global' })
+    })
     .finally(() => inFlight.delete(dispatchId))
   inFlight.set(dispatchId, p)
 }
@@ -259,7 +324,7 @@ export async function bootstrapWorker(): Promise<void> {
   if (process.env.HUD_DISABLE_DISPATCH_BOOTSTRAP === '1') return
 
   const pending = await prisma.agentDispatch.findMany({
-    where: { status: { in: ['queued', 'running'] } },
+    where: { status: { in: IN_FLIGHT_DISPATCH_STATUSES } },
     select: { id: true },
   })
   for (const d of pending) enqueueDispatch(d.id)

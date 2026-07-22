@@ -11,7 +11,8 @@ import {
 } from '@/lib/cards'
 import { fetchSubtree } from '@/lib/tree'
 import { shapeArtifact } from '@/lib/artifacts'
-import { proposeChangeSetInputSchema, createPendingChangeSet } from '@/lib/changesets'
+import { proposeChangeSetInputSchema, createPendingChangeSet, validateChangeItemsOrgScope } from '@/lib/changesets'
+import { captureException, setTag } from '@/lib/uh-oh-client'
 import type { AgentContext } from '@/types/index'
 
 const VALID_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
@@ -1034,6 +1035,20 @@ async function toolProposeChangeset(
     if (!board) throw { code: -32602, message: 'Board not found or access denied' }
   }
 
+  // Org-scope every id referenced inside the item payloads (cardId, columnId,
+  // boardId, targetCardId). An explicit agent action is all-or-nothing: any
+  // foreign/nonexistent id rejects the whole proposal so nothing enters the
+  // store, and the agent is told exactly which items to fix.
+  const scope = await validateChangeItemsOrgScope(prisma, agentCtx.orgId, parsed.data.items)
+  if (scope.invalid.length > 0) {
+    throw {
+      code: -32602,
+      message: `propose_changeset references ids outside your org: ${scope.invalid
+        .map((i) => i.reason)
+        .join('; ')}`,
+    }
+  }
+
   const changeSet = await createPendingChangeSet(prisma, {
     orgId: agentCtx.orgId,
     createdById: agentCtx.agentName,
@@ -1260,6 +1275,13 @@ export async function handleMcpRequest(body: unknown, agentCtx: AgentContext): P
     }
     // Unexpected error — do not leak internal error details to callers
     console.error('[MCP] Unhandled tool error:', err)
+    // setTag/captureException/setTag(null) run with no `await` between them,
+    // so this is atomic w.r.t. other concurrently in-flight requests on
+    // Node's single-threaded event loop - safe despite the client's tag
+    // state being a process-wide singleton, not per-call scoped.
+    setTag('mcp_tool', toolName)
+    captureException(err, { mechanism: 'js-manual' })
+    setTag('mcp_tool', null)
     return rpcError(id, -32603, 'Internal server error')
   }
 }

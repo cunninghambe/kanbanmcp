@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (!result.ok) {
       if (result.reason === 'not_found') return apiError(404, 'ChangeSet not found')
       if (result.reason === 'already_applied') return apiError(409, 'ChangeSet already applied')
-      if (result.reason === 'expired') return apiError(409, 'ChangeSet expired')
+      if (result.reason === 'invalid_status') return apiError(409, 'ChangeSet is not in an appliable state')
       return apiError(400, 'Could not apply ChangeSet')
     }
 

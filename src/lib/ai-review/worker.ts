@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 import { getStorageDriver } from '@/lib/storage'
 import { withKeyedLock } from '@/lib/keyed-mutex'
+import { captureException, setTag } from '@/lib/uh-oh-client'
 import { AI_REVIEWER_EMAIL, ensureAiReviewerUser } from '../../../prisma/seed-ai-reviewer'
 import { resolveEffectiveAiReviewParams } from './inheritance'
 import { extractContent, PDF_SIZE_CAP } from './extractors'
@@ -64,6 +65,15 @@ async function getReviewerUserId(): Promise<string | null> {
     return user.id
   } catch (err) {
     console.error('[ai-review-worker] Failed to resolve AI Reviewer user:', err)
+    // Not tracked on any AiReview row (the review itself may already be
+    // 'done' - only the follow-up comment post is affected), so report it
+    // directly. setTag/captureException/setTag(null) run synchronously with
+    // no await in between, so this is atomic w.r.t. other concurrently
+    // in-flight requests on Node's single-threaded event loop - safe despite
+    // the client's tag state being a process-wide singleton, not per-call scoped.
+    setTag('worker', 'ai-review')
+    captureException(err, { mechanism: 'js-manual' })
+    setTag('worker', null)
     return null
   }
 }
@@ -91,7 +101,12 @@ async function processJob(reviewId: string): Promise<void> {
   try {
     await runReview(reviewId)
   } catch (err) {
+    // Top-level catch for this in-process queue chain: nothing upstream (no
+    // request, no onRequestError) will otherwise see this error.
     console.error('[ai-review-worker] Unhandled error in processJob', reviewId, err)
+    setTag('worker', 'ai-review')
+    captureException(err, { mechanism: 'js-global' })
+    setTag('worker', null)
   } finally {
     inFlightIds.delete(reviewId)
   }

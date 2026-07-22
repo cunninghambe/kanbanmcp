@@ -6,6 +6,48 @@
 
 const http = require('http')
 
+// uh-oh crash reporting (self-hosted, github.com/cunninghambe/uh-oh). This
+// bridge is a standalone CommonJS script with no Next.js/webpack build step,
+// so the vendored TypeScript client (src/lib/uh-oh-client.ts) is loaded via
+// ts-node's transpile-only require hook. ts-node is already a devDependency
+// here (see .npmrc's `include=dev`, which keeps devDependencies installed
+// even under NODE_ENV=production, same convention the `db:seed` npm script
+// relies on). If ts-node or the client fail to load for any reason, crash
+// reporting is skipped rather than breaking the bridge.
+let uhOhClient = null
+try {
+  // skipProject: true - do not inherit the repo's tsconfig.json (its
+  // moduleResolution: "bundler" is for Next.js's own bundler and is
+  // incompatible with a plain CommonJS require() here).
+  require('ts-node').register({
+    transpileOnly: true,
+    skipProject: true,
+    compilerOptions: { module: 'CommonJS', target: 'es2019', moduleResolution: 'node' },
+  })
+  uhOhClient = require('./src/lib/uh-oh-client.ts')
+  const pkg = require('./package.json')
+  uhOhClient.init({
+    dsn: process.env.UH_OH_DSN,
+    release: `${pkg.version}+0`,
+    environment: process.env.NODE_ENV,
+    // debug MUST stay false/undefined: Node's console.debug writes to
+    // stdout, and stdout is the MCP JSON-RPC wire for this bridge - any
+    // stray write would corrupt the protocol stream.
+  })
+} catch (err) {
+  process.stderr.write(`[mcp-bridge] uh-oh init skipped: ${err && err.message}\n`)
+}
+
+/** Never throws; safely no-ops if uh-oh failed to load above. */
+function captureException(err, opts) {
+  if (!uhOhClient) return
+  try {
+    uhOhClient.captureException(err, opts)
+  } catch {
+    // crash reporting must never crash the bridge
+  }
+}
+
 const API_URL = process.env.KANBAN_API_URL || 'http://localhost:3002/api/mcp'
 const API_KEY = process.env.KANBAN_API_KEY || ''
 
@@ -137,6 +179,10 @@ process.stdin.on('data', async (chunk) => {
         process.stdout.write(JSON.stringify(response) + '\n')
       }
     } catch (err) {
+      // Covers both malformed input (JSON.parse) and unexpected failures from
+      // handleMessage (e.g. postRpc/getToolManifest network errors) - the
+      // response label below predates this wiring and is left unchanged.
+      captureException(err, { mechanism: 'js-manual' })
       process.stdout.write(JSON.stringify({
         jsonrpc: '2.0',
         id: null,
@@ -146,4 +192,10 @@ process.stdin.on('data', async (chunk) => {
   }
 })
 
-process.stdin.on('end', () => process.exit(0))
+process.stdin.on('end', () => {
+  if (uhOhClient) {
+    uhOhClient.flush(2000).finally(() => process.exit(0))
+  } else {
+    process.exit(0)
+  }
+})

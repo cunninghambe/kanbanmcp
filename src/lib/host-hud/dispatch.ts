@@ -81,6 +81,27 @@ export function buildDispatchPrompt(args: BuildPromptArgs): string {
   ].join('\n')
 }
 
+const SAFE_CITATION_SCHEMES = new Set(['http:', 'https:', 'mailto:'])
+
+/**
+ * Sanitizes a model-supplied citation URL before it is stored or rendered as an
+ * anchor `href`. Returns the normalized href for an absolute http/https/mailto
+ * URL, or `undefined` for anything else (script/data URLs, relative or
+ * protocol-relative refs, malformed or non-string input). Never throws.
+ */
+export function sanitizeCitationUrl(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  let url: URL
+  try {
+    url = new URL(trimmed)
+  } catch {
+    return undefined
+  }
+  return SAFE_CITATION_SCHEMES.has(url.protocol) ? url.href : undefined
+}
+
 /**
  * Extracts the structured answer from the agent output. Tolerant: accepts a
  * fenced ```json block, a bare JSON object, or falls back to treating the whole
@@ -115,7 +136,7 @@ export function parseDispatchAnswer(output: string): DispatchAnswer {
           kind: typeof c.kind === 'string' ? c.kind : 'unknown',
           id: typeof c.id === 'string' ? c.id : undefined,
           title: typeof c.title === 'string' ? c.title : undefined,
-          url: typeof c.url === 'string' ? c.url : undefined,
+          url: sanitizeCitationUrl(c.url),
           quote: typeof c.quote === 'string' ? c.quote : undefined,
         }))
     : []

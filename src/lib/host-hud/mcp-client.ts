@@ -87,7 +87,18 @@ export async function pollDispatchStatus(jobId: string): Promise<{
   }
 }
 
+/**
+ * Requests cancellation of a running/queued ClaudeMCP job (SIGTERM→SIGKILL on the
+ * server side). Best-effort: the caller must not depend on it succeeding — the
+ * local dispatch is already terminal by the time this runs.
+ */
+export async function cancelDispatch(jobId: string): Promise<void> {
+  const url = getMcpUrl()
+  await postClaudeMCP(url, 'claude_job_cancel', { jobId })
+}
+
 export type DispatchMcpClient = {
   submitDispatch: typeof submitDispatch
   pollDispatchStatus: typeof pollDispatchStatus
+  cancelDispatch: typeof cancelDispatch
 }

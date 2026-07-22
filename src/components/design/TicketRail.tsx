@@ -93,7 +93,7 @@ export function TicketRail({ ticket, saving, onPatch, onDelete }: TicketRailProp
     >
       {/* Header */}
       <div style={{ borderBottom: '1px solid var(--line)', padding: '10px 16px', background: 'var(--bg-2)' }}>
-        <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>/// details</span>
+        <span className="km-eyebrow" style={{ fontSize: 10, color: 'var(--fg-1)' }}>{'/// details'}</span>
       </div>
 
       {/* Status + priority selects */}

@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/uh-oh-postbuild.mjs",
+    "upload-sourcemaps": "node scripts/uh-oh-postbuild.mjs",
     "start": "next start",
     "lint": "eslint .",
     "db:push": "npx prisma db push",

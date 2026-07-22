@@ -5,6 +5,7 @@ import type { PipTone } from './Pip'
 export interface QueueRow {
   id: string
   cardId: string
+  boardId: string
   title: string
   priority: string
   boardName: string

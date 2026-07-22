@@ -8,8 +8,13 @@ const E2E_PORT = 3099
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60_000,
-  expect: { timeout: 10_000 },
+  // Next.js dev server (Turbopack) compiles each route on first request. The
+  // post-HUD-merge app is large enough that a cold first hit on a
+  // not-yet-compiled route/API handler can take tens of seconds — these
+  // budgets give that headroom without masking genuine hangs. See
+  // e2e/03-subcard-tree.spec.ts for the concrete flaky case this covers.
+  timeout: 120_000,
+  expect: { timeout: 20_000 },
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

@@ -12,6 +12,7 @@ import {
   LogOut,
   Plus,
   RadioTower,
+  GitPullRequestArrow,
 } from 'lucide-react'
 import { useSession } from '@/hooks/useSession'
 import { Wordmark } from './Wordmark'
@@ -295,6 +296,10 @@ export function DesignSidebar() {
         <Link href="/hud" style={navStyle(isActive('/hud'))}>
           <RadioTower size={14} />
           <span style={{ flex: 1 }}>mhud</span>
+        </Link>
+        <Link href="/changes" style={navStyle(isActive('/changes'))}>
+          <GitPullRequestArrow size={14} />
+          <span style={{ flex: 1 }}>changes</span>
         </Link>
         <Link href="/helpdesk" style={navStyle(isActive('/helpdesk'))}>
           <LifeBuoy size={14} />
