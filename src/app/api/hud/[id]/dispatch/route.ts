@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
 import { enqueueDispatch } from '@/lib/host-hud/worker'
 import { DISPATCH_TARGETS } from '@/lib/host-hud/dispatch'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 const dispatchSchema = z.object({
   target: z.enum(DISPATCH_TARGETS),
@@ -47,6 +48,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const session = await requireSession(req)
     if (session.isApiKeyAuth) return apiError(403, 'Dispatching an agent requires a human session')
     await requireOrgRole(session, session.orgId, 'MEMBER')
+
+    // Rate limit: 20 dispatches per user per 60s to stop a chair (or a loop)
+    // from flooding ClaudeMCP. Skipped during Playwright e2e so suites are not blocked.
+    if (!process.env.PLAYWRIGHT_E2E) {
+      const rateKey = `hud-dispatch:${session.userId ?? id}`
+      if (!checkRateLimit(rateKey, 20, 60_000)) {
+        return apiError(429, 'Too many dispatches, slow down')
+      }
+    }
 
     const hud = await prisma.hudSession.findFirst({
       where: { id, orgId: session.orgId },

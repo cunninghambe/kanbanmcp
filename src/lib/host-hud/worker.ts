@@ -149,15 +149,21 @@ async function processDispatch(dispatchId: string): Promise<void> {
   }
   const prompt = buildDispatchPrompt({ target, question: dispatch.question, context })
 
-  // Submit to ClaudeMCP.
+  // Submit to ClaudeMCP — unless this dispatch was interrupted mid-flight and
+  // re-enqueued by bootstrapWorker (it already carries a jobId). In that case we
+  // resume polling the existing upstream job rather than orphan it with a new one.
   let jobId: string
-  try {
-    const submitted = await mcp().submitDispatch({ prompt, timeoutMs: maxDispatchMs() })
-    jobId = submitted.jobId
-    await prisma.agentDispatch.update({ where: { id: dispatchId }, data: { jobId } })
-  } catch (err) {
-    await failDispatch(dispatchId, err)
-    return
+  if (dispatch.jobId) {
+    jobId = dispatch.jobId
+  } else {
+    try {
+      const submitted = await mcp().submitDispatch({ prompt, timeoutMs: maxDispatchMs() })
+      jobId = submitted.jobId
+      await prisma.agentDispatch.update({ where: { id: dispatchId }, data: { jobId } })
+    } catch (err) {
+      await failDispatch(dispatchId, err)
+      return
+    }
   }
 
   // Poll until terminal, deadline, or chair cancellation.

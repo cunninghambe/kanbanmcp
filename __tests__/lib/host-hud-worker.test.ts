@@ -116,6 +116,52 @@ describe('host-hud worker', () => {
     expect(mockPrisma.comment.create).not.toHaveBeenCalled()
   }, 10000)
 
+  it('re-polls an existing jobId on re-enqueue without re-submitting to ClaudeMCP', async () => {
+    // A running dispatch interrupted mid-flight and re-enqueued by bootstrapWorker:
+    // it already carries a jobId, so the worker must resume polling that job and
+    // NOT create a new upstream job.
+    mockPrisma.agentDispatch.findUnique.mockResolvedValue(
+      queuedDispatch({ status: 'running', jobId: 'job-existing' })
+    )
+
+    const client = mcp(
+      JSON.stringify({ answer: 'resumed answer', citations: [], confidence: 0.9, suggestion: null })
+    )
+    __setMcpClientForTests(client)
+
+    enqueueDispatch('disp-1')
+    await flushForTests()
+
+    // No new upstream job was created …
+    expect(client.submitDispatch).not.toHaveBeenCalled()
+    // … but the existing job was polled …
+    expect(client.pollDispatchStatus).toHaveBeenCalledWith('job-existing')
+    // … and the dispatch completed.
+    const done = findUpdate((d) => d.status === 'done')
+    expect(done).toBeDefined()
+    expect(done![0].data.answer).toContain('resumed answer')
+  }, 10000)
+
+  it('submits then polls a fresh queued dispatch (jobId null)', async () => {
+    mockPrisma.agentDispatch.findUnique.mockResolvedValue(
+      queuedDispatch({ status: 'queued', jobId: null })
+    )
+
+    const client = mcp(
+      JSON.stringify({ answer: 'fresh answer', citations: [], confidence: 0.8, suggestion: null })
+    )
+    __setMcpClientForTests(client)
+
+    enqueueDispatch('disp-1')
+    await flushForTests()
+
+    expect(client.submitDispatch).toHaveBeenCalledTimes(1)
+    expect(client.pollDispatchStatus).toHaveBeenCalledWith('job-1')
+    const done = findUpdate((d) => d.status === 'done')
+    expect(done).toBeDefined()
+    expect(done![0].data.answer).toContain('fresh answer')
+  }, 10000)
+
   it('marks the dispatch failed when ClaudeMCP submission throws', async () => {
     __setMcpClientForTests({
       submitDispatch: vi.fn().mockRejectedValue(new Error('mcp down')),
