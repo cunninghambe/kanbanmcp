@@ -98,11 +98,15 @@ describe('formatRecentMovements', () => {
   })
 
   it('appends a not-tracked note when the window predates the earliest record (edge)', async () => {
+    // Dates are relative to now so the assertion is clock-independent: the
+    // earliest record sits inside the window while the window start (now −
+    // sinceDays) predates it, which is exactly what triggers the note.
+    const recent = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
     const prisma = prismaWith(
-      [{ cardId: 'c1', fromColumnId: 'col-1', toColumnId: 'col-2', movedById: 'AgentX', movedByKind: 'agent', movedAt: new Date('2026-06-16T10:00:00Z'), card: { title: 'X' } }],
+      [{ cardId: 'c1', fromColumnId: 'col-1', toColumnId: 'col-2', movedById: 'AgentX', movedByKind: 'agent', movedAt: recent, card: { title: 'X' } }],
       [{ id: 'col-1', name: 'A' }, { id: 'col-2', name: 'B' }],
       [],
-      { movedAt: new Date('2026-06-16T09:00:00Z') }
+      { movedAt: new Date(recent.getTime() - 60 * 60 * 1000) }
     )
     const { formatRecentMovements } = await import('../../src/lib/card-movement')
     const out = await formatRecentMovements(prisma, { boardId: 'board-1', orgId: 'org-1', sinceDays: 30 })
