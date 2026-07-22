@@ -11,7 +11,7 @@ export default function ApiKeysPage() {
         <div className="max-w-4xl mx-auto">
           <div className="mb-6">
             <p className="text-sm mt-1" style={{ color: 'var(--fg-2)' }}>
-              API keys allow agents and external services to authenticate with the KanbanMCP API.
+              API keys allow agents and external services to authenticate with the mhud API.
               Keys are scoped to your organization.
             </p>
           </div>

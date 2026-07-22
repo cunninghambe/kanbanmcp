@@ -144,7 +144,7 @@ async function maybeCreateChangeSet(
 
   const changeSet = await createPendingChangeSet(prisma, {
     orgId: dispatch.orgId,
-    createdById: 'Host Meeting HUD',
+    createdById: 'mhud',
     boardId,
     summary: suggestion.summary,
     hudSessionId: dispatch.hudSessionId,
@@ -152,7 +152,7 @@ async function maybeCreateChangeSet(
     items: validItems,
   })
 
-  logActivity(dispatch.orgId, 'Host Meeting HUD', 'propose_changeset', 'change_set', changeSet.id, {
+  logActivity(dispatch.orgId, 'mhud', 'propose_changeset', 'change_set', changeSet.id, {
     dispatchId: dispatch.id,
     itemCount: changeSet.items.length,
   }).catch(() => {})
@@ -185,7 +185,7 @@ async function processDispatch(dispatchId: string): Promise<void> {
     data: { status: 'running', startedAt: new Date() },
   })
   if (claimed.count === 0) return
-  logActivity(dispatch.orgId, 'Host Meeting HUD', 'dispatch_agent', 'agent_dispatch', dispatch.id, {
+  logActivity(dispatch.orgId, 'mhud', 'dispatch_agent', 'agent_dispatch', dispatch.id, {
     target,
   }).catch(() => {})
 

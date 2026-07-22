@@ -104,7 +104,7 @@ describe('POST /api/cron/digest', () => {
     expect(mockSendEmail).toHaveBeenCalledTimes(1)
     expect(mockSendEmail).toHaveBeenCalledWith(
       'alice@example.com',
-      'Your KanbanMCP daily digest',
+      'Your mhud daily digest',
       expect.any(String)
     )
   })

@@ -1,4 +1,4 @@
-// Deployment-tuning knobs for the Host Meeting HUD dispatch path. Reads only
+// Deployment-tuning knobs for the mhud dispatch path. Reads only
 // `process.env` (no I/O), so every helper is trivially unit-testable. Centralized
 // here so the dispatch route (server enforcement) and the config API (client
 // gating) share one source of truth.

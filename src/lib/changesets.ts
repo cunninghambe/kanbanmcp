@@ -258,6 +258,8 @@ export async function createPendingChangeSet(
   prisma: PrismaClient,
   args: CreatePendingChangeSetArgs
 ) {
+  const ttlDays = Number(process.env.CHANGESET_TTL_DAYS) || 14
+  const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
   return prisma.changeSet.create({
     data: {
       orgId: args.orgId,
@@ -265,6 +267,7 @@ export async function createPendingChangeSet(
       hudSessionId: args.hudSessionId ?? null,
       dispatchId: args.dispatchId ?? null,
       status: 'pending',
+      expiresAt,
       createdById: args.createdById,
       summary: args.summary ?? null,
       items: {
@@ -378,9 +381,8 @@ export async function applyChangeSet(prisma: PrismaClient, changeSetId: string, 
   })
   if (!changeSet) return { ok: false as const, reason: 'not_found' as const }
   if (changeSet.status === 'applied') return { ok: false as const, reason: 'already_applied' as const }
-  // Only pending/partially_applied sets are appliable — expired and rejected
-  // sets (both introduced by the expiry sweep and decision recompute below)
-  // are terminal states a human can no longer act on via apply.
+  // Only pending/partially_applied sets are appliable — expired (WI-1 expiry
+  // sweep) and rejected sets are terminal states a human can no longer apply.
   if (changeSet.status !== 'pending' && changeSet.status !== 'partially_applied') {
     return { ok: false as const, reason: 'invalid_status' as const }
   }

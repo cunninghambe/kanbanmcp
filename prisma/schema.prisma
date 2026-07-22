@@ -532,6 +532,7 @@ model ChangeSet {
   summary      String?
   createdAt    DateTime  @default(now())
   appliedAt    DateTime?
+  expiresAt    DateTime? // proposal expiry; set at creation to now + CHANGESET_TTL_DAYS
 
   items ChangeItem[]
 

@@ -68,7 +68,7 @@ export default function HudIndexPage() {
 
   return (
     <>
-      <Topbar title="Host Meeting HUD" breadcrumb="// live in-meeting copilot" />
+      <Topbar title="mhud" breadcrumb="// live in-meeting copilot" />
       <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 880 }}>
         <section style={{ border: '1px solid var(--line)', background: 'var(--bg-1)' }}>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--line)', background: 'var(--bg-2)' }}>

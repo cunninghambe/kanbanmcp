@@ -11,7 +11,7 @@ function buildDigestBody(
     overdue: { title: string; boardName: string }[]
   }
 ): string {
-  const lines: string[] = [`<h2>Hi ${userName},</h2>`, `<p>Here's your KanbanMCP daily digest:</p>`]
+  const lines: string[] = [`<h2>Hi ${userName},</h2>`, `<p>Here's your mhud daily digest:</p>`]
 
   if (categories.overdue.length > 0) {
     lines.push('<h3>Overdue</h3><ul>')
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       overdue: overdueCards.map((c) => ({ title: c.title, boardName: c.board.name })),
     })
 
-    await sendEmail(user.email, 'Your KanbanMCP daily digest', body)
+    await sendEmail(user.email, 'Your mhud daily digest', body)
     sent++
   }
 

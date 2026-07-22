@@ -49,7 +49,7 @@ export function Sidebar() {
   return (
     <aside className="w-64 min-h-screen bg-slate-800 flex flex-col">
       <div className="px-4 py-5 border-b border-slate-700">
-        <h1 className="text-xl font-bold text-white">KanbanMCP</h1>
+        <h1 className="text-xl font-bold text-white">mhud</h1>
         {org && <p className="text-slate-400 text-xs mt-0.5 truncate">{org.name}</p>}
       </div>
 

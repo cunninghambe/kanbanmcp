@@ -18,8 +18,8 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'KanbanMCP',
-  description: 'AI-powered kanban board',
+  title: 'mhud',
+  description: 'Live meeting copilot on an agent-native kanban board.',
 }
 
 const themeInitScript = `(function(){try{var t=localStorage.getItem('kanban-theme');if(t==='dark'||(t===null&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.setAttribute('data-theme','dark');}else if(t==='light'){document.documentElement.setAttribute('data-theme','light');}}catch(e){}})()`

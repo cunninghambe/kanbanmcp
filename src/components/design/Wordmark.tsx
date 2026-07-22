@@ -18,7 +18,7 @@ export function Wordmark({ size = 16 }: WordmarkProps) {
           color: 'var(--fg-0)',
         }}
       >
-        kanban<span style={{ color: 'var(--accent)' }}>·</span>mcp
+m<span style={{ color: 'var(--accent)' }}>·</span>hud
       </span>
     </div>
   )

@@ -17,7 +17,7 @@ export function Header({ title, breadcrumbs }: HeaderProps) {
     if (pathname.startsWith('/activity')) return 'Activity'
     if (pathname.startsWith('/board/')) return 'Board'
     if (pathname.startsWith('/sprints/')) return 'Sprints'
-    return 'KanbanMCP'
+    return 'mhud'
   })()
 
   return (

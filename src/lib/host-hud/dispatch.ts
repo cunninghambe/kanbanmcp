@@ -1,4 +1,4 @@
-// Pure helpers for the Host Meeting HUD dispatch: build the target-aware prompt
+// Pure helpers for mhud (the meeting HUD) dispatch: build the target-aware prompt
 // and parse the agent's structured answer. No I/O here so it is trivially testable.
 
 export const DISPATCH_TARGETS = ['board', 'drive', 'email', 'slack'] as const
@@ -35,7 +35,7 @@ export interface DispatchAnswer {
 }
 
 const TARGET_GUIDANCE: Record<DispatchTarget, string> = {
-  board: 'Answer from the KanbanMCP boards/cards. Use only the board context provided and your read-only board tools.',
+  board: 'Answer from the mhud boards/cards. Use only the board context provided and your read-only board tools.',
   drive: 'Answer from Google Drive (documents, sheets, slides) the chair has access to. Read-only.',
   email: 'Answer from the chair\'s email. Read-only — never send anything.',
   slack: 'Answer from Slack channels/DMs the chair has access to. Read-only — never post anything.',

@@ -36,11 +36,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (!result.ok) {
       if (result.reason === 'not_found') return apiError(404, 'ChangeSet not found')
       if (result.reason === 'already_applied') return apiError(409, 'ChangeSet already applied')
+      if (result.reason === 'invalid_status') return apiError(409, 'ChangeSet is not in an appliable state')
       return apiError(400, 'Could not apply ChangeSet')
     }
 
     for (const applied of result.applied) {
-      logActivity(session.orgId, 'Host Meeting HUD', `apply_${applied.op}`, applied.resourceType, applied.resourceId, {
+      logActivity(session.orgId, 'mhud', `apply_${applied.op}`, applied.resourceType, applied.resourceId, {
         changeSetId: id,
         itemId: applied.itemId,
         approvedById: session.userId,
