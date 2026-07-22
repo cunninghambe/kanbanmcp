@@ -95,6 +95,8 @@ export async function createPendingChangeSet(
   prisma: PrismaClient,
   args: CreatePendingChangeSetArgs
 ) {
+  const ttlDays = Number(process.env.CHANGESET_TTL_DAYS) || 14
+  const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
   return prisma.changeSet.create({
     data: {
       orgId: args.orgId,
@@ -102,6 +104,7 @@ export async function createPendingChangeSet(
       hudSessionId: args.hudSessionId ?? null,
       dispatchId: args.dispatchId ?? null,
       status: 'pending',
+      expiresAt,
       createdById: args.createdById,
       summary: args.summary ?? null,
       items: {
@@ -117,6 +120,23 @@ export async function createPendingChangeSet(
     },
     include: { items: true },
   })
+}
+
+/**
+ * Flips stale proposals to `expired`: any ChangeSet still `pending` or
+ * `partially_applied` whose `expiresAt` is before `now`. Returns the number of
+ * rows flipped. Idempotent — a second run over the same clock flips nothing
+ * because expired rows no longer match the status filter.
+ */
+export async function expireStaleChangeSets(prisma: PrismaClient, now: Date = new Date()) {
+  const result = await prisma.changeSet.updateMany({
+    where: {
+      status: { in: ['pending', 'partially_applied'] },
+      expiresAt: { lt: now },
+    },
+    data: { status: 'expired' },
+  })
+  return result.count
 }
 
 // ─── Apply (human-approved, transactional) ───────────────────────────────────
@@ -215,6 +235,7 @@ export async function applyChangeSet(prisma: PrismaClient, changeSetId: string, 
   })
   if (!changeSet) return { ok: false as const, reason: 'not_found' as const }
   if (changeSet.status === 'applied') return { ok: false as const, reason: 'already_applied' as const }
+  if (changeSet.status === 'expired') return { ok: false as const, reason: 'expired' as const }
 
   const approve = args.approvedItemIds ? new Set(args.approvedItemIds) : null
   const toApply = changeSet.items.filter(
