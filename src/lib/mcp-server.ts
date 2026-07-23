@@ -331,6 +331,25 @@ export const MCP_TOOLS: McpTool[] = [
       },
     },
   },
+  {
+    name: 'create_nudge',
+    description:
+      'Raise an urgent-email nudge banner in mhud. Idempotent per Gmail thread: if a pending ' +
+      'nudge already exists for the same thread, the existing nudge is returned instead of ' +
+      'creating a duplicate.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'What the banner shows, e.g. "<sender>: <summary>".' },
+        summary: { type: 'string', description: 'Optional longer summary.' },
+        fromLabel: { type: 'string', description: 'Optional display sender, e.g. "Jane Doe".' },
+        gmailThreadId: { type: 'string', description: 'Optional Gmail thread id (enables per-thread dedup).' },
+        permalink: { type: 'string', description: 'Optional Gmail deep link.' },
+        cardId: { type: 'string', description: 'Optional id of the urgent card this nudge points at.' },
+      },
+      required: ['title'],
+    },
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -350,6 +369,7 @@ const WRITE_TOOLS = new Set([
   'create_subcard',
   'set_card_reviewers',
   'toggle_ai_review',
+  'create_nudge',
 ])
 
 const PROPOSE_TOOLS = new Set(['propose_changeset'])
@@ -1172,6 +1192,62 @@ async function toolListCardMovements(
   }
 }
 
+async function toolCreateNudge(
+  params: Record<string, unknown>,
+  agentCtx: AgentContext
+): Promise<unknown> {
+  const title = params.title as string
+  if (!title || typeof title !== 'string') {
+    throw { code: -32602, message: 'title is required' }
+  }
+
+  const gmailThreadId =
+    typeof params.gmailThreadId === 'string' && params.gmailThreadId.length > 0
+      ? params.gmailThreadId
+      : undefined
+
+  // Idempotent per thread: an Apps Script rerun must not stack banners.
+  if (gmailThreadId) {
+    const existing = await prisma.nudge.findFirst({
+      where: { orgId: agentCtx.orgId, gmailThreadId, status: 'pending' },
+      select: { id: true },
+    })
+    if (existing) {
+      return { nudgeId: existing.id, deduped: true }
+    }
+  }
+
+  // If a cardId is provided, verify it belongs to the org; drop it silently if not.
+  let cardId: string | null = null
+  if (typeof params.cardId === 'string' && params.cardId.length > 0) {
+    const card = await prisma.card.findFirst({
+      where: { id: params.cardId, board: { orgId: agentCtx.orgId } },
+      select: { id: true },
+    })
+    if (card) cardId = card.id
+  }
+
+  const nudge = await prisma.nudge.create({
+    data: {
+      orgId: agentCtx.orgId,
+      kind: 'urgent_email',
+      title,
+      summary: typeof params.summary === 'string' ? params.summary : null,
+      fromLabel: typeof params.fromLabel === 'string' ? params.fromLabel : null,
+      gmailThreadId: gmailThreadId ?? null,
+      permalink: typeof params.permalink === 'string' ? params.permalink : null,
+      cardId,
+      createdById: agentCtx.agentName,
+    },
+  })
+
+  logActivity(agentCtx.orgId, agentCtx.agentName, 'create_nudge', 'nudge', nudge.id, {
+    gmailThreadId: gmailThreadId ?? null,
+  }).catch(() => {})
+
+  return { nudgeId: nudge.id, deduped: false }
+}
+
 function safeJsonParse(value: string): unknown {
   try {
     return JSON.parse(value)
@@ -1206,6 +1282,7 @@ const TOOL_HANDLERS: Record<
   list_pending_changesets: toolListPendingChangesets,
   get_changeset: toolGetChangeset,
   list_card_movements: toolListCardMovements,
+  create_nudge: toolCreateNudge,
 }
 
 // ---------------------------------------------------------------------------
