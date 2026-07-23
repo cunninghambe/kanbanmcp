@@ -1,183 +1,122 @@
-# Inbox Zero-Touch — Setup
+# mhud Inbox Agent — Setup
 
-Two pieces: the Apps Script (Code.gs, runs in your Google account) and a small
-nudge integration you drop into kanbanmcp (Next.js).
+Two pieces: the Apps Script (`Code.gs`, runs entirely in your Google
+account) and mhud itself, which already ships the nudge banner
+(`NudgeBanner`, polling `GET /api/nudges`), the reply loop
+(`GmailReplyPanel`, on any card whose description contains
+`` `gmail:<threadId>` ``), and the human-approval proxy (`/api/inbox-agent`).
+There is nothing left to build on the mhud side — this doc only covers
+provisioning the board, the API key, and the script.
 
-## 1. Apps Script
+See `docs/specs/mhud-inbox-agent.md` for the full architecture and the
+"Corrections to the drafted Code.gs" section this script implements.
 
-1. script.new → paste Code.gs into the editor.
+## 1. Create the Inbox board in mhud
+
+Create a board (any name — "Inbox" works) with these columns, in order:
+
+| Column | Purpose |
+|---|---|
+| **Urgent** | URGENT bucket. Stays in the Gmail inbox too — this is a mirror, not the only copy. Exempt from auto-expiry. |
+| **Triage** | ACTIONABLE / NEEDS_REPLY buckets. Untouched cards roll into Digest after `INBOX_EXPIRE_DAYS` (default 5) via the cron below. |
+| **Digest** | Daily FYI/noise audit card, plus anything that expired out of Triage. Terminal — never auto-expired. |
+| **Done** | Where you drag things once handled. Terminal — never auto-expired. |
+
+Copy each column's ID (visible in the board UI / API) for the Script
+Properties table below.
+
+## 2. Mint the ApiKey
+
+Create an ApiKey scoped `permissions: ["write"]`. This is the key that lets
+the script call `create_card` and `create_nudge` (both are `WRITE_TOOLS` in
+`mcp-server.ts`).
+
+**Do NOT** reuse:
+- the HUD dispatch key (`permissions: ["read","propose"]`) — it can read
+  and propose changesets but is denied every mutation tool, including
+  `create_card` and `create_nudge`, with a `-32004` error.
+- a legacy empty-permissions key (`permissions: []`) — those are
+  back-compat full-access keys; using one here works but defeats the point
+  of a scoped credential for an unattended script holding your Gmail
+  access.
+
+## 3. Apps Script
+
+1. [script.new](https://script.new) → paste `Code.gs` into the editor.
 2. Project Settings → Script Properties, add:
 
-| Property | Value |
-|---|---|
-| ANTHROPIC_API_KEY | your key |
-| KANBAN_MCP_URL | https://your-kanban-host/api/mcp |
-| KANBAN_API_KEY | agent API key from kanbanmcp |
-| KANBAN_BOARD_ID | target board |
-| COL_URGENT / COL_TRIAGE / COL_DIGEST | column IDs |
-| WEBHOOK_TOKEN | random secret, shared with your kanban UI |
-| NUDGE_WEBHOOK_URL | https://your-kanban-host/api/nudge (optional) |
-| NUDGE_SECRET | random secret for the nudge route (optional) |
-| NTFY_TOPIC | private ntfy.sh topic for phone push (optional) |
-| VIP_SENDERS | e.g. `anthropic.com,greenhouse.io,lever.co,docusign` |
-| VOICE_NOTES | style notes for reply drafts |
+| Property | Required | Value |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | yes | your Anthropic API key |
+| `KANBAN_MCP_URL` | yes | `https://<your-mhud-host>/api/mcp` |
+| `KANBAN_API_KEY` | yes | the `["write"]` ApiKey from step 2 |
+| `KANBAN_BOARD_ID` | yes | the Inbox board's ID |
+| `COL_URGENT` | yes | Urgent column ID |
+| `COL_TRIAGE` | yes | Triage column ID |
+| `COL_DIGEST` | yes | Digest column ID |
+| `WEBHOOK_TOKEN` | yes | random long secret — shared with mhud's `INBOX_AGENT_TOKEN` (below) |
+| `KANBAN_CRON_SECRET` | optional | mirrors mhud's `CRON_SECRET`; enables the daily `expireTriage()` call to `/api/cron/inbox-expire`. Leave unset to skip it (rolling stale Triage cards into Digest then becomes a manual chore). |
+| `NTFY_TOPIC` | optional | a private [ntfy.sh](https://ntfy.sh) topic for a phone push on every URGENT nudge, alongside the in-app banner |
+| `CLASSIFY_MODEL` | optional | defaults to `claude-haiku-4-5-20251001` |
+| `DRAFT_MODEL` | optional | defaults to `claude-sonnet-4-6` |
+| `VIP_SENDERS` | optional | comma-separated senders/domains that always classify URGENT, no LLM involved — e.g. `anthropic.com,greenhouse.io,lever.co,docusign` |
+| `VOICE_NOTES` | optional | style notes injected into every reply draft |
+| `BATCH_SIZE` | optional | threads pulled per triage run (default 15) |
+| `BODY_CHARS` | optional | chars of body sent to the classifier per email (default 1500) |
 
-3. Run `setup()` once. Approve the OAuth scopes (Gmail + external requests).
-   This creates the `ai/*` labels and installs the 30-min triage trigger and
-   the 07:30 digest trigger.
-4. Run `triage()` once manually and watch the execution log.
+3. Run `setup()` once. Approve the OAuth scopes (Gmail + external
+   requests). This creates the `ai/*` labels and installs three triggers:
+   `triage` every 30 min, `dailyDigest` at 07:30, `expireTriage` at 06:00.
+4. Run `triage()` once manually and watch the execution log — confirm
+   cards land in the right columns with the right priorities before
+   trusting the 30-min trigger.
 5. Deploy → New deployment → **Web app**, execute as *Me*, access
-   *Anyone*. Copy the /exec URL. Auth is the WEBHOOK_TOKEN in the JSON body,
-   which is why it must be long and random.
+   *Anyone*. Copy the `/exec` URL — that's `INBOX_AGENT_URL` below. Auth on
+   this endpoint is the `WEBHOOK_TOKEN` carried in the JSON body (an Apps
+   Script web app deployed with "Anyone" access is public internet with
+   token auth — fine for this threat model since the token never reaches
+   client-side code; see step 4 below).
 
-**Adapter note:** `kanbanCreateCard_()` guesses your `create_card` argument
-names (boardId, columnId, title, description, priority). Check them against
-your MCP tool schema. It is the only function that knows the card format.
+## 4. mhud environment variables
 
-## 2. Reply loop from a card
+Set these on the mhud deployment (`.env` — see `.env.example`):
 
-Your card UI calls the web app URL:
-
-```js
-// 1. Voice note transcribed (browser SpeechRecognition or keyboard dictation)
-await fetch(EXEC_URL, { method: 'POST', body: JSON.stringify({
-  token: WEBHOOK_TOKEN, action: 'draft',
-  threadId,              // parsed from the `gmail:<id>` line in the card body
-  instructions: voiceNoteText,
-  replyAll: false,
-})});
-// → { draftId, preview, to }  → render preview on the card with Approve
-
-// 2. Approve
-await fetch(EXEC_URL, { method: 'POST', body: JSON.stringify({
-  token: WEBHOOK_TOKEN, action: 'send', draftId,
-})});
+```
+INBOX_AGENT_URL=       # the /exec URL from step 3.5
+INBOX_AGENT_TOKEN=     # same value as WEBHOOK_TOKEN above — server-side only, never shipped to the browser
+INBOX_BOARD_ID=        # the Inbox board's ID (enables POST /api/cron/inbox-expire)
+INBOX_EXPIRE_DAYS=5    # untouched Triage cards roll into Digest after this many days
 ```
 
-One caveat: an Apps Script web app deployed with "Anyone" access is public
-internet with token auth. Fine for this threat model, but keep the token out
-of client-side code if you can; proxy the call through a kanbanmcp API route
-so the token stays server-side.
+`INBOX_AGENT_TOKEN` is read only by `/api/inbox-agent` and the nudge-ack
+label-clear callback, both server routes — it is injected into the
+upstream request server-side and is never sent to the browser. This is the
+entire reason that proxy exists instead of the browser calling the Apps
+Script `/exec` URL directly.
 
-## 3. Urgent nudge banner in kanbanmcp
+If you already run the digest cron (`CRON_SECRET`, `/api/cron/digest`),
+`KANBAN_CRON_SECRET` on the script side should match `CRON_SECRET` on the
+mhud side — `/api/cron/inbox-expire` uses the same bearer.
 
-Apps Script POSTs urgent events to `/api/nudge`. The banner polls it and
-sits above the board until you ack. In-memory store is fine for a single
-long-running instance; if you deploy serverless, back it with a tiny Prisma
-table instead.
-
-### app/api/nudge/route.ts
-
-```ts
-import { NextRequest, NextResponse } from 'next/server';
-
-type Nudge = { threadId: string; from: string; summary: string;
-               permalink: string; cardId: string | null; at: string };
-
-const g = globalThis as unknown as { nudges?: Map<string, Nudge> };
-g.nudges ??= new Map();
-
-export async function POST(req: NextRequest) {
-  const body = await req.json();
-  if (body.secret !== process.env.NUDGE_SECRET)
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  g.nudges!.set(body.threadId, body);
-  return NextResponse.json({ ok: true });
-}
-
-export async function GET() {
-  return NextResponse.json({ nudges: [...g.nudges!.values()] });
-}
-
-export async function DELETE(req: NextRequest) {
-  const { threadId } = await req.json();
-  g.nudges!.delete(threadId);
-  return NextResponse.json({ ok: true });
-}
-```
-
-### components/UrgentNudgeBanner.tsx
-
-Drop into your board layout. Inherits your Tailwind setup; restyle to match
-your tokens.
-
-```tsx
-'use client';
-import { useEffect, useState, useCallback } from 'react';
-
-type Nudge = { threadId: string; from: string; summary: string;
-               permalink: string; cardId: string | null };
-
-export default function UrgentNudgeBanner() {
-  const [nudges, setNudges] = useState<Nudge[]>([]);
-
-  const poll = useCallback(async () => {
-    try {
-      const r = await fetch('/api/nudge');
-      setNudges((await r.json()).nudges ?? []);
-    } catch { /* board still works if polling fails */ }
-  }, []);
-
-  useEffect(() => {
-    poll();
-    const id = setInterval(poll, 30_000);
-    return () => clearInterval(id);
-  }, [poll]);
-
-  const ack = async (threadId: string) => {
-    setNudges((n) => n.filter((x) => x.threadId !== threadId));
-    await fetch('/api/nudge', { method: 'DELETE',
-      body: JSON.stringify({ threadId }) });
-    // also clears the ai/urgent Gmail label, via your server-side proxy:
-    await fetch('/api/inbox-agent', { method: 'POST',
-      body: JSON.stringify({ action: 'ack', threadId }) });
-  };
-
-  if (!nudges.length) return null;
-  return (
-    <div role="alert" aria-live="assertive"
-         className="sticky top-0 z-50 border-b border-red-300 bg-red-50">
-      {nudges.map((n) => (
-        <div key={n.threadId}
-             className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2 text-sm">
-          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-600" />
-          <span className="min-w-0 truncate">
-            <strong>{n.from.replace(/<.*>/, '').trim()}</strong>: {n.summary}
-          </span>
-          <span className="ml-auto flex shrink-0 gap-2">
-            {n.cardId && (
-              <a href={`/card/${n.cardId}`}
-                 className="rounded bg-red-600 px-2 py-1 font-medium text-white">
-                Open card
-              </a>
-            )}
-            <a href={n.permalink} target="_blank" rel="noreferrer"
-               className="rounded border border-red-300 px-2 py-1">
-              Gmail
-            </a>
-            <button onClick={() => ack(n.threadId)}
-                    className="rounded px-2 py-1 text-red-700 underline">
-              Ack
-            </button>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-```
-
-`/api/inbox-agent` is the thin server-side proxy from section 2 that forwards
-to the Apps Script /exec URL with the token attached. Three actions pass
-through it: draft, send, ack.
-
-## 4. First month protocol
+## 5. First-month audit protocol
 
 - Read the 07:30 digest card daily. It lists everything archived as FYI or
-  noise. Misfiles get fixed by adding senders to VIP_SENDERS or sharpening
-  the classifier prompt, not by reopening Gmail.
-- Classifier outage fails safe: unclassifiable mail becomes triage cards,
-  never silently archived.
-- Untouched triage cards should auto-expire into the digest after ~5 days.
-  That rule belongs in kanbanmcp, not the script; without it you will
-  rebuild your inbox as a kanban column.
+  noise in the last 24h. Misfiles get fixed by adding senders to
+  `VIP_SENDERS` or sharpening the classifier prompt in `classifyBatch_()`,
+  not by reopening Gmail.
+- Classifier outage fails safe: `triage()` catches classifier errors and
+  falls every unclassified email through to ACTIONABLE, so an Anthropic
+  outage produces extra Triage cards, never silent archiving. Watch the
+  execution log for `Classifier failed, failing safe to ACTIONABLE` — if
+  you see it a lot, something's wrong upstream.
+- Dispatch failures (a `create_card`/`create_nudge` RPC error, or mhud
+  being unreachable) leave the thread's `ai/processed` label off, so the
+  next 30-min run retries it automatically. Nothing is silently dropped.
+- Watch the Urgent nudge banner in mhud for a few days against the
+  `ai/urgent` Gmail label directly — they should track each other exactly
+  (ack in mhud clears the Gmail label via the callback in
+  `POST /api/nudges/[id]/ack`; a mismatch there is a bug, not a config gap).
+- Untouched Triage cards auto-expire into Digest after `INBOX_EXPIRE_DAYS`
+  days via the cron — confirm at least one has actually moved before
+  relying on it; without `KANBAN_CRON_SECRET`/`CRON_SECRET` configured on
+  both sides this silently never fires and Triage becomes a second inbox.

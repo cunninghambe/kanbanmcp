@@ -1,20 +1,28 @@
 /**
- * INBOX ZERO-TOUCH — Gmail triage → Claude → KanbanMCP
- * =====================================================
+ * mhud INBOX AGENT — Gmail triage → Claude → mhud (KanbanMCP)
+ * =============================================================
  * Runs entirely inside Google Apps Script. No app password, no server.
  *
  * Loop (every 30 min):
  *   1. Pull unprocessed inbox threads
  *   2. Hard rules first (2FA, DocuSign, VIP senders → URGENT passthrough)
  *   3. Claude classifies the rest: URGENT / ACTIONABLE / NEEDS_REPLY / FYI / NOISE
- *   4. URGENT + ACTIONABLE + NEEDS_REPLY → cards on your KanbanMCP board
- *      URGENT also fires the nudge webhook (your kanban UI) + optional ntfy push
+ *   4. URGENT + ACTIONABLE + NEEDS_REPLY → cards on the mhud board via the
+ *      create_card MCP tool. URGENT also raises a create_nudge (the mhud
+ *      banner) + optional ntfy push.
  *   5. FYI + NOISE → labeled, archived, rolled into one daily digest/audit card
  *
- * Web app (doPost) actions, called from your kanban UI:
+ * Web app (doPost) actions, called from mhud's /api/inbox-agent proxy
+ * (human-session only — the send path never fires from the script itself):
  *   draft : voice-note text + threadId → Claude writes reply → Gmail draft
  *   send  : draftId → sends the approved draft
  *   ack   : threadId → clears the urgent flag
+ *
+ * Both mhud tool calls (create_card, create_nudge) go through the JSON-RPC
+ * `/api/mcp` endpoint using ONE write-scoped ApiKey and ONE envelope/error
+ * helper: kanbanRpc_(). JSON-RPC failures return HTTP 200 with a body.error
+ * field — kanbanRpc_() throws on those so a failed create never lets the
+ * triage loop archive (and thereby lose) the source email.
  *
  * SETUP: see SETUP.md. Run setup() once after filling Script Properties.
  */
@@ -34,18 +42,21 @@ function cfg_() {
     CLASSIFY_MODEL: p.getProperty('CLASSIFY_MODEL') || 'claude-haiku-4-5-20251001',
     DRAFT_MODEL: p.getProperty('DRAFT_MODEL') || 'claude-sonnet-4-6',
 
-    // KanbanMCP — JSON-RPC tools/call against your /api/mcp endpoint.
-    // >>> MAP FIELDS in kanbanCreateCard_() to your actual create_card schema. <<<
-    KANBAN_MCP_URL: req('KANBAN_MCP_URL'),          // e.g. https://kanban.yourhost.com/api/mcp
+    // mhud (KanbanMCP) — JSON-RPC tools/call against /api/mcp. The key MUST
+    // be a write-scoped ApiKey (permissions: ["write"]) — create_card and
+    // create_nudge are both WRITE_TOOLS server-side. Do not reuse the HUD
+    // dispatch key (["read","propose"]); it cannot create anything here.
+    KANBAN_MCP_URL: req('KANBAN_MCP_URL'),          // e.g. https://mhud.yourhost.com/api/mcp
     KANBAN_API_KEY: req('KANBAN_API_KEY'),
     KANBAN_BOARD_ID: req('KANBAN_BOARD_ID'),
     COL_URGENT: req('COL_URGENT'),                  // column IDs on the board
     COL_TRIAGE: req('COL_TRIAGE'),
     COL_DIGEST: req('COL_DIGEST'),
 
-    // Nudge surfaces
-    NUDGE_WEBHOOK_URL: p.getProperty('NUDGE_WEBHOOK_URL') || '',  // kanban UI banner
-    NUDGE_SECRET: p.getProperty('NUDGE_SECRET') || '',
+    // Optional: enables the daily inbox-expire cron call (see expireTriage()).
+    // Skipped silently when unset.
+    KANBAN_CRON_SECRET: p.getProperty('KANBAN_CRON_SECRET') || '',
+
     NTFY_TOPIC: p.getProperty('NTFY_TOPIC') || '',                // optional phone push
 
     // Shared secret your kanban UI sends to doPost
@@ -80,6 +91,7 @@ function setup() {
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('triage').timeBased().everyMinutes(30).create();
   ScriptApp.newTrigger('dailyDigest').timeBased().atHour(7).nearMinute(30).everyDays(1).create();
+  ScriptApp.newTrigger('expireTriage').timeBased().atHour(6).everyDays(1).create();
   Logger.log('Labels created, triggers installed. Fill Script Properties, then run triage() once manually to authorize scopes.');
 }
 
@@ -138,23 +150,25 @@ function triage() {
   });
 }
 
+// Priority mapping (correction 1): mhud's create_card only accepts
+// none|low|medium|high|critical — 'urgent'/'normal' are rejected with -32602.
 function dispatch_(m, c) {
   switch (m.bucket) {
     case 'URGENT': {
       m.thread.addLabel(label_(LABELS.urgent));
-      const card = kanbanCreateCard_(c, c.COL_URGENT, '🔴 ' + m.summary, cardBody_(m), 'urgent');
-      fireNudge_(c, m, card);
+      const cardId = kanbanCreateCard_(c, c.COL_URGENT, '🔴 ' + m.summary, cardBody_(m), 'critical', m.deadline);
+      fireNudge_(c, m, cardId);
       break; // stays in inbox on purpose
     }
     case 'ACTIONABLE':
       m.thread.addLabel(label_(LABELS.actionable));
-      kanbanCreateCard_(c, c.COL_TRIAGE, m.summary, cardBody_(m), 'normal');
+      kanbanCreateCard_(c, c.COL_TRIAGE, m.summary, cardBody_(m), 'medium', m.deadline);
       m.thread.moveToArchive();
       break;
     case 'NEEDS_REPLY':
       m.thread.addLabel(label_(LABELS.needsReply));
       kanbanCreateCard_(c, c.COL_TRIAGE, '✉️ ' + m.summary, cardBody_(m) +
-        '\n\n**Reply flow:** voice note on this card → agent drafts → you approve.', 'normal');
+        '\n\n**Reply flow:** voice note on this card → agent drafts → you approve.', 'medium', m.deadline);
       m.thread.moveToArchive();
       break;
     case 'FYI':
@@ -287,28 +301,21 @@ function ackUrgent_(threadId) {
 }
 
 // ---------------------------------------------------------------------------
-// KANBAN ADAPTER — the ONE place that knows your card schema
+// KANBAN ADAPTER — the ONE place that knows mhud's tool schema
 // ---------------------------------------------------------------------------
 /**
- * Calls your MCP endpoint via JSON-RPC tools/call.
- * >>> Adjust `arguments` to match your actual create_card input schema
- *     (field names below are a best guess at boardId/columnId/title/description). <<<
+ * Shared JSON-RPC envelope + error handling for every mhud /api/mcp call.
+ * IMPORTANT: /api/mcp returns JSON-RPC failures as HTTP 200 with a
+ * body.error field (correction 3) — an HTTP-status-only check would let a
+ * failed create_card silently archive the source email. This throws on
+ * body.error so the caller leaves the thread unprocessed for retry.
  */
-function kanbanCreateCard_(c, columnId, title, description, priority) {
+function kanbanRpc_(c, tool, args) {
   const payload = {
     jsonrpc: '2.0',
     id: Utilities.getUuid(),
     method: 'tools/call',
-    params: {
-      name: 'create_card',
-      arguments: {
-        boardId: c.KANBAN_BOARD_ID,
-        columnId: columnId,
-        title: title.slice(0, 200),
-        description: description,
-        priority: priority,
-      },
-    },
+    params: { name: tool, arguments: args },
   };
   const res = UrlFetchApp.fetch(c.KANBAN_MCP_URL, {
     method: 'post',
@@ -317,8 +324,37 @@ function kanbanCreateCard_(c, columnId, title, description, priority) {
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
   });
-  if (res.getResponseCode() >= 300) throw new Error('kanban ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 300));
-  return JSON.parse(res.getContentText());
+  if (res.getResponseCode() >= 300) {
+    throw new Error('mhud ' + tool + ' HTTP ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 300));
+  }
+  const body = JSON.parse(res.getContentText());
+  if (body && body.error) {
+    throw new Error('mhud ' + tool + ' RPC error: ' + JSON.stringify(body.error).slice(0, 300));
+  }
+  return body.result;
+}
+
+/**
+ * create_card args per mhud's mcp-server.ts: { boardId, columnId, title,
+ * description?, dueDate?, sprintId?, priority? }. priority must be one of
+ * none|low|medium|high|critical (see dispatch_() for the bucket mapping).
+ * deadline is only forwarded as dueDate when it parses as a real date
+ * (correction 2) — a garbage/unparseable string must not reach the API.
+ */
+function kanbanCreateCard_(c, columnId, title, description, priority, deadline) {
+  const args = {
+    boardId: c.KANBAN_BOARD_ID,
+    columnId: columnId,
+    title: title.slice(0, 200),
+    description: description,
+    priority: priority,
+  };
+  if (deadline) {
+    const d = new Date(deadline);
+    if (!isNaN(d.getTime())) args.dueDate = d.toISOString();
+  }
+  const result = kanbanRpc_(c, 'create_card', args);
+  return result && result.id ? result.id : null; // result.id, NOT result.cardId (correction 4)
 }
 
 function cardBody_(m) {
@@ -335,27 +371,25 @@ function cardBody_(m) {
 }
 
 // ---------------------------------------------------------------------------
-// NUDGE — banner in your kanban UI, optional phone push
+// NUDGE — mhud banner via the create_nudge MCP tool, optional phone push
+// (correction 5: replaces the old NUDGE_WEBHOOK_URL/NUDGE_SECRET ad-hoc
+// webhook + in-memory Map with a first-class tool over the same /api/mcp
+// endpoint and ApiKey — one endpoint, one credential, org-scoped, survives
+// restarts. create_nudge is idempotent per gmailThreadId server-side, so
+// reruns of triage() never stack duplicate banners.)
 // ---------------------------------------------------------------------------
-function fireNudge_(c, m, card) {
-  const nudge = {
-    secret: c.NUDGE_SECRET,
-    type: 'urgent_email',
-    threadId: m.id,
-    from: m.from,
-    summary: m.summary,
-    permalink: m.permalink,
-    cardId: (card && card.result && card.result.cardId) || null,
-    at: new Date().toISOString(),
-  };
-  if (c.NUDGE_WEBHOOK_URL) {
-    try {
-      UrlFetchApp.fetch(c.NUDGE_WEBHOOK_URL, {
-        method: 'post', contentType: 'application/json',
-        payload: JSON.stringify(nudge), muteHttpExceptions: true,
-      });
-    } catch (err) { Logger.log('nudge webhook failed: ' + err); }
-  }
+function fireNudge_(c, m, cardId) {
+  try {
+    kanbanRpc_(c, 'create_nudge', {
+      title: m.from.replace(/<.*>/, '').trim() + ': ' + m.summary,
+      summary: m.summary,
+      fromLabel: m.from.replace(/<.*>/, '').trim(),
+      gmailThreadId: m.id,
+      permalink: m.permalink,
+      cardId: cardId,
+    });
+  } catch (err) { Logger.log('create_nudge failed: ' + err); }
+
   if (c.NTFY_TOPIC) {
     try {
       UrlFetchApp.fetch('https://ntfy.sh/' + c.NTFY_TOPIC, {
@@ -366,6 +400,32 @@ function fireNudge_(c, m, card) {
       });
     } catch (err) { Logger.log('ntfy failed: ' + err); }
   }
+}
+
+// ---------------------------------------------------------------------------
+// TRIAGE EXPIRY — optional daily call into mhud's inbox-expire cron
+// ---------------------------------------------------------------------------
+/**
+ * Rolls stale Triage cards into Digest server-side (mhud owns the rule —
+ * see /api/cron/inbox-expire). Skipped silently when KANBAN_CRON_SECRET is
+ * unset, so this script works with zero config beyond the required
+ * properties. Installed at hour 6 by setup().
+ */
+function expireTriage() {
+  const c = cfg_();
+  if (!c.KANBAN_CRON_SECRET) return;
+
+  const base = c.KANBAN_MCP_URL.replace(/\/api\/mcp\/?$/, '');
+  const res = UrlFetchApp.fetch(base + '/api/cron/inbox-expire', {
+    method: 'post',
+    headers: { Authorization: 'Bearer ' + c.KANBAN_CRON_SECRET },
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() >= 300) {
+    Logger.log('inbox-expire cron failed: ' + res.getResponseCode() + ' ' + res.getContentText().slice(0, 300));
+    return;
+  }
+  Logger.log('inbox-expire cron: ' + res.getContentText());
 }
 
 // ---------------------------------------------------------------------------
