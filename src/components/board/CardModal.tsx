@@ -13,6 +13,7 @@ import { AttachGoogleLink } from './AttachGoogleLink'
 import { SignoffPanel } from './SignoffPanel'
 import type { ExistingSignoff } from './SignoffPanel'
 import { SubcardTree } from './SubcardTree'
+import { GmailReplyPanel } from './GmailReplyPanel'
 import { Avatar } from '@/components/design/Avatar'
 import { Eyebrow } from '@/components/design/Eyebrow'
 import { Pip } from '@/components/design/Pip'
@@ -239,6 +240,8 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
       isAgent: m.user?.isAgent ?? m.isAgent ?? false,
     }))
     .filter((m) => m.id !== '')
+
+  const gmailThreadId = card?.description?.match(/gmail:([\w-]+)/)?.[1] ?? null
 
   const currentUserId = user?.id ?? null
   const isReviewer = card !== null && card.reviewerId !== null && card.reviewerId === currentUserId
@@ -1053,6 +1056,8 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
                 }}
               />
             </section>
+
+            {gmailThreadId && <GmailReplyPanel cardId={card.id} threadId={gmailThreadId} />}
 
             {/* Sub-cards */}
             <section

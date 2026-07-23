@@ -588,3 +588,26 @@ model GoogleCredential {
 
   @@map("google_credentials")
 }
+
+// ─── Inbox Agent (Gmail triage nudges) ───────────────────────────────────────
+model Nudge {
+  id            String    @id @default(cuid())
+  orgId         String
+  // values: urgent_email (only kind for now; string pseudo-enum per repo convention)
+  kind          String    @default("urgent_email")
+  title         String    // "<sender>: <summary>" — what the banner shows
+  summary       String?
+  fromLabel     String?   // display sender, e.g. "Jane Doe"
+  gmailThreadId String?
+  permalink     String?   // Gmail deep link (escape hatch)
+  cardId        String?   // the urgent card, when one was created
+  // values: pending | acked
+  status        String    @default("pending")
+  createdById   String    // agentName from the ApiKey
+  ackedById     String?
+  createdAt     DateTime  @default(now())
+  ackedAt       DateTime?
+
+  @@index([orgId, status])
+  @@map("nudges")
+}
