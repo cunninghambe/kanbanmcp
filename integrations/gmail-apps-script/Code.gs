@@ -48,10 +48,18 @@ function cfg_() {
     // dispatch key (["read","propose"]); it cannot create anything here.
     KANBAN_MCP_URL: req('KANBAN_MCP_URL'),          // e.g. https://mhud.yourhost.com/api/mcp
     KANBAN_API_KEY: req('KANBAN_API_KEY'),
-    KANBAN_BOARD_ID: req('KANBAN_BOARD_ID'),
-    COL_URGENT: req('COL_URGENT'),                  // column IDs on the board
-    COL_TRIAGE: req('COL_TRIAGE'),
-    COL_DIGEST: req('COL_DIGEST'),
+
+    // Board + columns are SELF-CONFIGURING — you never need to look up an id.
+    // Give either KANBAN_BOARD_ID (from the /board/<id> URL) or just the board
+    // name (default "Inbox"); setupBoard() resolves the board, finds-or-CREATES
+    // the Urgent/Triage/Digest columns, and caches every id back into Script
+    // Properties. triage()/dailyDigest() run it automatically when the cache is
+    // empty, so filling these by hand is never required.
+    KANBAN_BOARD_ID: p.getProperty('KANBAN_BOARD_ID') || '',
+    KANBAN_BOARD_NAME: p.getProperty('KANBAN_BOARD_NAME') || 'Inbox',
+    COL_URGENT: p.getProperty('COL_URGENT') || '',
+    COL_TRIAGE: p.getProperty('COL_TRIAGE') || '',
+    COL_DIGEST: p.getProperty('COL_DIGEST') || '',
 
     // Optional: enables the daily inbox-expire cron call (see expireTriage()).
     // Skipped silently when unset.
@@ -92,7 +100,81 @@ function setup() {
   ScriptApp.newTrigger('triage').timeBased().everyMinutes(30).create();
   ScriptApp.newTrigger('dailyDigest').timeBased().atHour(7).nearMinute(30).everyDays(1).create();
   ScriptApp.newTrigger('expireTriage').timeBased().atHour(6).everyDays(1).create();
-  Logger.log('Labels created, triggers installed. Fill Script Properties, then run triage() once manually to authorize scopes.');
+  Logger.log('Labels created, triggers installed. Fill Script Properties, then run setupBoard() to wire the board, then triage() once manually.');
+}
+
+// ---------------------------------------------------------------------------
+// BOARD SELF-CONFIGURATION — no ids to copy, no columns to rename
+// ---------------------------------------------------------------------------
+/**
+ * Resolves the mhud board and the three inbox columns, creating any column
+ * that is missing, and caches every id in Script Properties. Run it once
+ * after filling the required properties (it also runs automatically the
+ * first time triage()/dailyDigest() fire, so forgetting is harmless).
+ *
+ * - Board: KANBAN_BOARD_ID wins when set; otherwise the board is found by
+ *   name (KANBAN_BOARD_NAME, default "Inbox", case-insensitive) via the
+ *   list_boards tool. The ApiKey is org-scoped, so the key must be minted in
+ *   the SAME org that owns the board.
+ * - Columns: Urgent / Triage / Digest are matched case-insensitively against
+ *   the board's existing columns; any that don't exist are CREATED via
+ *   POST /api/boards/<id>/columns (same Bearer key). mhud has no column
+ *   rename — the board's default columns (Backlog etc.) are simply left
+ *   alone and unused by this agent.
+ */
+function setupBoard() {
+  const c = cfg_();
+
+  // 1. Board id: explicit property, else resolve by name.
+  let boardId = c.KANBAN_BOARD_ID;
+  if (!boardId) {
+    const boards = kanbanRpc_(c, 'list_boards', {}) || [];
+    const want = c.KANBAN_BOARD_NAME.toLowerCase();
+    const hit = boards.filter(function (b) { return String(b.name).toLowerCase() === want; })[0];
+    if (!hit) {
+      throw new Error('No board named "' + c.KANBAN_BOARD_NAME + '" in this org. Boards visible to this key: ' +
+        boards.map(function (b) { return b.name; }).join(', ') +
+        '. Set KANBAN_BOARD_ID (from the /board/<id> URL) or KANBAN_BOARD_NAME.');
+    }
+    boardId = hit.id;
+  }
+
+  // 2. Columns: find case-insensitively, create the missing ones.
+  const board = kanbanRpc_(c, 'get_board', { boardId: boardId });
+  const byName = {};
+  (board.columns || []).forEach(function (col) { byName[String(col.name).toLowerCase()] = col.id; });
+  const ensure = function (name) {
+    const existing = byName[name.toLowerCase()];
+    if (existing) return existing;
+    const created = kanbanRest_(c, 'post', '/api/boards/' + boardId + '/columns', { name: name });
+    if (!created || !created.column || !created.column.id) {
+      throw new Error('Column create for "' + name + '" returned an unexpected shape: ' + JSON.stringify(created).slice(0, 200));
+    }
+    Logger.log('Created column "' + name + '" (' + created.column.id + ')');
+    return created.column.id;
+  };
+
+  const ids = {
+    KANBAN_BOARD_ID: boardId,
+    COL_URGENT: ensure('Urgent'),
+    COL_TRIAGE: ensure('Triage'),
+    COL_DIGEST: ensure('Digest'),
+  };
+  PropertiesService.getScriptProperties().setProperties(ids);
+  Logger.log('Board wired: ' + JSON.stringify(ids));
+  return ids;
+}
+
+/**
+ * Returns {board, urgent, triage, digest} ids, running setupBoard() on first
+ * use. Cached in Script Properties, so this is one extra call ever.
+ */
+function cols_(c) {
+  if (c.KANBAN_BOARD_ID && c.COL_URGENT && c.COL_TRIAGE && c.COL_DIGEST) {
+    return { board: c.KANBAN_BOARD_ID, urgent: c.COL_URGENT, triage: c.COL_TRIAGE, digest: c.COL_DIGEST };
+  }
+  const ids = setupBoard();
+  return { board: ids.KANBAN_BOARD_ID, urgent: ids.COL_URGENT, triage: ids.COL_TRIAGE, digest: ids.COL_DIGEST };
 }
 
 // ---------------------------------------------------------------------------
@@ -153,21 +235,22 @@ function triage() {
 // Priority mapping (correction 1): mhud's create_card only accepts
 // none|low|medium|high|critical — 'urgent'/'normal' are rejected with -32602.
 function dispatch_(m, c) {
+  const k = cols_(c);
   switch (m.bucket) {
     case 'URGENT': {
       m.thread.addLabel(label_(LABELS.urgent));
-      const cardId = kanbanCreateCard_(c, c.COL_URGENT, '🔴 ' + m.summary, cardBody_(m), 'critical', m.deadline);
+      const cardId = kanbanCreateCard_(c, k.board, k.urgent, '🔴 ' + m.summary, cardBody_(m), 'critical', m.deadline);
       fireNudge_(c, m, cardId);
       break; // stays in inbox on purpose
     }
     case 'ACTIONABLE':
       m.thread.addLabel(label_(LABELS.actionable));
-      kanbanCreateCard_(c, c.COL_TRIAGE, m.summary, cardBody_(m), 'medium', m.deadline);
+      kanbanCreateCard_(c, k.board, k.triage, m.summary, cardBody_(m), 'medium', m.deadline);
       m.thread.moveToArchive();
       break;
     case 'NEEDS_REPLY':
       m.thread.addLabel(label_(LABELS.needsReply));
-      kanbanCreateCard_(c, c.COL_TRIAGE, '✉️ ' + m.summary, cardBody_(m) +
+      kanbanCreateCard_(c, k.board, k.triage, '✉️ ' + m.summary, cardBody_(m) +
         '\n\n**Reply flow:** voice note on this card → agent drafts → you approve.', 'medium', m.deadline);
       m.thread.moveToArchive();
       break;
@@ -239,7 +322,8 @@ function dailyDigest() {
     'anything misfiled, tell the agent and add the sender to VIP or adjust the prompt.\n' +
     section(LABELS.fyi, 'FYI') +
     section(LABELS.noise, 'Archived as noise');
-  kanbanCreateCard_(c, c.COL_DIGEST, '📥 Inbox digest · ' +
+  const k = cols_(c);
+  kanbanCreateCard_(c, k.board, k.digest, '📥 Inbox digest · ' +
     Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEE d MMM'), body, 'low');
 }
 
@@ -335,15 +419,35 @@ function kanbanRpc_(c, tool, args) {
 }
 
 /**
+ * Plain REST call against the mhud app (same Bearer key as /api/mcp) —
+ * used by setupBoard() for endpoints that have no MCP tool, e.g.
+ * POST /api/boards/<id>/columns. Throws on any non-2xx.
+ */
+function kanbanRest_(c, method, path, payload) {
+  const base = c.KANBAN_MCP_URL.replace(/\/api\/mcp\/?$/, '');
+  const res = UrlFetchApp.fetch(base + path, {
+    method: method,
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + c.KANBAN_API_KEY },
+    payload: payload === undefined ? undefined : JSON.stringify(payload),
+    muteHttpExceptions: true,
+  });
+  if (res.getResponseCode() >= 300) {
+    throw new Error('mhud ' + method.toUpperCase() + ' ' + path + ' HTTP ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 300));
+  }
+  return JSON.parse(res.getContentText());
+}
+
+/**
  * create_card args per mhud's mcp-server.ts: { boardId, columnId, title,
  * description?, dueDate?, sprintId?, priority? }. priority must be one of
  * none|low|medium|high|critical (see dispatch_() for the bucket mapping).
  * deadline is only forwarded as dueDate when it parses as a real date
  * (correction 2) — a garbage/unparseable string must not reach the API.
  */
-function kanbanCreateCard_(c, columnId, title, description, priority, deadline) {
+function kanbanCreateCard_(c, boardId, columnId, title, description, priority, deadline) {
   const args = {
-    boardId: c.KANBAN_BOARD_ID,
+    boardId: boardId,
     columnId: columnId,
     title: title.slice(0, 200),
     description: description,

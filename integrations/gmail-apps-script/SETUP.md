@@ -13,23 +13,31 @@ See `docs/specs/mhud-inbox-agent.md` for the full architecture and the
 
 ## 1. Create the Inbox board in mhud
 
-Create a board (any name — "Inbox" works) with these columns, in order:
+Create an empty board named **Inbox** (or any name — set `KANBAN_BOARD_NAME`
+if different) and stop there. **You do not rename columns and you never copy
+a column or board ID**: the script's `setupBoard()` resolves the board by
+name, finds-or-creates the three columns it needs via
+`POST /api/boards/<id>/columns`, and caches every ID into its own Script
+Properties. mhud has no column rename, so the board's default columns
+(Backlog / In Progress / Review / Done) simply stay — the agent ignores
+them. Keep this board dedicated to the inbox agent.
+
+The columns the script creates and how it uses them:
 
 | Column | Purpose |
 |---|---|
 | **Urgent** | URGENT bucket. Stays in the Gmail inbox too — this is a mirror, not the only copy. Exempt from auto-expiry. |
 | **Triage** | ACTIONABLE / NEEDS_REPLY buckets. Untouched cards roll into Digest after `INBOX_EXPIRE_DAYS` (default 5) via the cron below. |
 | **Digest** | Daily FYI/noise audit card, plus anything that expired out of Triage. Terminal — never auto-expired. |
-| **Done** | Where you drag things once handled. Terminal — never auto-expired. |
-
-Copy each column's ID (visible in the board UI / API) for the Script
-Properties table below.
+| **Done** | The board's default Done column — drag things here once handled. Terminal — never auto-expired. |
 
 ## 2. Mint the ApiKey
 
-Create an ApiKey scoped `permissions: ["write"]`. This is the key that lets
-the script call `create_card` and `create_nudge` (both are `WRITE_TOOLS` in
-`mcp-server.ts`).
+Create an ApiKey scoped `permissions: ["write"]` (Settings → API keys).
+This is the key that lets the script call `create_card` and `create_nudge`
+(both are `WRITE_TOOLS` in `mcp-server.ts`). **ApiKeys are org-scoped:
+mint it while you're in the same org that owns the Inbox board**, or
+`setupBoard()` won't be able to see the board.
 
 **Do NOT** reuse:
 - the HUD dispatch key (`permissions: ["read","propose"]`) — it can read
@@ -50,10 +58,9 @@ the script call `create_card` and `create_nudge` (both are `WRITE_TOOLS` in
 | `ANTHROPIC_API_KEY` | yes | your Anthropic API key |
 | `KANBAN_MCP_URL` | yes | `https://<your-mhud-host>/api/mcp` |
 | `KANBAN_API_KEY` | yes | the `["write"]` ApiKey from step 2 |
-| `KANBAN_BOARD_ID` | yes | the Inbox board's ID |
-| `COL_URGENT` | yes | Urgent column ID |
-| `COL_TRIAGE` | yes | Triage column ID |
-| `COL_DIGEST` | yes | Digest column ID |
+| `KANBAN_BOARD_NAME` | optional | board name for auto-resolution (default `Inbox`) |
+| `KANBAN_BOARD_ID` | optional | only if you prefer pinning by ID (it's in the `/board/<id>` URL); otherwise `setupBoard()` fills it |
+| `COL_URGENT` / `COL_TRIAGE` / `COL_DIGEST` | auto | managed by `setupBoard()` — never fill these by hand |
 | `WEBHOOK_TOKEN` | yes | random long secret — shared with mhud's `INBOX_AGENT_TOKEN` (below) |
 | `KANBAN_CRON_SECRET` | optional | mirrors mhud's `CRON_SECRET`; enables the daily `expireTriage()` call to `/api/cron/inbox-expire`. Leave unset to skip it (rolling stale Triage cards into Digest then becomes a manual chore). |
 | `NTFY_TOPIC` | optional | a private [ntfy.sh](https://ntfy.sh) topic for a phone push on every URGENT nudge, alongside the in-app banner |
@@ -67,15 +74,28 @@ the script call `create_card` and `create_nudge` (both are `WRITE_TOOLS` in
 3. Run `setup()` once. Approve the OAuth scopes (Gmail + external
    requests). This creates the `ai/*` labels and installs three triggers:
    `triage` every 30 min, `dailyDigest` at 07:30, `expireTriage` at 06:00.
-4. Run `triage()` once manually and watch the execution log — confirm
+4. Run `setupBoard()` once and check the log: it resolves the board,
+   creates the Urgent/Triage/Digest columns, and prints every ID —
+   including the `KANBAN_BOARD_ID` value you'll reuse as `INBOX_BOARD_ID`
+   in step 4. (Forgetting this step is harmless: `triage()` runs it
+   automatically the first time.)
+5. Run `triage()` once manually and watch the execution log — confirm
    cards land in the right columns with the right priorities before
    trusting the 30-min trigger.
-5. Deploy → New deployment → **Web app**, execute as *Me*, access
+6. Deploy → New deployment → **Web app**, execute as *Me*, access
    *Anyone*. Copy the `/exec` URL — that's `INBOX_AGENT_URL` below. Auth on
    this endpoint is the `WEBHOOK_TOKEN` carried in the JSON body (an Apps
    Script web app deployed with "Anyone" access is public internet with
    token auth — fine for this threat model since the token never reaches
    client-side code; see step 4 below).
+
+**Deploy-order note:** card triage works against any mhud build (the
+`create_card` tool and the columns endpoint are long-standing). The nudge
+banner, `create_nudge`, the reply panel, `/api/inbox-agent`, and
+`/api/cron/inbox-expire` only exist from the inbox-agent release onward —
+on an older deployment the script still triages (a failed `create_nudge`
+is caught and logged; the `ai/urgent` label and optional ntfy push still
+fire), and the rest lights up when you deploy the new build.
 
 ## 4. mhud environment variables
 
