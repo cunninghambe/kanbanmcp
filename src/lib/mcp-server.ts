@@ -12,6 +12,7 @@ import {
 import { fetchSubtree } from '@/lib/tree'
 import { shapeArtifact } from '@/lib/artifacts'
 import { proposeChangeSetInputSchema, createPendingChangeSet, validateChangeItemsOrgScope } from '@/lib/changesets'
+import { sanitizeCitationUrl } from '@/lib/host-hud/dispatch'
 import { captureException, setTag } from '@/lib/uh-oh-client'
 import type { AgentContext } from '@/types/index'
 
@@ -20,6 +21,18 @@ type Priority = (typeof VALID_PRIORITIES)[number]
 
 function isValidPriority(value: unknown): value is Priority {
   return typeof value === 'string' && (VALID_PRIORITIES as readonly string[]).includes(value)
+}
+
+// Control chars, plus the bidi overrides/isolates that can visually reorder
+// surrounding text — both are meaningless in a nudge label and both are classic
+// spoofing tools when untrusted text is rendered next to trusted UI chrome.
+const UNSAFE_DISPLAY_CHARS = /[\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g
+
+/** Normalizes untrusted display text for storage: strip, collapse, clamp. */
+function cleanNudgeText(value: unknown, max: number): string | null {
+  if (typeof value !== 'string') return null
+  const cleaned = value.replace(UNSAFE_DISPLAY_CHARS, ' ').replace(/\s+/g, ' ').trim()
+  return cleaned ? cleaned.slice(0, max) : null
 }
 
 // ---------------------------------------------------------------------------
@@ -1227,15 +1240,21 @@ async function toolCreateNudge(
     if (card) cardId = card.id
   }
 
+  // Nudge fields are echoes of an untrusted email (subject line, sender display
+  // name), rendered in a sticky app-wide banner. Clamp length so one nudge
+  // cannot dominate the viewport, and strip control/bidi-override characters
+  // that would let a sender reorder or disguise the rendered text. The permalink
+  // becomes an anchor href, so it gets the same scheme allowlist the HUD applies
+  // to model-supplied citation URLs — a typeof check is not a scheme check.
   const nudge = await prisma.nudge.create({
     data: {
       orgId: agentCtx.orgId,
       kind: 'urgent_email',
-      title,
-      summary: typeof params.summary === 'string' ? params.summary : null,
-      fromLabel: typeof params.fromLabel === 'string' ? params.fromLabel : null,
+      title: cleanNudgeText(title, 200) ?? title.slice(0, 200),
+      summary: cleanNudgeText(params.summary, 500),
+      fromLabel: cleanNudgeText(params.fromLabel, 80),
       gmailThreadId: gmailThreadId ?? null,
-      permalink: typeof params.permalink === 'string' ? params.permalink : null,
+      permalink: sanitizeCitationUrl(params.permalink) ?? null,
       cardId,
       createdById: agentCtx.agentName,
     },

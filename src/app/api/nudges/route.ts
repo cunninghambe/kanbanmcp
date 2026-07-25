@@ -1,17 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireSession, requireOrgRole, apiError } from '@/lib/api-helpers'
+import { isInboxOwner } from '@/lib/inbox-agent'
 
-// GET /api/nudges — pending nudges for the org, oldest first.
-// requireSession + requireOrgRole(MEMBER). API-key callers may read (harmless).
+// GET /api/nudges — pending nudges for the mailbox owner, oldest first.
+//
+// Nudges carry subject lines and sender names lifted straight out of a personal
+// inbox, so org membership is not sufficient to read them: a nudge feed is as
+// sensitive as the mailbox it mirrors. Non-owners get an empty list rather than
+// a 403 — the banner polls every 30s, so quiet degradation avoids both console
+// noise and confirming that a mailbox is wired up at all.
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession(req)
     await requireOrgRole(session, session.orgId, 'MEMBER')
 
+    if (!(await isInboxOwner(session))) {
+      return NextResponse.json({ nudges: [] })
+    }
+
     const nudges = await prisma.nudge.findMany({
       where: { orgId: session.orgId, status: 'pending' },
       orderBy: { createdAt: 'asc' },
+      take: 50, // bounded: a mail flood must not turn this poll into a huge payload
     })
 
     // Resolve boardId from the card (null if the card is gone / has no cardId).

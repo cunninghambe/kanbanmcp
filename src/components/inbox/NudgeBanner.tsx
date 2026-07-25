@@ -2,8 +2,15 @@
 
 import Link from 'next/link'
 import useSWR from 'swr'
+import { sanitizeCitationUrl } from '@/lib/host-hud/dispatch'
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+// Anyone who can email the user can raise a nudge (subjects matching the urgent
+// hard rules), so the banner must stay a fixed size no matter how many arrive —
+// otherwise a flood pushes the whole app below the fold and each row costs a
+// click to clear.
+const MAX_VISIBLE = 5
 
 interface Nudge {
   id: string
@@ -66,7 +73,7 @@ export function NudgeBanner() {
         >
           {'/// urgent'}
         </div>
-        {nudges.map((n) => (
+        {nudges.slice(0, MAX_VISIBLE).map((n) => (
           <div
             key={n.id}
             style={{
@@ -99,8 +106,14 @@ export function NudgeBanner() {
                 }}
               />
             </span>
+            {/* The sender label and title are quoted from an untrusted email, so
+                they must not look like mhud's own voice: an "ext" chip and muted
+                weight keep a sender called "mhud" from impersonating app chrome. */}
+            <span className="km-chip km-mono" style={{ flexShrink: 0, fontSize: 9 }}>
+              ext
+            </span>
             <span style={{ minWidth: 0, flex: 1, fontSize: 13, color: 'var(--fg-0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {n.fromLabel && <strong style={{ fontWeight: 600 }}>{n.fromLabel}: </strong>}
+              {n.fromLabel && <span style={{ color: 'var(--fg-2)' }}>{n.fromLabel}: </span>}
               {n.title}
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -109,9 +122,9 @@ export function NudgeBanner() {
                   open card
                 </Link>
               )}
-              {n.permalink && (
+              {sanitizeCitationUrl(n.permalink) && (
                 <a
-                  href={n.permalink}
+                  href={sanitizeCitationUrl(n.permalink)}
                   target="_blank"
                   rel="noreferrer"
                   className="km-btn km-btn--ghost km-btn--sm km-mono"
@@ -129,6 +142,11 @@ export function NudgeBanner() {
             </span>
           </div>
         ))}
+        {nudges.length > MAX_VISIBLE && (
+          <div className="km-mono" style={{ fontSize: 10, color: 'var(--fg-2)', padding: '2px 16px 6px' }}>
+            +{nudges.length - MAX_VISIBLE} more urgent
+          </div>
+        )}
       </div>
     </div>
   )
