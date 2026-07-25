@@ -63,7 +63,7 @@ mint it while you're in the same org that owns the Inbox board**, or
 | `COL_URGENT` / `COL_TRIAGE` / `COL_DIGEST` | auto | managed by `setupBoard()` — never fill these by hand |
 | `WEBHOOK_TOKEN` | yes | random long secret — shared with mhud's `INBOX_AGENT_TOKEN` (below) |
 | `KANBAN_CRON_SECRET` | optional | mirrors mhud's `CRON_SECRET`; enables the daily `expireTriage()` call to `/api/cron/inbox-expire`. Leave unset to skip it (rolling stale Triage cards into Digest then becomes a manual chore). |
-| `NTFY_TOPIC` | optional | a private [ntfy.sh](https://ntfy.sh) topic for a phone push on every URGENT nudge, alongside the in-app banner |
+| `NTFY_TOPIC` | optional | an [ntfy.sh](https://ntfy.sh) topic for a phone push on every URGENT nudge. **Topics on the public instance are not private** — the topic name *is* the credential and anyone who guesses it subscribes to a live feed of your urgent-mail senders and summaries. Use a long random topic name at minimum; prefer an ntfy access token or a self-hosted instance. Leave unset if in doubt: the in-app banner does not depend on it. |
 | `CLASSIFY_MODEL` | optional | defaults to `claude-haiku-4-5-20251001` |
 | `DRAFT_MODEL` | optional | defaults to `claude-sonnet-4-6` |
 | `VIP_SENDERS` | optional | comma-separated senders/domains that always classify URGENT, no LLM involved — e.g. `anthropic.com,greenhouse.io,lever.co,docusign` |
@@ -104,9 +104,19 @@ Set these on the mhud deployment (`.env` — see `.env.example`):
 ```
 INBOX_AGENT_URL=       # the /exec URL from step 3.5
 INBOX_AGENT_TOKEN=     # same value as WEBHOOK_TOKEN above — server-side only, never shipped to the browser
+INBOX_AGENT_OWNER=     # REQUIRED — your mhud login email (comma-separated for more than one)
 INBOX_BOARD_ID=        # the Inbox board's ID (enables POST /api/cron/inbox-expire)
 INBOX_EXPIRE_DAYS=5    # untouched Triage cards roll into Digest after this many days
 ```
+
+**`INBOX_AGENT_OWNER` is the authorization boundary — set it or the feature stays
+off.** `INBOX_AGENT_URL`/`TOKEN` point at exactly one person's Gmail, so org
+membership cannot gate it: every registered user is a MEMBER of their own org,
+which would authorize anyone with an account on the instance to read your
+threads and send mail as you. mhud checks the caller's email against this
+allowlist instead, and **fails closed** — unset means nobody is authorized
+(`503`), including you. Non-owners see an empty nudge banner and get `403` from
+the reply proxy.
 
 `INBOX_AGENT_TOKEN` is read only by `/api/inbox-agent` and the nudge-ack
 label-clear callback, both server routes — it is injected into the

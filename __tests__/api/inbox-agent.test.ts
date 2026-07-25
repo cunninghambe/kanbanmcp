@@ -12,6 +12,10 @@ const mockPrisma = vi.hoisted(() => ({
   board: { findUnique: vi.fn() },
   card: { update: vi.fn() },
   comment: { create: vi.fn() },
+  // The inbox agent authorizes against an owner allowlist (lib/inbox-agent.ts),
+  // so the session user's email must resolve. See inbox-agent-authz.test.ts for
+  // the authorization tests themselves; here the session IS the owner.
+  user: { findUnique: vi.fn() },
 }))
 vi.mock('../../src/lib/db', () => ({ prisma: mockPrisma, default: mockPrisma }))
 
@@ -29,6 +33,7 @@ vi.mock('../../src/lib/api-helpers', () => ({
 
 vi.mock('../../src/lib/agent-activity', () => ({ logActivity: vi.fn().mockResolvedValue(undefined) }))
 
+const OWNER_EMAIL = 'owner@example.com'
 const HUMAN = { userId: 'user-1', orgId: 'org-1' }
 const APIKEY = { userId: '', orgId: 'org-1', isApiKeyAuth: true, agentName: 'inbox-agent' }
 
@@ -40,6 +45,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockRequireSession.mockResolvedValue(HUMAN)
   mockRequireOrgRole.mockResolvedValue({ role: 'MEMBER' })
+  // Session user is the configured mailbox owner for these functional tests.
+  vi.stubEnv('INBOX_AGENT_OWNER', OWNER_EMAIL)
+  mockPrisma.user.findUnique.mockResolvedValue({ email: OWNER_EMAIL })
 })
 
 // ─── /api/inbox-agent proxy ─────────────────────────────────────────────────
@@ -99,16 +107,19 @@ describe('POST /api/inbox-agent', () => {
     expect(sentBody.instructions).toBe('say yes')
   })
 
-  it('maps an upstream { error } to HTTP 502', async () => {
+  it('maps an upstream { error } to 502 WITHOUT leaking the upstream detail', async () => {
     vi.stubEnv('INBOX_AGENT_URL', 'https://script/exec')
     vi.stubEnv('INBOX_AGENT_TOKEN', 'server-token')
-    vi.stubGlobal('fetch', okFetch({ error: 'gmail rate limited' }))
+    // Upstream errors embed thread/draft ids and Anthropic account state, which
+    // would make this route an existence oracle for the mailbox.
+    vi.stubGlobal('fetch', okFetch({ error: 'thread not found: 18c2f9a0b1c2d3e4' }))
 
     const { POST } = await import('../../src/app/api/inbox-agent/route')
     const res = await POST(makeRequest({ action: 'send', draftId: 'd1' }))
     expect(res.status).toBe(502)
     const body = await res.json()
-    expect(body.error).toBe('gmail rate limited')
+    expect(body.error).toBe('Inbox agent request failed')
+    expect(JSON.stringify(body)).not.toContain('18c2f9a0b1c2d3e4')
   })
 
   it('rejects a draft missing instructions with 400', async () => {

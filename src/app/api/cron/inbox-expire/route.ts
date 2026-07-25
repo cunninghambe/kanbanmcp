@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 
-const EXEMPT_COLUMNS = new Set(['urgent', 'digest', 'done'])
+// Allowlist, deliberately NOT a denylist of exempt columns. Expiry is defined
+// as "untouched TRIAGE cards roll into Digest"; sweeping every non-exempt column
+// also drags cards the user consciously moved to In Progress / Review out of
+// their working columns, which is the opposite of the intent.
+const EXPIRABLE_COLUMNS = new Set(['triage'])
 
 // POST /api/cron/inbox-expire
 // Rolls untouched triage cards into the Digest column. Bearer CRON_SECRET.
@@ -41,7 +45,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   let expired = 0
   for (const column of board.columns) {
-    if (EXEMPT_COLUMNS.has(column.name.toLowerCase())) continue
+    if (!EXPIRABLE_COLUMNS.has(column.name.toLowerCase())) continue
     for (const card of column.cards) {
       if (card.updatedAt >= cutoff) continue
       await prisma.card.update({

@@ -81,6 +81,10 @@ function cfg_() {
   };
 }
 
+// The only bucket values dispatch_ will act on. Anything else is a bug or an
+// injection attempt, and is treated as unclassified rather than archived.
+const VALID_BUCKETS = ['URGENT', 'ACTIONABLE', 'NEEDS_REPLY', 'FYI', 'NOISE'];
+
 const LABELS = {
   processed: 'ai/processed',
   urgent: 'ai/urgent',
@@ -212,7 +216,12 @@ function triage() {
     }
     toClassify.forEach((m) => {
       const r = results[m.id] || {};
-      m.bucket = r.bucket || 'ACTIONABLE';
+      // Validate against the enum instead of trusting the string. An unknown
+      // value (model drift, "Actionable", a hallucinated "SPAM", or an injected
+      // instruction to use lowercase) must never reach dispatch_'s archive path.
+      m.bucket = VALID_BUCKETS.indexOf(r.bucket) !== -1 ? r.bucket : 'ACTIONABLE';
+      // Mark items we could not classify so dispatch_ keeps them in the inbox.
+      m.failSafe = !r.bucket;
       m.summary = r.summary || m.subject;
       m.deadline = r.deadline || null;
       m.action = r.suggested_action || '';
@@ -246,7 +255,10 @@ function dispatch_(m, c) {
     case 'ACTIONABLE':
       m.thread.addLabel(label_(LABELS.actionable));
       kanbanCreateCard_(c, k.board, k.triage, m.summary, cardBody_(m), 'medium', m.deadline);
-      m.thread.moveToArchive();
+      // A fail-safe ACTIONABLE means the classifier never actually ruled on this
+      // mail (outage, unparseable response). Card yes, archive no — a bad batch
+      // must not quietly empty the inbox.
+      if (!m.failSafe) m.thread.moveToArchive();
       break;
     case 'NEEDS_REPLY':
       m.thread.addLabel(label_(LABELS.needsReply));
@@ -258,18 +270,45 @@ function dispatch_(m, c) {
       m.thread.addLabel(label_(LABELS.fyi));
       m.thread.moveToArchive();
       break;
-    default: // NOISE
+    case 'NOISE':
       m.thread.addLabel(label_(LABELS.noise));
       m.thread.moveToArchive();
+      break;
+    default:
+      // Never archive on an unrecognised bucket. Archiving is the one
+      // irreversible-feeling action here (the mail leaves the inbox with no
+      // card), so anything we do not positively understand stays put and is
+      // retried on the next run.
+      throw new Error('unknown bucket "' + m.bucket + '" — leaving thread unprocessed');
   }
 }
 
 // ---------------------------------------------------------------------------
 // HARD RULES — pattern matching, zero LLM latency, zero LLM trust
 // ---------------------------------------------------------------------------
+/**
+ * Extracts the address from a From header ("Jane Doe" <jane@x.com> → jane@x.com).
+ * VIP matching MUST use this rather than the raw header: the display name is
+ * attacker-controlled, so substring-matching the whole header lets anyone set
+ * their display name to "greenhouse.io" and inherit VIP/URGENT treatment.
+ */
+function fromAddress_(rawFrom) {
+  const s = String(rawFrom || '').toLowerCase();
+  const angled = s.match(/<([^>]+)>/);
+  return (angled ? angled[1] : s).trim();
+}
+
+/** True when addr is the VIP entry, or belongs to that exact domain. */
+function matchesVip_(addr, vip) {
+  if (!vip) return false;
+  if (addr === vip) return true;
+  const domain = addr.indexOf('@') === -1 ? '' : addr.split('@').pop();
+  return domain === vip || domain.slice(-(vip.length + 1)) === '.' + vip;
+}
+
 function hardRule_(m, c) {
-  const from = m.from.toLowerCase();
-  if (c.VIP_SENDERS && c.VIP_SENDERS.split(',').some((s) => s.trim() && from.indexOf(s.trim()) !== -1)) {
+  const addr = fromAddress_(m.from);
+  if (c.VIP_SENDERS && c.VIP_SENDERS.split(',').some((s) => matchesVip_(addr, s.trim()))) {
     return 'URGENT';
   }
   const s = (m.subject + ' ' + m.snippet).toLowerCase();
@@ -300,7 +339,9 @@ function classifyBatch_(metas, c) {
     '"suggested_action": string (one short sentence)}';
   const text = claude_(c, c.CLASSIFY_MODEL, system, JSON.stringify(emails), 2000);
   const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-  const byId = {};
+  // Null-prototype: keys come from model output, so a returned id of
+  // "__proto__" must not touch Object.prototype.
+  const byId = Object.create(null);
   parsed.forEach((r) => (byId[r.id] = r));
   return byId;
 }
@@ -330,11 +371,54 @@ function dailyDigest() {
 // ---------------------------------------------------------------------------
 // WEB APP — the approve loop your kanban UI calls
 // ---------------------------------------------------------------------------
+/**
+ * Length-independent string comparison. This endpoint is deployed with "Anyone"
+ * access (public internet) and authenticated only by a bearer-ish shared token,
+ * so the comparison should not short-circuit on the first differing byte.
+ * Remote timing attacks across the internet are largely impractical, but the
+ * mitigation is two lines and the token is a full-mailbox credential.
+ */
+function safeEqual_(a, b) {
+  a = String(a || '');
+  b = String(b || '');
+  if (a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * Crude per-deployment throttle using CacheService. The endpoint is public, so
+ * an unauthenticated flood could otherwise burn the Apps Script daily quota and
+ * silently kill the triage loop for the rest of the day. Counts ALL requests,
+ * including rejected ones, because quota is consumed either way.
+ */
+function rateLimited_() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const bucket = 'rl-' + Math.floor(Date.now() / 60000); // per-minute window
+    const n = Number(cache.get(bucket) || 0) + 1;
+    cache.put(bucket, String(n), 120);
+    return n > 60;
+  } catch (_) {
+    return false; // never let the limiter itself break the endpoint
+  }
+}
+
 function doPost(e) {
-  const c = cfg_();
+  if (rateLimited_()) return json_({ error: 'rate limited' });
+
   let req;
-  try { req = JSON.parse(e.postData.contents); } catch (_) { return json_({ error: 'bad json' }); }
-  if (req.token !== c.WEBHOOK_TOKEN) return json_({ error: 'unauthorized' });
+  try { req = JSON.parse(e.postData.contents); } catch (_) { return json_({ error: 'bad request' }); }
+
+  // Authenticate BEFORE cfg_(). cfg_() throws on any missing Script Property and
+  // that throw escapes doPost as Apps Script's HTML error page, which lets an
+  // unauthenticated caller distinguish "configured" from "misconfigured". Doing
+  // the single property read first also keeps rejected requests cheap.
+  const expected = PropertiesService.getScriptProperties().getProperty('WEBHOOK_TOKEN');
+  if (!expected || !safeEqual_(req.token, expected)) return json_({ error: 'unauthorized' });
+
+  const c = cfg_();
 
   try {
     if (req.action === 'draft')  return json_(draftReply_(c, req.threadId, req.instructions, !!req.replyAll));
@@ -342,7 +426,10 @@ function doPost(e) {
     if (req.action === 'ack')    return json_(ackUrgent_(req.threadId));
     return json_({ error: 'unknown action' });
   } catch (err) {
-    return json_({ error: String(err) });
+    // Log the detail for the operator; return a generic message so a caller
+    // never learns about internal state, ids, or stack shape.
+    Logger.log('doPost ' + String(req.action) + ' failed: ' + err);
+    return json_({ error: 'request failed' });
   }
 }
 
@@ -366,7 +453,22 @@ function draftReply_(c, threadId, instructions, replyAll) {
 
   const last = msgs[msgs.length - 1];
   const draft = replyAll ? last.createDraftReplyAll(body) : last.createDraftReply(body);
-  return { draftId: draft.getId(), preview: body, to: last.getFrom() };
+
+  // Report the recipients Gmail ACTUALLY put on the draft, not the From of the
+  // source message. Gmail honours Reply-To, so a sender can set From to one
+  // address and Reply-To to another — showing the source From would make the
+  // preview (the human's only check before an irreversible send) state the
+  // wrong recipient.
+  var to = last.getFrom();
+  var cc = '';
+  try {
+    const dm = draft.getMessage();
+    to = dm.getTo() || to;
+    cc = dm.getCc() || '';
+  } catch (err) {
+    Logger.log('could not read draft recipients, falling back to From: ' + err);
+  }
+  return { draftId: draft.getId(), preview: body, to: to, cc: cc };
 }
 
 function sendDraft_(draftId) {
@@ -407,6 +509,10 @@ function kanbanRpc_(c, tool, args) {
     headers: { Authorization: 'Bearer ' + c.KANBAN_API_KEY },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
+    // UrlFetchApp follows redirects by default and, unlike a browser, keeps the
+    // Authorization header across hosts — a 302 would hand the write-scoped key
+    // to whatever answered.
+    followRedirects: false,
   });
   if (res.getResponseCode() >= 300) {
     throw new Error('mhud ' + tool + ' HTTP ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 300));
@@ -431,6 +537,7 @@ function kanbanRest_(c, method, path, payload) {
     headers: { Authorization: 'Bearer ' + c.KANBAN_API_KEY },
     payload: payload === undefined ? undefined : JSON.stringify(payload),
     muteHttpExceptions: true,
+    followRedirects: false, // never forward the API key to a redirect target
   });
   if (res.getResponseCode() >= 300) {
     throw new Error('mhud ' + method.toUpperCase() + ' ' + path + ' HTTP ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 300));
@@ -461,12 +568,24 @@ function kanbanCreateCard_(c, boardId, columnId, title, description, priority, d
   return result && result.id ? result.id : null; // result.id, NOT result.cardId (correction 4)
 }
 
+/**
+ * The last line of the description is the machine-readable `gmail:<id>` hook the
+ * mhud reply panel binds to. Everything above it is untrusted (email subject,
+ * plus LLM-derived summary/deadline/action), so scrub any `gmail:` marker out of
+ * those fields — otherwise a subject like "Invoice question gmail:<otherId>"
+ * could re-point the reply at a thread the sender chose. mhud also anchors its
+ * match to the final line; this is the second layer.
+ */
+function stripMarker_(s) {
+  return String(s == null ? '' : s).replace(/gmail:[A-Za-z0-9_-]+/gi, 'gmail-[redacted]');
+}
+
 function cardBody_(m) {
   return [
-    m.summary !== m.subject ? '**' + m.subject + '**' : '',
-    'From: ' + m.from,
-    m.deadline ? '⏰ Deadline: ' + m.deadline : '',
-    m.action ? 'Suggested: ' + m.action : '',
+    m.summary !== m.subject ? '**' + stripMarker_(m.subject) + '**' : '',
+    'From: ' + stripMarker_(m.from),
+    m.deadline ? '⏰ Deadline: ' + stripMarker_(m.deadline) : '',
+    m.action ? 'Suggested: ' + stripMarker_(m.action) : '',
     '',
     '[Open in Gmail](' + m.permalink + ')',
     '',
@@ -485,9 +604,13 @@ function cardBody_(m) {
 function fireNudge_(c, m, cardId) {
   try {
     kanbanRpc_(c, 'create_nudge', {
-      title: m.from.replace(/<.*>/, '').trim() + ': ' + m.summary,
+      // Show the ADDRESS, not the display name. A greedy `replace(/<.*>/,'')` on
+      // a header like `"Google Security <no-reply@google.com>" <evil@attacker>`
+      // eats the real address and leaves the forged name — in a banner the user
+      // is trained to trust. The address is the part the sender cannot fake.
+      title: fromAddress_(m.from) + ': ' + m.summary,
       summary: m.summary,
-      fromLabel: m.from.replace(/<.*>/, '').trim(),
+      fromLabel: fromAddress_(m.from),
       gmailThreadId: m.id,
       permalink: m.permalink,
       cardId: cardId,
@@ -498,11 +621,21 @@ function fireNudge_(c, m, cardId) {
     try {
       UrlFetchApp.fetch('https://ntfy.sh/' + c.NTFY_TOPIC, {
         method: 'post',
-        headers: { Title: 'Urgent: ' + m.from, Priority: 'high', Click: m.permalink },
+        // Header values are attacker-influenced; strip anything outside
+        // printable ASCII so a crafted sender cannot inject header syntax (or
+        // silently break the push by making UrlFetchApp reject the request).
+        headers: {
+          Title: ('Urgent: ' + fromAddress_(m.from)).replace(/[^\x20-\x7e]/g, '').slice(0, 100),
+          Priority: 'high',
+          Click: m.permalink,
+        },
         payload: m.summary,
         muteHttpExceptions: true,
       });
-    } catch (err) { Logger.log('ntfy failed: ' + err); }
+      // Deliberately not logging `err`: its message embeds the request URL,
+      // which contains NTFY_TOPIC — and on ntfy.sh the topic name IS the
+      // credential (topics are unauthenticated pub/sub).
+    } catch (err) { Logger.log('ntfy push failed'); }
   }
 }
 
@@ -524,6 +657,7 @@ function expireTriage() {
     method: 'post',
     headers: { Authorization: 'Bearer ' + c.KANBAN_CRON_SECRET },
     muteHttpExceptions: true,
+    followRedirects: false, // never forward the cron secret to a redirect target
   });
   if (res.getResponseCode() >= 300) {
     Logger.log('inbox-expire cron failed: ' + res.getResponseCode() + ' ' + res.getContentText().slice(0, 300));

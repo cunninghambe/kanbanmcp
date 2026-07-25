@@ -14,6 +14,7 @@ import { SignoffPanel } from './SignoffPanel'
 import type { ExistingSignoff } from './SignoffPanel'
 import { SubcardTree } from './SubcardTree'
 import { GmailReplyPanel } from './GmailReplyPanel'
+import { extractGmailThreadId } from '@/lib/inbox-agent'
 import { Avatar } from '@/components/design/Avatar'
 import { Eyebrow } from '@/components/design/Eyebrow'
 import { Pip } from '@/components/design/Pip'
@@ -241,7 +242,9 @@ export function CardModal({ cardId, boardId, onClose, onUpdate, onDelete }: Card
     }))
     .filter((m) => m.id !== '')
 
-  const gmailThreadId = card?.description?.match(/gmail:([\w-]+)/)?.[1] ?? null
+  // See extractGmailThreadId: anchored + last-match on purpose, because the
+  // description also carries attacker-controlled text above the marker.
+  const gmailThreadId = extractGmailThreadId(card?.description)
 
   const currentUserId = user?.id ?? null
   const isReviewer = card !== null && card.reviewerId !== null && card.reviewerId === currentUserId

@@ -13,6 +13,7 @@ interface DraftPreview {
   draftId: string
   preview: string
   to: string
+  cc?: string
 }
 
 // Minimal typing for the (non-standard, still experimental) Web Speech API —
@@ -114,7 +115,7 @@ export function GmailReplyPanel({ cardId, threadId }: GmailReplyPanelProps) {
         setState('compose')
         return
       }
-      setPreview({ draftId: data.draftId, preview: data.preview, to: data.to })
+      setPreview({ draftId: data.draftId, preview: data.preview, to: data.to, cc: data.cc })
       setState('preview')
     } catch {
       setError('Draft failed — try again.')
@@ -229,9 +230,17 @@ export function GmailReplyPanel({ cardId, threadId }: GmailReplyPanelProps) {
 
       {state === 'preview' && preview && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* These are the recipients Gmail actually put on the draft (Reply-To
+              is honoured), so this line is a truthful last check before an
+              irreversible send — read it, not the card's "From". */}
           <span className="km-mono" style={{ fontSize: 11, color: 'var(--fg-2)' }}>
             to: {preview.to}
           </span>
+          {preview.cc && (
+            <span className="km-mono" style={{ fontSize: 11, color: 'var(--fg-2)' }}>
+              cc: {preview.cc}
+            </span>
+          )}
           <div
             style={{
               border: '1px solid var(--line)',
