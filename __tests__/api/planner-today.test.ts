@@ -219,7 +219,7 @@ describe('GET /api/planner/today', () => {
       mockPrisma.plannerDay.upsert.mockResolvedValue(stored)
       const { body } = await today()
       expect(collect.collectForUser).not.toHaveBeenCalled()
-      expect(body.collectedAt).toBe(stored.lastCollectedAt!.toISOString())
+      expect(body.collectedAt).toBe(new Date(NOW.getTime() - 2 * MIN).toISOString())
       expect(body.sources).toEqual({
         card: 'ok',
         email: 'skipped',
