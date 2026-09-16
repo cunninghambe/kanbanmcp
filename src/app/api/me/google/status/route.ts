@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireSession, apiError } from '@/lib/api-helpers'
+import { missingScopes, PLANNER_SCOPES } from '@/lib/google/scopes'
 
 type StatusResponse =
   | { connected: false }
@@ -10,6 +11,7 @@ type StatusResponse =
       scopes: string[]
       lastUsedAt: string | null
       expired: boolean
+      plannerScopes: { granted: boolean; missing: string[] }
     }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -25,6 +27,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
     const expired = cred.accessToken === null && cred.accessTokenExpiresAt === null
+    const missingPlannerScopes = missingScopes(cred.scopes, PLANNER_SCOPES)
 
     const body: StatusResponse = {
       connected: true,
@@ -32,6 +35,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       scopes: cred.scopes.split(' ').filter(Boolean),
       lastUsedAt: cred.lastUsedAt?.toISOString() ?? null,
       expired,
+      plannerScopes: { granted: missingPlannerScopes.length === 0, missing: missingPlannerScopes },
     }
 
     return NextResponse.json(body)
