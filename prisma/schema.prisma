@@ -28,6 +28,7 @@ model User {
   ticketComments    TicketComment[]
   ticketActivity    TicketActivity[]
   googleCredential  GoogleCredential?
+  slackCredential   SlackCredential?
 
   @@map("users")
 }
@@ -610,4 +611,113 @@ model Nudge {
 
   @@index([orgId, status])
   @@map("nudges")
+}
+
+// ─── Today planner (per-user day plan) ───────────────────────────────────────
+// See docs/specs/mhud-today-planner.md. Items are owned by one user; every read
+// and write is scoped by userId. Source rows are soft-linked by sourceKey (no
+// Prisma relation, per the HUD "nullable FK, DB permissive" convention).
+
+model PlannerItem {
+  id     String @id @default(cuid())
+  orgId  String
+  userId String // owner (User id) — no relation, per HUD convention
+
+  // values: card | email | calendar | slack | manual
+  source    String
+  // stable per-user dedupe key: card:<cardId> | email:<cardId> | calendar:<eventId> |
+  //   slack:<channelId>:<ts> | manual:<cuid>
+  sourceKey String
+
+  title    String
+  summary  String?
+  url      String? // deep link into the source system; http(s) or app-relative only
+  // values: none | low | medium | high | critical (mirrors Card.priority)
+  priority String    @default("none")
+  dueAt    DateTime?
+  startsAt DateTime? // calendar: event start
+  endsAt   DateTime? // calendar: event end
+
+  // values: open | done | dismissed | snoozed | wont_do
+  status       String    @default("open")
+  snoozedUntil DateTime?
+  // values: user | source | elapsed — who moved the item out of `open`
+  resolvedBy   String?
+  resolvedAt   DateTime?
+
+  prepNotes  String? // written only by POST /api/planner/plan (attended)
+  // JSON: source-specific payload (see spec §4.5 per source)
+  payload    String   @default("{}")
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, sourceKey])
+  @@index([userId, status])
+  @@index([orgId, userId])
+  @@map("planner_items")
+}
+
+model PlannerDay {
+  id     String @id @default(cuid())
+  orgId  String
+  userId String
+  date   String // YYYY-MM-DD in the user's IANA zone (sent by the client)
+  tz     String // IANA zone the date was computed in
+
+  brief      String? // markdown day brief from POST /api/planner/plan
+  briefModel String?
+  briefAt    DateTime?
+
+  lastCollectedAt DateTime?
+  // JSON: { card: 'ok'|'error'|'skipped'|'needs_scope', email, calendar, slack, errors: { <source>: string } }
+  collectStatus   String    @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@map("planner_days")
+}
+
+model PlannerDraft {
+  id     String  @id @default(cuid())
+  orgId  String
+  userId String
+  itemId String? // PlannerItem this draft is about (no relation; null = free-standing)
+
+  title   String
+  body    String  @default("") // markdown
+  // values: draft | handed_off
+  status  String  @default("draft")
+  // JSON: { kind, ref, url?, at } — the last successful handoff (spec §5.6)
+  handoff String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, itemId])
+  @@map("planner_drafts")
+}
+
+// ─── Slack OAuth Credentials (user token) ────────────────────────────────────
+
+model SlackCredential {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  teamId               String
+  teamName             String
+  teamUrl              String? // from auth.test — used to build permalinks
+  slackUserId          String
+  accessTokenEncrypted String // xoxp user token — ciphertext only, never log
+  scopes               String // comma-separated, as Slack returns them
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastUsedAt DateTime?
+
+  @@unique([teamId, slackUserId])
+  @@map("slack_credentials")
 }

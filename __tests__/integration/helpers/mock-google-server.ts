@@ -31,7 +31,29 @@ export interface MockState {
     scope: string
   }
   userinfoResponse?: { email: string; sub: string }
+  /**
+   * Today planner (WI-2): raw Google Calendar event resources returned by
+   * GET /calendar/v3/calendars/primary/events. `status` overrides the HTTP
+   * status (e.g. 403 to simulate a missing scope).
+   */
+  calendar?: { events: unknown[]; status?: number }
+  /**
+   * Today planner (WI-2): every multipart upload to /upload/drive/v3/files is
+   * recorded here (url + raw init) and answered with `uploadResponse` (default
+   * `{ id: 'newdoc1', name: <metadata.name>, webViewLink }`). `uploadStatus`
+   * overrides the HTTP status.
+   */
+  uploads?: Array<{
+    url: string
+    init: FetchInit | undefined
+    metadata: Record<string, unknown> | null
+    media: string | null
+  }>
+  uploadResponse?: { id: string; name?: string; webViewLink?: string }
+  uploadStatus?: number
 }
+
+type FetchInit = Parameters<GoogleFetch>[1]
 
 type FakeResponse = Awaited<ReturnType<GoogleFetch>>
 
@@ -76,7 +98,74 @@ function driveFileMeta(f: MockFile) {
   }
 }
 
-function dispatch(url: string, state: MockState): FakeResponse {
+/** Splits a multipart/related body into its JSON metadata part and its media part. */
+function parseMultipart(init: FetchInit | undefined): {
+  metadata: Record<string, unknown> | null
+  media: string | null
+} {
+  const contentType = init?.headers?.['Content-Type'] ?? init?.headers?.['content-type'] ?? ''
+  const boundaryMatch = contentType.match(/boundary=([^;]+)/)
+  const body = typeof init?.body === 'string' ? init.body : ''
+  if (!boundaryMatch || !body) return { metadata: null, media: null }
+  const boundary = boundaryMatch[1].replace(/^"|"$/g, '')
+  const parts = body
+    .split(`--${boundary}`)
+    .map((p) => p.replace(/^\r?\n/, '').replace(/\r?\n$/, ''))
+    .filter((p) => p && p !== '--' && p !== '--\r\n')
+  let metadata: Record<string, unknown> | null = null
+  let media: string | null = null
+  for (const part of parts) {
+    const sep = part.indexOf('\r\n\r\n')
+    if (sep === -1) continue
+    const headers = part.slice(0, sep).toLowerCase()
+    const content = part.slice(sep + 4)
+    if (headers.includes('application/json')) {
+      try {
+        metadata = JSON.parse(content) as Record<string, unknown>
+      } catch {
+        metadata = null
+      }
+    } else {
+      media = content
+    }
+  }
+  return { metadata, media }
+}
+
+function dispatch(url: string, init: FetchInit | undefined, state: MockState): FakeResponse {
+  // Today planner: Calendar events list
+  if (url.startsWith('https://www.googleapis.com/calendar/v3/calendars/primary/events')) {
+    const status = state.calendar?.status ?? 200
+    if (status !== 200) {
+      return makeJson(
+        { error: { code: status, message: status === 403 ? 'Insufficient Permission' : 'error' } },
+        status
+      )
+    }
+    return makeJson({ kind: 'calendar#events', items: state.calendar?.events ?? [] })
+  }
+
+  // Today planner: Drive multipart upload (Google Doc created from Markdown)
+  if (url.startsWith('https://www.googleapis.com/upload/drive/v3/files')) {
+    const { metadata, media } = parseMultipart(init)
+    ;(state.uploads ??= []).push({ url, init, metadata, media })
+    const status = state.uploadStatus ?? 200
+    if (status !== 200) {
+      return makeJson(
+        { error: { code: status, message: status === 403 ? 'Insufficient Permission' : 'error' } },
+        status
+      )
+    }
+    const id = state.uploadResponse?.id ?? 'newdoc1'
+    const name =
+      state.uploadResponse?.name ??
+      (typeof metadata?.name === 'string' ? metadata.name : 'Untitled')
+    const webViewLink =
+      state.uploadResponse?.webViewLink ??
+      `https://docs.google.com/document/d/${id}/edit?usp=drivesdk`
+    return makeJson({ id, name, webViewLink })
+  }
+
   // Token exchange
   if (url === 'https://oauth2.googleapis.com/token') {
     const tr = state.tokenExchangeResponse
@@ -209,7 +298,7 @@ function dispatch(url: string, state: MockState): FakeResponse {
 }
 
 export function installMockGoogleServer(state: MockState): { reset(): void } {
-  const handler: GoogleFetch = (url) => Promise.resolve(dispatch(url, state))
+  const handler: GoogleFetch = (url, init) => Promise.resolve(dispatch(url, init, state))
   __setGoogleFetchForTests(handler)
   return {
     reset() {

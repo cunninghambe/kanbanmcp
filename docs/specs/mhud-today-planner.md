@@ -1,0 +1,964 @@
+# mhud Today — the single-page operating surface (spec & build plan)
+
+**Status:** Ready for implementation · **Route:** `/today` (new default landing page)
+**Goal:** the user never switches windows to work out what is next. One page collects what needs doing (board cards, email, calendar, Slack, native to-dos), ranks it for the day, lets the user complete / snooze / dismiss / won't-do each item, and lets them do the work on the page (a Markdown composer, Claude on demand) and hand the result off (email reply, Google Doc, card, Slack post) without leaving.
+
+**Decisions confirmed by the owner (2026-09-16):**
+
+1. Mail + calendar come from the **Google stack through the in-app OAuth**: emails are the existing Gmail inbox-agent cards and nudges (no new Gmail read code); calendar is a new `calendar.events.readonly` scope on the existing per-user Google credential.
+2. **Slack is in v1**: a new Slack OAuth (user token) reads mentions + DMs into the planner and posts messages as a composer handoff.
+3. **Ranking is deterministic** (a pure scoring function, no model call). One attended Sonnet call runs only when the user clicks *plan my day* (day brief + per-item prep notes) or *ask claude* in the composer. Nothing runs unattended.
+4. **Composer = Markdown + handoffs** (email reply, Google Doc, card comment / card create, Slack post). Spreadsheet grid and Teams are deferred.
+
+Everything below is written against the code on `main` at `ad681ba` (verified contracts are cited with `path:line`). Where this spec touches a file that open PR #38 also touches, it says so.
+
+---
+
+## 0. Recon — what exists and what the planner reuses
+
+| Need | Reused mechanism | Path |
+|---|---|---|
+| Auth, org scoping, human-only gates | `requireSession` / `requireOrgRole` / `apiError`; `session.isApiKeyAuth` + `userId === ''` for API keys | `src/lib/api-helpers.ts:25-103`, `src/lib/session.ts:17-24` |
+| Human-only rejection idiom | `if (session.isApiKeyAuth) return apiError(403, '… requires a human session')` | `src/app/api/inbox-agent/route.ts:37-39` |
+| Fixed-window rate limit | `checkRateLimit(key, limit, windowMs): boolean` (true = allowed) | `src/lib/rate-limit.ts:60-81` |
+| Secrets at rest | `encryptSecret` / `decryptSecret` (AES-256-GCM, `SETTINGS_ENCRYPTION_KEY`) | `src/lib/secrets.ts` |
+| Google OAuth + API calls | `buildConsentUrl`, `exchangeCode`, `ensureFreshAccessToken`, `googleFetch` (no auth injection, caller adds `Authorization`) | `src/lib/google/oauth.ts`, `src/lib/google/fetch.ts` |
+| Google error classes | `InsufficientScopesError(missing)`, `GoogleAuthExpiredError`, `GoogleHttpError(status, body)` | `src/lib/google/errors.ts` |
+| Email substrate | Inbox board cards (`INBOX_BOARD_ID`), `` `gmail:<threadId>` `` marker on the card's final line, pending `Nudge` rows, Apps Script `draft/send/ack` actions | `integrations/gmail-apps-script/Code.gs`, `src/app/api/nudges/route.ts` |
+| Card write-through | `prisma.card.update({ columnId, position })` inside `$transaction` + `recordCardMovement(tx, …)` | `src/app/api/cards/[cardId]/route.ts:193-261`, `src/lib/card-movement.ts:19` |
+| Terminal-column detection | lower-cased set `done|closed|shipped|archived` | `src/app/api/hud/[id]/pertinent/route.ts:9` |
+| Reviewer/approver "needs action" rule | latest signoff for the role is missing or `REQUESTED_CHANGES` | `src/app/api/me/assignments/route.ts:47-52` |
+| Anthropic call shape, auth precedence, retry policy | org key → `CLAUDE_CODE_OAUTH_TOKEN` → `ANTHROPIC_API_KEY`; `new Anthropic({ apiKey: null, authToken })` for OAuth; retry on 429 / 5xx / network with 1s, 4s | `src/lib/ai-review/claude-client.ts:98-117, 208-252` |
+| Tolerant JSON extraction from model output | first fenced block, else brace-scan, else fallback | `src/lib/host-hud/dispatch.ts:105-185` |
+| Single-process mutex | `withKeyedLock(key, fn)` | `src/lib/keyed-mutex.ts:26` |
+| Provenance | `logActivity(orgId, agentName, action, resourceType, resourceId, metadata)` fire-and-forget | `src/lib/agent-activity.ts:12` |
+| Design system | `Topbar`, `StatTile`, `Chip`, `Pip`, `km-*` utilities, panel-section shell, fetcher idiom, loading/error conventions | `src/components/design/*`, `src/app/design-tokens.css:188-334`, `src/app/(app)/dashboard/page.tsx` |
+| Deep-link a card | `router.push(\`/board/${boardId}?card=${cardId}\`)` | `src/app/(app)/dashboard/page.tsx:160-162` |
+
+**Gaps the planner must fill (verified absent):** no calendar code; no Slack code; no use-time Google scope check (`cred.scopes` is only read by the status route); `claude-client.ts` exports only `runClaudeReview` (rubric-shaped, may route through ClaudeMCP with multi-minute latency — unusable for an attended request); the Apps Script has no "compose with this exact body" action; `googleFetch` has no Drive upload helper; `/` redirects to `/login` and login pushes `/dashboard`.
+
+**Schema process:** planner models follow the mhud/HUD/Nudge convention — additive models in `prisma/schema.prisma`, applied with `prisma db push` (no migration file; `docs/specs/mhud-hardening-plan.md:17`). The e2e harness runs `db push --force-reset` (`e2e/global-setup.ts`), production runs `db push` in `scripts/start.sh`. The two `__tests__/prisma/*` suites are untouched.
+
+---
+
+## 1. Product
+
+### 1.1 Page anatomy (`/today`)
+
+```
+┌ Topbar ─────────────────────────────────────────────────────────────────────────┐
+│ breadcrumb "today · <sources ok/err chips>"   title "wed 16 sep"    [refresh] [plan my day] │
+├ Stats row ──────────────────────────────────────────────────────────────────────┤
+│ now 03 │ overdue 02 │ meetings today 04 │ inbox 05 │ slack 02 │ done today 06     │
+├──────────────────────────────────┬──────────────────────────────────────────────┤
+│ /// meetings today  (time strip) │ /// workspace                                │
+│ /// now      (top ranked)        │  selected item: title · source chip · links  │
+│ /// today                        │  prep notes (from plan my day)               │
+│ /// soon                         │  composer: [title] [markdown textarea|preview]│
+│ /// later                        │            ask claude: [instructions] [mode]  │
+│ /// snoozed                      │  handoff bar: email · google doc · card ·     │
+│ /// done today  /// won't do     │               slack                          │
+│ [quick add a to-do…      ⏎]      │  (empty state: day brief + how-to)           │
+└──────────────────────────────────┴──────────────────────────────────────────────┘
+```
+
+Each list row: source icon · title · reason chips (`overdue 2d`, `meeting in 40m`, `urgent email`) · due/time · actions **done ✓ · snooze ⏰ · dismiss ✕ · won't do ⊘**. Clicking the row selects it into the workspace. Keyboard: `↑/↓` move selection, `d` done, `s` snooze menu, `x` dismiss, `w` won't do (only when focus is in the list).
+
+### 1.2 Item lifecycle
+
+```
+                 collector (on page load when stale, or refresh)
+  source ──────────────────────────────► open ──┬─ done ───────► (write-through: card→Done column, email→nudge ack + card→Done)
+                                                ├─ snoozed ─(snoozedUntil passes)─► open  (+ "back from snooze")
+                                                ├─ dismissed  (planner-only; email: nudge ack)
+                                                └─ wont_do    (planner-only; email: nudge ack)
+  source stops reporting an open item ─────────► done (resolvedBy = source)
+  calendar event ends ─────────────────────────► done (resolvedBy = elapsed)
+```
+
+**User decisions are sticky.** The collector never changes a `done / dismissed / snoozed / wont_do` item back to `open`; it only refreshes title/summary/due/payload on `open` and `snoozed` items. `reopen` is an explicit user action.
+
+**No silent loss.** A source that errors during collection leaves its items untouched (no resolution pass runs for that source) and the page shows the source as `error` with the message. A source that is not configured shows `skipped`; one that needs a Google scope shows `needs_scope` with a link to the upgrade.
+
+### 1.3 Sections (assigned by the ranker, in this order)
+
+| Section | Rule (status `open`, or `snoozed` whose `snoozedUntil <= now`) |
+|---|---|
+| `now` | the first `min(3, n)` open items by score, each with `score >= 25` |
+| `today` | remaining open items with `score >= 12`, or `dueAt` inside the day window, or a calendar item starting inside the day window |
+| `soon` | remaining open items with `dueAt < dayEnd + 7d` or `score >= 5` |
+| `later` | every other open item |
+| `snoozed` | `status = snoozed` and `snoozedUntil > now` |
+| `done` | `status = done` and `resolvedAt >= dayStart` (older done items are not returned) |
+| `wont_do` | `status = wont_do` (all, newest first) |
+| `dismissed` | `status = dismissed` and `resolvedAt >= dayStart` (returned for the count; the UI hides the list behind a toggle) |
+
+Calendar items that have ended are `done` (resolvedBy `elapsed`), never `now/today`.
+
+### 1.4 Invariants (non-negotiable)
+
+1. **Human session only** for every `/api/planner/*` route and every handoff. API keys get `403 { error: 'The planner requires a human session' }`.
+2. **Per-user.** Every query is `where: { userId: session.userId }` (plus `orgId`). Another user's item or draft is a `404`, never a `403`.
+3. **Sends are two-step.** An email handoff first *composes* a Gmail draft and returns the real recipients; the send happens only on a second explicit call with that `draftId`. Slack posts and Google Doc creation are single-step because they are not addressed to third parties by the model (the user picks the channel).
+4. **Attended LLM only.** Model calls happen inside a request handler that a human clicked (`plan`, `generate`). No cron, no worker, no collector call touches a model. Both routes are rate-limited per user.
+5. **Secrets stay server-side.** Slack user tokens and Google tokens are encrypted at rest and never leave the server; `INBOX_AGENT_TOKEN` is injected server-side.
+6. **Untrusted text is data.** Email subjects/bodies, Slack messages, calendar descriptions are rendered as text (react-markdown with the app's restricted component map; URLs pass `sanitizeCitationUrl`-style scheme allowlisting before becoming an `href`).
+7. **Provenance.** Every handoff that leaves the app (email send, Slack post, Google Doc create) and every write-through (card move, nudge ack) writes `AgentActivity` with `agentName = 'planner'`.
+
+---
+
+## 2. Data model (additive, `prisma db push`)
+
+Append to `prisma/schema.prisma` after the `Nudge` model. Per the HUD convention (`schema.prisma:437-441`) cross-module ids are plain strings with no relation, **except** `SlackCredential.userId`, which mirrors `GoogleCredential` (real relation, cascade).
+
+```prisma
+// ─── Today planner (per-user day plan) ───────────────────────────────────────
+// See docs/specs/mhud-today-planner.md. Items are owned by one user; every read
+// and write is scoped by userId. Source rows are soft-linked by sourceKey.
+
+model PlannerItem {
+  id     String @id @default(cuid())
+  orgId  String
+  userId String // owner (User id) — no relation, per HUD convention
+
+  // values: card | email | calendar | slack | manual
+  source String
+  // stable per-user dedupe key: card:<cardId> | email:<cardId> | calendar:<eventId> |
+  //   slack:<channelId>:<ts> | manual:<cuid>
+  sourceKey String
+
+  title   String
+  summary String?
+  url     String? // deep link into the source system; http(s) only
+  // values: none | low | medium | high | critical (mirrors Card.priority)
+  priority String    @default("none")
+  dueAt    DateTime?
+  startsAt DateTime? // calendar: event start
+  endsAt   DateTime? // calendar: event end
+
+  // values: open | done | dismissed | snoozed | wont_do
+  status       String    @default("open")
+  snoozedUntil DateTime?
+  // values: user | source | elapsed — who moved the item out of `open`
+  resolvedBy String?
+  resolvedAt DateTime?
+
+  prepNotes String? // written only by POST /api/planner/plan (attended)
+  // JSON: source-specific payload (see §4.1 SourceItem.payload per source)
+  payload    String   @default("{}")
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, sourceKey])
+  @@index([userId, status])
+  @@index([orgId, userId])
+  @@map("planner_items")
+}
+
+model PlannerDay {
+  id     String @id @default(cuid())
+  orgId  String
+  userId String
+  date   String // YYYY-MM-DD in the user's IANA zone (sent by the client)
+  tz     String // IANA zone the date was computed in
+
+  brief      String? // markdown day brief from POST /api/planner/plan
+  briefModel String?
+  briefAt    DateTime?
+
+  lastCollectedAt DateTime?
+  // JSON: { card: 'ok'|'error'|'skipped'|'needs_scope', email: …, calendar: …, slack: …, errors: { <source>: string } }
+  collectStatus String @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@map("planner_days")
+}
+
+model PlannerDraft {
+  id     String  @id @default(cuid())
+  orgId  String
+  userId String
+  itemId String? // PlannerItem this draft is about (no relation; null = free-standing)
+
+  title String
+  body  String @default("") // markdown
+  // values: draft | handed_off
+  status String @default("draft")
+  // JSON: { kind, ref, url?, at } — the last successful handoff (see §5.6)
+  handoff String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, itemId])
+  @@map("planner_drafts")
+}
+
+// ─── Slack OAuth Credentials (user token) ────────────────────────────────────
+
+model SlackCredential {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  teamId      String
+  teamName    String
+  teamUrl     String? // from auth.test — used to build permalinks
+  slackUserId String
+  accessTokenEncrypted String // xoxp user token — ciphertext only, never log
+  scopes      String // comma-separated, as Slack returns them
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastUsedAt DateTime?
+
+  @@unique([teamId, slackUserId])
+  @@map("slack_credentials")
+}
+```
+
+`User` gains one back-relation line next to `googleCredential` (`schema.prisma:30`):
+
+```prisma
+  slackCredential   SlackCredential?
+```
+
+---
+
+## 3. Environment (append to `.env.example`)
+
+```
+# mhud Today planner (docs/specs/mhud-today-planner.md)
+PLANNER_MODEL=claude-sonnet-4-6      # attended calls only (plan my day, ask claude); falls back to AI_REVIEW_DEFAULT_MODEL
+PLANNER_COLLECT_STALE_MS=300000      # GET /api/planner/today re-collects when the last collection is older than this
+PLANNER_SLACK_LOOKBACK_HOURS=48      # how far back Slack mentions/DMs are collected
+PLANNER_SLACK_MAX_DM_CONVERSATIONS=15
+# Slack OAuth app (user-token flow). Redirect URI must be https://<host>/api/me/slack/callback
+SLACK_CLIENT_ID=
+SLACK_CLIENT_SECRET=
+SLACK_OAUTH_REDIRECT_URI=
+# Google OAuth (M4) — was undocumented here; the planner's calendar/doc scopes ride the same client.
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_REDIRECT_URI=           # https://<host>/api/me/google/callback
+```
+
+Existing env the planner reads: `INBOX_BOARD_ID`, `INBOX_AGENT_URL`, `INBOX_AGENT_TOKEN`, `INBOX_AGENT_OWNER` (added by PR #38; when set, the email source is bound to that login email), `SETTINGS_ENCRYPTION_KEY`, `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN`, `AI_REVIEW_DEFAULT_MODEL`.
+
+---
+
+## 4. Server modules (contracts are normative; tests import these names)
+
+### 4.1 `src/lib/planner/types.ts` — shared constants and DTOs
+
+```ts
+import type { PlannerItem } from '@prisma/client'
+
+export const PLANNER_SOURCES = ['card', 'email', 'calendar', 'slack', 'manual'] as const
+export type PlannerSource = (typeof PLANNER_SOURCES)[number]
+export const COLLECTED_SOURCES = ['card', 'email', 'calendar', 'slack'] as const
+export type CollectedSource = (typeof COLLECTED_SOURCES)[number]
+
+export const PLANNER_STATUSES = ['open', 'done', 'dismissed', 'snoozed', 'wont_do'] as const
+export type PlannerStatus = (typeof PLANNER_STATUSES)[number]
+
+export const PLANNER_ACTIONS = ['done', 'dismiss', 'wont_do', 'snooze', 'reopen'] as const
+export type PlannerAction = (typeof PLANNER_ACTIONS)[number]
+
+export const PLANNER_PRIORITIES = ['none', 'low', 'medium', 'high', 'critical'] as const
+export type PlannerPriority = (typeof PLANNER_PRIORITIES)[number]
+
+export const PLANNER_SECTIONS = ['now', 'today', 'soon', 'later', 'snoozed', 'done', 'wont_do', 'dismissed'] as const
+export type PlannerSection = (typeof PLANNER_SECTIONS)[number]
+
+export type SourceStatus = 'ok' | 'error' | 'skipped' | 'needs_scope'
+
+export interface PlannerItemDTO {
+  id: string
+  source: PlannerSource
+  sourceKey: string
+  title: string
+  summary: string | null
+  url: string | null
+  priority: PlannerPriority
+  dueAt: string | null
+  startsAt: string | null
+  endsAt: string | null
+  status: PlannerStatus
+  snoozedUntil: string | null
+  resolvedBy: 'user' | 'source' | 'elapsed' | null
+  resolvedAt: string | null
+  prepNotes: string | null
+  payload: Record<string, unknown>
+  lastSeenAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** Row → DTO. `payload` JSON that fails to parse becomes `{}` (never throws). */
+export function toPlannerItemDTO(row: PlannerItem): PlannerItemDTO
+
+export interface RankedItemDTO extends PlannerItemDTO {
+  score: number
+  reasons: string[]
+  section: PlannerSection
+}
+
+export interface DayWindow { start: Date; end: Date }
+
+/** What a source reader returns for one item. */
+export interface SourceItem {
+  sourceKey: string
+  title: string
+  summary?: string | null
+  url?: string | null
+  priority?: PlannerPriority
+  dueAt?: Date | null
+  startsAt?: Date | null
+  endsAt?: Date | null
+  payload: Record<string, unknown>
+}
+
+export interface SourceRead {
+  items: SourceItem[]
+  /**
+   * Which of this source's previously-open items should be auto-resolved when
+   * absent from `items`: 'all' (cards/email/slack), 'none', or only those whose
+   * startsAt falls inside the window (calendar).
+   */
+  resolveMissing: 'all' | 'none' | DayWindow
+}
+
+export interface SourceContext {
+  userId: string
+  orgId: string
+  now: Date
+  window: DayWindow
+}
+
+/** Returns null when the source is not configured/connected for this user (→ 'skipped'). */
+export type SourceReader = (ctx: SourceContext) => Promise<SourceRead | null>
+
+export interface CollectResult {
+  upserted: number
+  resolved: number
+  status: Record<CollectedSource, SourceStatus>
+  errors: Partial<Record<CollectedSource, string>>
+}
+
+export interface TodayResponse {
+  date: string
+  tz: string
+  window: { start: string; end: string }
+  collectedAt: string | null
+  sources: Record<CollectedSource, SourceStatus>
+  sourceErrors: Partial<Record<CollectedSource, string>>
+  brief: { text: string; model: string | null; at: string } | null
+  items: RankedItemDTO[]
+  counts: {
+    now: number
+    open: number
+    overdue: number
+    meetingsToday: number
+    inbox: number
+    slack: number
+    doneToday: number
+    dismissed: number
+  }
+}
+
+export interface PlannerDraftDTO {
+  id: string
+  itemId: string | null
+  title: string
+  body: string
+  status: 'draft' | 'handed_off'
+  handoff: { kind: string; ref: string; url?: string; at: string } | null
+  createdAt: string
+  updatedAt: string
+}
+export function toPlannerDraftDTO(row: import('@prisma/client').PlannerDraft): PlannerDraftDTO
+
+/** Scheme allowlist for anything that becomes an href. Returns undefined for anything else. */
+export function safeHttpUrl(raw: unknown): string | undefined // http: | https: only (no mailto)
+```
+
+### 4.2 `src/lib/planner/time.ts` — day windows in the user's zone (no library)
+
+```ts
+export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+export function isValidTimeZone(tz: string): boolean          // Intl.DateTimeFormat probe; false on RangeError
+export function tzOffsetMinutes(at: Date, tz: string): number  // e.g. Europe/London in July → 60
+export function localDate(at: Date, tz: string): string        // 'YYYY-MM-DD' of `at` in `tz`
+export function dayBounds(date: string, tz: string): DayWindow  // [local 00:00, next local 00:00) as UTC instants; DST-safe
+export function addDays(date: string, n: number): string       // calendar arithmetic on 'YYYY-MM-DD'
+```
+
+`dayBounds('2026-03-29', 'Europe/London')` must return a 23-hour window (spring forward). Invalid inputs throw `RangeError`.
+
+### 4.3 `src/lib/planner/rank.ts` — pure, deterministic
+
+```ts
+export interface RankContext { now: Date; window: DayWindow }
+export const NOW_MIN_SCORE = 25
+export const NOW_MAX_ITEMS = 3
+export const TODAY_MIN_SCORE = 12
+export const SOON_MIN_SCORE = 5
+export const SOON_DAYS = 7
+export const MEETING_SOON_MS = 2 * 60 * 60 * 1000
+
+export function scoreItem(item: PlannerItemDTO, ctx: RankContext): { score: number; reasons: string[] }
+export function sectionFor(item: PlannerItemDTO, score: number, ctx: RankContext, nowRank: number | null): PlannerSection
+export function rankItems(items: PlannerItemDTO[], ctx: RankContext): RankedItemDTO[]
+```
+
+Scoring table (additive; reasons are the exact strings, used by the UI as chips):
+
+| Signal | Points | Reason string |
+|---|---|---|
+| `dueAt < now` | `40 + 2 * min(daysOverdue, 10)` | `overdue ${d}d` (`overdue today` when `d === 0`) |
+| `dueAt` in `[window.start, window.end)` and not overdue | 30 | `due today` |
+| `dueAt` in `[window.end, window.end + 24h)` | 15 | `due tomorrow` |
+| `dueAt` in `[window.end + 24h, window.end + 7d)` | 6 | `due this week` |
+| priority `critical / high / medium / low` | 25 / 15 / 8 / 3 | `critical` / `high` / `medium` / `low` |
+| source `email` with `payload.urgent === true` | 30 | `urgent email` |
+| source `email` (not urgent) | 10 | `email` |
+| source `slack`, `payload.kind === 'dm'` | 12 | `slack dm` |
+| source `slack`, `payload.kind === 'mention'` | 10 | `slack mention` |
+| source `manual` | 5 | `your to-do` |
+| source `card` with `payload.role` of `reviewer` or `approver` | 5 | `needs your review` |
+| calendar: `startsAt <= now < endsAt` | 25 | `meeting now` |
+| calendar: `0 < startsAt - now <= 2h` | 35 | `meeting in ${m}m` |
+| calendar: starts later inside the window | 20 | `meeting today` |
+| calendar: starts after the window | 0 | `meeting ${localDate}` (no points) |
+| age: `days since createdAt` for open items, cap 7 | `min(days, 7)` | `waiting ${days}d` (only when `days >= 2`) |
+| `status = snoozed` and `snoozedUntil <= now` | 5 | `back from snooze` |
+
+Sorting: score desc, then `dueAt` asc (nulls last), then `startsAt` asc (nulls last), then `createdAt` asc, then `id` asc. `rankItems` is stable and total. Items with `status` in `done / dismissed / wont_do` get `score = 0`, `reasons = []`, and their status section. A `snoozed` item whose `snoozedUntil > now` gets section `snoozed` regardless of score.
+
+### 4.4 `src/lib/planner/collect.ts` — the per-user collector
+
+```ts
+import type { PrismaClient } from '@prisma/client'
+
+export interface CollectDeps {
+  prisma: Pick<PrismaClient, 'plannerItem'>
+  readers: Record<CollectedSource, SourceReader>
+  /** For tests. Defaults to () => new Date(). */
+  now?: () => Date
+}
+
+export async function collectForUser(ctx: SourceContext, deps: CollectDeps): Promise<CollectResult>
+```
+
+Algorithm (order matters):
+
+1. `runStartedAt = now()`. Run all four readers with `Promise.allSettled` (they are independent).
+2. Per source:
+   - rejected → `status[s] = 'error'`, `errors[s] = message.slice(0, 500)`; if the error is an `InsufficientScopesError` (Google) → `status[s] = 'needs_scope'`. **No writes for that source.**
+   - resolved `null` → `status[s] = 'skipped'`.
+   - resolved `SourceRead` → for each item, `prisma.plannerItem.upsert({ where: { userId_sourceKey: { userId, sourceKey } }, create: { …fields, orgId, userId, source, status: 'open', lastSeenAt: runStartedAt }, update: { title, summary, url, priority, dueAt, startsAt, endsAt, payload, lastSeenAt: runStartedAt } })`. The `update` never touches `status`, `snoozedUntil`, `resolved*`, `prepNotes`. `url` is passed through `safeHttpUrl` (else `null`). Items whose `sourceKey` does not start with `${source}:` are skipped (defensive).
+   - then resolution per `resolveMissing`:
+     - `'all'` → `updateMany({ where: { userId, source, status: { in: ['open', 'snoozed'] }, lastSeenAt: { lt: runStartedAt } }, data: { status: 'done', resolvedBy: 'source', resolvedAt: now } })`
+     - `DayWindow` → same plus `startsAt: { gte: window.start, lt: window.end }`
+     - `'none'` → nothing
+   - `status[s] = 'ok'`.
+3. Calendar elapsed rule (only when the calendar read was `ok`): `updateMany({ where: { userId, source: 'calendar', status: { in: ['open', 'snoozed'] }, endsAt: { lt: now } }, data: { status: 'done', resolvedBy: 'elapsed', resolvedAt: now } })`.
+4. Return counts.
+
+`collectForUser` never throws for a reader failure; it throws only if Prisma itself throws.
+
+### 4.5 Sources — `src/lib/planner/sources/`
+
+`index.ts` exports `defaultReaders(): Record<CollectedSource, SourceReader>` wiring the four below.
+
+**`cards.ts` — `readCards(ctx)`** (always configured → never null)
+
+- Query cards where `board.orgId = ctx.orgId` and (`assigneeId = userId` OR `reviewerId = userId` OR `approverId = userId`), include `board { id, name }`, `column { id, name }`, `signoffs (orderBy createdAt desc)`; exclude cards whose column name lower-cased is in `TERMINAL_COLUMNS = new Set(['done','closed','shipped','archived'])`; exclude cards whose `boardId === process.env.INBOX_BOARD_ID` (those are email items).
+- Reviewer/approver cards are included only when `needsAction(card, role)` (copy of `me/assignments/route.ts:47-52`). If the user holds several roles on one card, `payload.role` is the first of `assignee`, `reviewer`, `approver` that applies.
+- `SourceItem`: `sourceKey: \`card:${id}\``, `title`, `summary: \`${boardName} · ${columnName}\``, `url: \`/board/${boardId}?card=${id}\`` (relative app URL is allowed here and is **not** passed through `safeHttpUrl` — the collector allows `/`-prefixed relative URLs as well as http(s)), `priority` (card priority, defaulting to `none` if unknown), `dueAt`, `payload: { cardId, boardId, boardName, columnId, columnName, role }`.
+- `resolveMissing: 'all'`.
+
+**`email.ts` — `readEmail(ctx)`**
+
+- `INBOX_BOARD_ID` unset → `null`. If `INBOX_AGENT_OWNER` is set and the user's email (`prisma.user.findUnique({ where: { id: userId }, select: { email } })`) does not match it case-insensitively → `null`.
+- Cards on the inbox board (org-checked) whose column name lower-cased is not in `{'done', 'digest', 'closed', 'archived'}`. Pending nudges: `prisma.nudge.findMany({ where: { orgId, status: 'pending' } })`.
+- Marker: `extractGmailThreadId(description)` — the **last non-empty line** must match `` /^`gmail:([\w-]+)`$/ `` (anchored, backtick-aware, mirrors PR #38's fix); otherwise `null`. Permalink: first `[Open in Gmail](url)` link whose URL host is `mail.google.com`, else null. Sender: the `From: ` line (display string, may include an address).
+- `SourceItem`: `sourceKey: \`email:${cardId}\``, `title` = card title with a leading `🔴 ` / `✉️ ` marker stripped, `summary` = `from` (or the first description line), `url` = permalink, `priority` = card priority, `dueAt` = card due date, `payload: { cardId, boardId, columnName, gmailThreadId, from, permalink, nudgeId, urgent }` where `urgent = column name is 'urgent' || nudge exists for cardId/threadId`, `nudgeId` = the matching pending nudge id or null.
+- `resolveMissing: 'all'`.
+
+**`calendar.ts` — `readCalendar(ctx)`** (uses `src/lib/google/calendar.ts`, §4.6)
+
+- No `GoogleCredential` → `null`. Missing scope → `listEvents` throws `InsufficientScopesError` → propagates (collector maps it to `needs_scope`).
+- Window: `timeMin = ctx.window.start`, `timeMax = ctx.window.start + 7 days` (so tomorrow's meetings can appear under `later`).
+- Skip events where the self attendee `responseStatus === 'declined'`, events with `status === 'cancelled'`, and events with `transparency === 'transparent'` (free). All-day events get `startsAt = window.start`, `endsAt = window.end`, `payload.allDay = true`.
+- `SourceItem`: `sourceKey: \`calendar:${event.id}\``, `title: event.summary ?? '(no title)'`, `summary` = attendee display names joined by `, ` (max 6, then `+N`), `url: event.htmlLink`, `startsAt`, `endsAt`, `payload: { eventId, attendees: [{ email, name, responseStatus, self }], organizer, location, hangoutLink, description (max 2000 chars), allDay }`.
+- `resolveMissing: { start: ctx.window.start, end: ctx.window.start + 7d }`.
+
+**`slack.ts` — `readSlack(ctx)`** (uses `src/lib/slack/client.ts`, §4.8)
+
+- No `SlackCredential` → `null`. Lookback `PLANNER_SLACK_LOOKBACK_HOURS` (default 48).
+- Mentions: `searchMentions(userId, { slackUserId, oldest })` → items with `payload.kind = 'mention'`.
+- DMs: `listDmConversations(userId, { limit: PLANNER_SLACK_MAX_DM_CONVERSATIONS })`, then `conversationHistory(userId, channelId, { oldest, limit: 20 })`; keep only conversations whose **latest** message is not from the user (awaiting reply); the item is that latest message, `payload.kind = 'dm'`.
+- `SourceItem`: `sourceKey: \`slack:${channelId}:${ts}\``, `title: \`${userName}: ${text.slice(0, 80)}\`` (mention: `\`${userName} in #${channelName}: …\``), `summary: text.slice(0, 500)`, `url: permalink`, `payload: { channelId, channelName, ts, threadTs, slackUserId, userName, text: text.slice(0, 4000), kind }`.
+- `resolveMissing: 'all'` (a mention older than the lookback is considered handled).
+
+### 4.6 Google additions — `src/lib/google/`
+
+**`scopes.ts`** (new)
+
+```ts
+export const CALENDAR_EVENTS_READONLY_SCOPE = 'https://www.googleapis.com/auth/calendar.events.readonly'
+export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+export const PLANNER_SCOPES = [CALENDAR_EVENTS_READONLY_SCOPE, DRIVE_FILE_SCOPE] as const
+/** Returns the subset of `needed` absent from the space-separated `granted` string. */
+export function missingScopes(granted: string, needed: readonly string[]): string[]
+/** Reads the user's credential and throws InsufficientScopesError(missing) when any needed scope is absent. */
+export async function assertScopes(userId: string, needed: readonly string[]): Promise<void>
+```
+
+**`oauth.ts`** — `buildConsentUrl` gains an optional third parameter. **The existing two-argument call must remain byte-identical in behaviour** (tests assert `toHaveBeenCalledWith('user-1', state)`).
+
+```ts
+export function buildConsentUrl(userId: string, state: string, extraScopes?: readonly string[]): string
+// scopes = GOOGLE_SCOPES_OVERRIDE ?? [...REQUIRED_SCOPES, ...(extraScopes ?? [])].join(' ')
+```
+
+**`calendar.ts`** (new)
+
+```ts
+export interface CalendarAttendee { email: string; name?: string; responseStatus?: string; self?: boolean }
+export interface CalendarEvent {
+  id: string; summary: string | null; description: string | null; htmlLink: string | null
+  start: Date; end: Date; allDay: boolean; status: string; transparency: string | null
+  location: string | null; hangoutLink: string | null; organizer: { email: string; name?: string } | null
+  attendees: CalendarAttendee[]
+}
+export async function listEvents(userId: string, args: { timeMin: Date; timeMax: Date; maxResults?: number }): Promise<CalendarEvent[]>
+```
+
+- `await assertScopes(userId, [CALENDAR_EVENTS_READONLY_SCOPE])` first (so a missing scope never spends a Google call).
+- URL: `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin=<iso>&timeMax=<iso>&maxResults=<n, default 50>`; `googleFetch(url, { headers: { Authorization: \`Bearer ${token}\` } }, { userId, retry: true })`.
+- Status ladder: `401` → `GoogleAuthExpiredError`; `403` → `InsufficientScopesError([CALENDAR_EVENTS_READONLY_SCOPE])`; other non-ok → `GoogleHttpError(status, text)`.
+- `start.dateTime` / `start.date` (all-day → `allDay: true`, `start = Date.UTC(date)` midnight, `end` likewise).
+
+**`docs-write.ts`** (new)
+
+```ts
+export interface CreatedDoc { id: string; name: string; webViewLink: string }
+export async function createDocFromMarkdown(userId: string, args: { title: string; markdown: string; folderId?: string }): Promise<CreatedDoc>
+```
+
+- `await assertScopes(userId, [DRIVE_FILE_SCOPE])`.
+- `POST https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink&supportsAllDrives=true` with `Content-Type: multipart/related; boundary=<boundary>`; part 1 `application/json; charset=UTF-8` → `{ name: title, mimeType: 'application/vnd.google-apps.document', parents?: [folderId] }`; part 2 `text/markdown; charset=UTF-8` → the markdown. Body is a plain string (fits the existing `GoogleFetch` type). Drive converts Markdown to a Google Doc.
+- Ladder: `401` → `GoogleAuthExpiredError`; `403` → `InsufficientScopesError([DRIVE_FILE_SCOPE])`; other non-ok → `GoogleHttpError`. Response missing `id` → `GoogleHttpError(200, 'Unexpected create response shape')`. `webViewLink` falls back to `https://docs.google.com/document/d/${id}/edit`.
+- `folderId`, when given, must match `/^[A-Za-z0-9_-]+$/` (same validator as `drive.ts:84`) else throws `Error('Invalid folderId')`.
+
+**Routes** (`src/app/api/me/google/`):
+
+- `connect/route.ts`: reads `?upgrade=planner`; when present calls `buildConsentUrl(session.userId, state, PLANNER_SCOPES)`; otherwise the unchanged two-argument call. Everything else identical.
+- `status/route.ts`: the connected body gains `plannerScopes: { granted: boolean; missing: string[] }` computed with `missingScopes(cred.scopes, PLANNER_SCOPES)`.
+- `callback/route.ts`: **unchanged** (`include_granted_scopes=true` means the token's `scope` is the union; the `REQUIRED_SCOPES` check still passes).
+
+### 4.7 Slack OAuth — `src/lib/slack/oauth.ts`, `src/lib/slack/errors.ts`
+
+```ts
+// errors.ts
+export class SlackAuthError extends Error { readonly code = 'SLACK_AUTH' }            // no credential / revoked
+export class SlackApiError extends Error { readonly code = 'SLACK_API'; constructor(public readonly slackError: string, message?: string) }
+export class SlackHttpError extends Error { readonly code = 'SLACK_HTTP'; constructor(public readonly status: number, public readonly body: string) }
+export class SlackInsufficientScopesError extends Error { readonly code = 'SLACK_INSUFFICIENT_SCOPES'; constructor(public readonly missing: string[]) }
+
+// oauth.ts
+export const SLACK_USER_SCOPES = [
+  'search:read', 'im:history', 'im:read', 'mpim:history', 'mpim:read',
+  'users:read', 'chat:write', 'channels:read', 'groups:read',
+] as const
+export interface SlackExchangeResult { accessToken: string; scopes: string[]; teamId: string; teamName: string; slackUserId: string }
+export function buildSlackConsentUrl(state: string): string
+// https://slack.com/oauth/v2/authorize?client_id=…&user_scope=<comma-joined SLACK_USER_SCOPES>&redirect_uri=…&state=…
+export async function exchangeSlackCode(code: string): Promise<SlackExchangeResult>
+// POST https://slack.com/api/oauth.v2.access (form: client_id, client_secret, code, redirect_uri) →
+//   { ok, authed_user: { id, scope, access_token, token_type: 'user' }, team: { id, name } }
+//   ok=false → SlackApiError(error); missing scopes (split on ',') → SlackInsufficientScopesError(missing)
+export async function getSlackAccessToken(userId: string): Promise<{ token: string; slackUserId: string; teamId: string; teamUrl: string | null }>
+// decrypts; no row → SlackAuthError
+export async function revokeSlackToken(userId: string): Promise<void>  // POST auth.revoke, best-effort, never throws
+```
+
+Env is read at call time (`requireSlackEnv()` throws `Error('SLACK_OAUTH_* env vars not configured')`), never at import.
+
+Routes `src/app/api/me/slack/` mirror the Google ones exactly (state cookie `slack_oauth_state`, `Path=/api/me/slack/callback`, `Max-Age=600`, `SameSite=Lax`, `HttpOnly`, `Secure` in production):
+
+| Route | Behaviour |
+|---|---|
+| `GET /api/me/slack/connect` | `requireSession`; 302 to consent URL; sets state cookie. Human only? — yes, `isApiKeyAuth` → 403. |
+| `GET /api/me/slack/callback` | state mismatch → 400 `{ error: 'STATE_MISMATCH' }` (clears cookie); then `requireSession`; `?error=access_denied` → 302 `/settings/integrations?slack_error=access_denied`; `exchangeSlackCode` → `SlackInsufficientScopesError` → 400 `{ error: 'INSUFFICIENT_SCOPES', missing }`; other failure → 502 `{ error: 'OAUTH_EXCHANGE_FAILED' }`; then `auth.test` with the token → `{ url, user_id }` (failure tolerated: `teamUrl = null`); collision: an existing row with the same `(teamId, slackUserId)` bound to another user → 409 `{ error: 'SLACK_ACCOUNT_BOUND_TO_OTHER_USER' }`; upsert by `userId` with `accessTokenEncrypted = encryptSecret(token)`; 302 `/settings/integrations?connected=slack`; clears cookie. |
+| `DELETE /api/me/slack/disconnect` | `requireSession`; no row → 204; `revokeSlackToken` then delete → 204. |
+| `GET /api/me/slack/status` | `{ connected: false }` or `{ connected: true, teamName, teamId, slackUserId, scopes: string[], lastUsedAt: string | null }`. |
+
+### 4.8 Slack client — `src/lib/slack/client.ts`, `src/lib/slack/format.ts`
+
+```ts
+// client.ts
+export type SlackFetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) =>
+  Promise<{ status: number; ok: boolean; headers?: { get(name: string): string | null }; text: () => Promise<string>; json: () => Promise<unknown> }>
+export function __setSlackFetchForTests(mock: SlackFetch | null): void
+
+/** Low-level call. GET with query for reads, POST JSON for writes. ok:false → SlackApiError(error). 429 → wait Retry-After (max 5s) once, then throw SlackHttpError. */
+export async function slackApi<T = Record<string, unknown>>(token: string, method: string, params: Record<string, string | number | boolean | undefined>, opts?: { post?: boolean }): Promise<T>
+
+export interface SlackMessage { channelId: string; channelName: string | null; ts: string; threadTs: string | null; userId: string; userName: string; text: string; permalink: string | null }
+export async function authTest(token: string): Promise<{ userId: string; teamId: string; url: string }>
+export async function searchMentions(userId: string, args: { slackUserId: string; oldest: Date; limit?: number }): Promise<SlackMessage[]>
+// search.messages query `<@${slackUserId}> after:${YYYY-MM-DD of oldest - 1d}` sort=timestamp sort_dir=desc count=limit(20); filters matches with ts < oldest
+export async function listDmConversations(userId: string, args: { limit: number }): Promise<Array<{ id: string; isMpim: boolean; userId?: string }>>
+// conversations.list types=im,mpim exclude_archived=true limit
+export async function conversationHistory(userId: string, channelId: string, args: { oldest: Date; limit: number }): Promise<SlackMessage[]>
+export async function resolveUserName(userId: string, slackUserId: string): Promise<string>  // users.info, memoised per process for 10 min
+export async function postMessage(userId: string, args: { channel: string; text: string; threadTs?: string }): Promise<{ channel: string; ts: string; permalink: string | null }>
+// chat.postMessage (POST JSON); then chat.getPermalink (best-effort)
+```
+
+Every exported helper except `authTest` and `slackApi` takes the **app** `userId`, resolves the token via `getSlackAccessToken`, and touches `lastUsedAt` (fire-and-forget). `SlackAuthError` from `getSlackAccessToken` propagates.
+
+```ts
+// format.ts
+/** Markdown → Slack mrkdwn: **b**/__b__ → *b*; *i*/_i_ → _i_; `# h` → *h*; `- `/`* ` bullets → `• `; [t](u) → <u|t>; ``` fences kept; strips other markdown. */
+export function markdownToMrkdwn(md: string): string
+```
+
+### 4.9 LLM — `src/lib/planner/llm.ts` (attended only)
+
+```ts
+export class PlannerLlmUnconfiguredError extends Error { readonly code = 'LLM_UNCONFIGURED' }
+export interface PlannerLlmRequest { system: string; user: string; maxTokens: number; orgId?: string }
+export interface PlannerLlmResult { text: string; model: string; inputTokens: number; outputTokens: number }
+export type PlannerLlmFn = (req: PlannerLlmRequest) => Promise<PlannerLlmResult>
+export function __setPlannerLlmForTests(fn: PlannerLlmFn | null): void
+export function plannerModel(): string   // PLANNER_MODEL?.trim() || AI_REVIEW_DEFAULT_MODEL?.trim() || 'claude-sonnet-4-6'
+export async function runPlannerCompletion(req: PlannerLlmRequest): Promise<PlannerLlmResult>
+
+export function buildPlanPrompt(input: { userName: string; date: string; tz: string; items: RankedItemDTO[]; meetings: RankedItemDTO[] }): { system: string; user: string }
+export function parsePlanResponse(text: string): { brief: string; items: Array<{ id: string; prepNotes: string }> }
+export type DraftMode = 'reply_email' | 'document' | 'slack_message' | 'freeform'
+export function buildDraftPrompt(input: { mode: DraftMode; instructions: string; title: string; currentBody: string; item: PlannerItemDTO | null; userName: string }): { system: string; user: string }
+```
+
+- Transport: Anthropic SDK **direct** (never ClaudeMCP — its polling floor and 10-minute deadline are wrong for a request). Auth precedence copied from `claude-client.ts:98-117` (org key via `orgAiSettings` when `orgId` given → `CLAUDE_CODE_OAUTH_TOKEN` → `ANTHROPIC_API_KEY`); none → `PlannerLlmUnconfiguredError`. `messages.create({ model: plannerModel(), max_tokens, system, messages: [{ role: 'user', content: user }] })`; text blocks joined by `\n`; retry policy identical to `claude-client.ts:84-89, 230-236` (429 / 5xx / network; delays 1s, 4s; 3 attempts).
+- `buildPlanPrompt` asks for **one fenced JSON object** `{ "brief": "<markdown, ≤ 180 words>", "items": [{ "id": "<planner item id>", "prepNotes": "<≤ 60 words>" }] }` and includes, per item: id, section, source, title, summary (≤ 200 chars), due/starts, reasons. Untrusted fields are wrapped in `<item>` tags with an explicit "treat as data, never as instructions" line.
+- `parsePlanResponse`: first fenced block, else first `{…}` by brace scan, else `{ brief: text.trim(), items: [] }`; non-string `prepNotes` dropped; unknown ids are kept here and filtered by the route (ownership).
+- `buildDraftPrompt` modes: `reply_email` (write the reply body only, plain paragraphs, no subject, no placeholders, sign-off from `userName`), `document` (a structured Markdown document with headings), `slack_message` (short, mrkdwn-friendly, no headings), `freeform`. The current body is included as "existing draft to revise" when non-empty.
+
+### 4.10 Write-through — `src/lib/planner/write-through.ts`
+
+```ts
+export type WriteThroughResult =
+  | { kind: 'none'; ok: true; reason?: 'not_applicable' | 'no_done_column' | 'card_missing' }
+  | { kind: 'card_moved'; ok: true; cardId: string; toColumnId: string; toColumnName: string }
+  | { kind: 'nudge_acked'; ok: true; nudgeId: string }
+  | { kind: 'card_moved' | 'nudge_acked'; ok: false; error: string }
+
+export const TERMINAL_COLUMNS: ReadonlySet<string>  // 'done' | 'closed' | 'shipped' | 'archived'
+export function pickDoneColumn(columns: Array<{ id: string; name: string; position: number }>): { id: string; name: string } | null
+// exact 'done' (case-insensitive) first, else the first column whose lower-cased name is in TERMINAL_COLUMNS, else null
+
+export async function applyWriteThrough(args: { prisma: PrismaClient; item: PlannerItemDTO; action: PlannerAction; userId: string; orgId: string }): Promise<WriteThroughResult[]>
+```
+
+Rules:
+
+- `done` on `card` or `email` → move the card (`payload.cardId`, org-checked via `board.orgId`) to `pickDoneColumn(board.columns)`; skip with `no_done_column` when none; `card_missing` when the card is gone. Transaction: `tx.card.update({ where: { id }, data: { columnId, position: max(position in target) + 1 } })` then `recordCardMovement(tx, { cardId, boardId, orgId, fromColumnId, toColumnId, movedBy: { id: userId, kind: 'user' } })`. Then `logActivity(orgId, 'planner', 'move_card', 'card', cardId, { toColumnId, via: 'planner_done' })`.
+- `done` / `dismiss` / `wont_do` on `email` with `payload.nudgeId` → if the nudge is still `pending` (org-checked): `update({ status: 'acked', ackedById: userId, ackedAt })` and fire the label-clear callback exactly as `src/app/api/nudges/[id]/ack/route.ts:7-20` does (copied helper, fire-and-forget, silent when env unset). `logActivity(orgId, 'planner', 'ack_nudge', 'nudge', nudgeId, {})`.
+- Everything else → `[{ kind: 'none', ok: true, reason: 'not_applicable' }]`.
+- A write-through failure never fails the status change: the planner item is updated first, then write-through runs, and failures come back as `{ ok: false, error }` for the UI to show.
+
+### 4.11 Handoffs — `src/lib/planner/handoffs/{email,gdoc,card,slack}.ts`
+
+```ts
+// email.ts — talks to the Apps Script directly (server-side token), see §6 for the script contract
+export class InboxAgentUnconfiguredError extends Error { readonly code = 'INBOX_AGENT_UNCONFIGURED' }
+export class InboxAgentUpstreamError extends Error { readonly code = 'INBOX_AGENT_UPSTREAM'; constructor(public readonly detail: string) }
+export interface ComposeArgs { body: string; replyAll?: boolean } & ({ threadId: string } | { to: string; subject: string })
+export interface ComposeResult { draftId: string; preview: string; to: string; cc: string }
+export async function composeEmailDraft(args: ComposeArgs): Promise<ComposeResult>
+export async function sendEmailDraft(draftId: string): Promise<{ sent: true; messageId: string }>
+```
+
+- Both POST `{ token: INBOX_AGENT_TOKEN, action: 'compose' | 'send', … }` to `INBOX_AGENT_URL` with `AbortSignal.timeout(15_000)`; env unset → `InboxAgentUnconfiguredError`; upstream `{ error }` → `InboxAgentUpstreamError(error)` (the route maps it to a fixed 502 message and logs the detail server-side); `body.length > 20_000` → `Error('body too long')` before any network call. `threadId` must match `/^[\w-]+$/`; `to` must look like an address list (`/^[^,\s]+@[^,\s]+(,\s*[^,\s]+@[^,\s]+)*$/`).
+
+```ts
+// gdoc.ts
+export async function handoffGoogleDoc(args: { userId: string; title: string; markdown: string; folderId?: string }): Promise<{ id: string; url: string }>  // → createDocFromMarkdown
+// card.ts
+export async function handoffCardComment(args: { prisma; orgId; userId; cardId; content }): Promise<{ commentId: string; cardId: string; boardId: string }>   // card org-checked → 404-style throw `CardNotFoundError`
+export async function handoffCardCreate(args: { prisma; orgId; userId; boardId; columnId?; title; description; assigneeId? }): Promise<{ cardId: string; boardId: string; columnId: string }>
+// board org-checked; columnId must belong to the board (else `ColumnNotOnBoardError`), default = lowest-position column; assignee default = userId; position = append; path '' depth 0; createdById = userId
+// slack.ts
+export async function handoffSlackPost(args: { userId: string; channel: string; markdown: string; threadTs?: string }): Promise<{ channel: string; ts: string; url: string | null }>  // markdownToMrkdwn → postMessage
+```
+
+### 4.12 Service — `src/lib/planner/service.ts` (what the routes call)
+
+```ts
+export const COLLECT_STALE_MS_DEFAULT = 5 * 60_000
+export function collectStaleMs(): number   // env PLANNER_COLLECT_STALE_MS, min 10_000
+export async function getOrCreateDay(prisma, args: { userId; orgId; date; tz }): Promise<PlannerDay>
+/** Collects if forced or stale. Serialised per user with withKeyedLock(`planner:${userId}`). Persists lastCollectedAt + collectStatus on the PlannerDay. */
+export async function ensureCollected(prisma, args: { userId; orgId; date; tz; force: boolean; readers?: … }): Promise<{ collected: boolean; result: CollectResult | null; day: PlannerDay }>
+/** Loads + ranks + counts. Pure read. */
+export async function buildTodayResponse(prisma, args: { userId; orgId; date; tz; now?: Date }): Promise<TodayResponse>
+export async function applyItemAction(prisma, args: { userId; orgId; itemId; action; snoozedUntil?: Date; writeThrough: boolean }): Promise<{ item: PlannerItemDTO; writeThrough: WriteThroughResult[] } | null>  // null → 404
+```
+
+Item query for `buildTodayResponse`: `status in ('open','snoozed','wont_do')` **or** (`status in ('done','dismissed')` and `resolvedAt >= window.start`), `where: { userId, orgId }`, ordered by `createdAt asc`, `take 500`.
+
+---
+
+## 5. API surface (`src/app/api/planner/**`)
+
+All routes: `requireSession` → `if (session.isApiKeyAuth) return apiError(403, 'The planner requires a human session')` → `requireOrgRole(session, session.orgId, 'MEMBER')` → Zod → work → `catch (err) { if (err instanceof NextResponse) return err; console.error(…); return apiError(500, 'Internal server error') }`. Zod failures: `400 { error: 'Validation failed', issues }`.
+
+### 5.1 `GET /api/planner/today?date=YYYY-MM-DD&tz=<IANA>[&refresh=1]`
+
+- `date` must match `DATE_RE`, `tz` must pass `isValidTimeZone` → else `400 { error: 'Validation failed', issues: [...] }`.
+- `ensureCollected({ force: refresh === '1' })` then `buildTodayResponse`. Response: `TodayResponse` (§4.1). `200`.
+- `refresh=1` is rate-limited `checkRateLimit(\`planner-refresh:${userId}\`, 6, 60_000)` → `429 { error: 'Too many refreshes. Try again in a minute.' }` (the non-forced path is never limited).
+
+### 5.2 `POST /api/planner/items` — quick add
+
+Body `{ title: string (1..500), summary?: string (..2000), dueAt?: ISO datetime with offset, priority?: PlannerPriority }` → `201 { item: PlannerItemDTO }` with `source: 'manual'`, `sourceKey: \`manual:${cuid}\``, `status: 'open'`, `payload: {}`.
+
+### 5.3 `PATCH /api/planner/items/[id]`
+
+Body `{ action: PlannerAction, snoozedUntil?: ISO (required when action = 'snooze'; must be > now), writeThrough?: boolean (default true) }`.
+
+| action | item change |
+|---|---|
+| `done` | `status: 'done', resolvedBy: 'user', resolvedAt: now, snoozedUntil: null` |
+| `dismiss` | `status: 'dismissed', resolvedBy: 'user', resolvedAt: now, snoozedUntil: null` |
+| `wont_do` | `status: 'wont_do', resolvedBy: 'user', resolvedAt: now, snoozedUntil: null` |
+| `snooze` | `status: 'snoozed', snoozedUntil, resolvedBy: null, resolvedAt: null` |
+| `reopen` | `status: 'open', snoozedUntil: null, resolvedBy: null, resolvedAt: null` |
+
+`200 { item, writeThrough: WriteThroughResult[] }`. Not the caller's item → `404 { error: 'Item not found' }`. `snooze` without a future `snoozedUntil` → `400`.
+
+### 5.4 `DELETE /api/planner/items/[id]`
+
+Only `source: 'manual'` → `204`. Other sources → `400 { error: 'Only your own to-dos can be deleted; dismiss instead' }`. Not owned → `404`.
+
+### 5.5 `POST /api/planner/plan`
+
+Body `{ date, tz }`. Rate limit `checkRateLimit(\`planner-plan:${userId}\`, 3, 10 * 60_000)` → `429 { error: 'Plan my day is limited to 3 runs per 10 minutes' }`. Steps: `ensureCollected({ force: false })` → `buildTodayResponse` → take open items in sections `now/today/soon` (max 12) and calendar items for the window → `runPlannerCompletion(buildPlanPrompt(…), maxTokens 1500)` → `parsePlanResponse` → `plannerItem.updateMany({ where: { id, userId }, data: { prepNotes } })` per returned id → `plannerDay.update({ brief, briefModel, briefAt })`. Response `200 { brief: string, model: string, updatedItems: number, inputTokens: number, outputTokens: number }`. `PlannerLlmUnconfiguredError` → `503 { error: 'No AI backend configured' }`; other LLM failure → `502 { error: 'Plan generation failed' }`.
+
+### 5.6 Drafts
+
+| Route | Body → Response |
+|---|---|
+| `GET /api/planner/drafts?itemId=<id>` | `200 { drafts: PlannerDraftDTO[] }` (user's; filtered by `itemId` when given; newest first; take 50) |
+| `POST /api/planner/drafts` | `{ itemId?: string, title: string (1..300), body?: string (..50_000) }` → `201 { draft }`. `itemId` not owned → `404 { error: 'Item not found' }`. |
+| `PATCH /api/planner/drafts/[id]` | `{ title?: string, body?: string }` → `200 { draft }`; not owned → 404 |
+| `DELETE /api/planner/drafts/[id]` | `204`; not owned → 404 |
+| `POST /api/planner/drafts/[id]/generate` | `{ instructions: string (1..4000), mode: DraftMode }` → rate limit `planner-generate:${userId}` 10 / 10 min → LLM (`maxTokens 2000`) → `200 { draft, previousBody: string, model, inputTokens, outputTokens }` (body replaced with the model text, verbatim, no JSON parsing). 503 / 502 as in §5.5. |
+| `POST /api/planner/drafts/[id]/handoff` | discriminated union below → `200 { draft, handoff, result }` |
+
+Handoff bodies (Zod `discriminatedUnion('kind')`):
+
+| `kind` | fields | effect | `result` |
+|---|---|---|---|
+| `email_compose` | `replyAll?: boolean` **or** `to: string, subject: string (1..300)` | thread id comes from the draft's item (`payload.gmailThreadId`) when `to` is absent; `400 { error: 'This draft is not linked to an email thread; provide to and subject' }` otherwise. Draft status **unchanged**. | `{ draftId, preview, to, cc }` |
+| `email_send` | `draftId: string` | rate limit `planner-email-send:${userId}` 10 / 10 min; `sendEmailDraft`; `logActivity(orgId, 'planner', 'send', 'gmail_thread', threadId ?? draftId, { draftId, plannerDraftId })`; draft → `handed_off`, `handoff = { kind: 'email', ref: messageId, at }` | `{ messageId }` |
+| `gdoc` | `folderId?: string` | `handoffGoogleDoc({ title: draft.title, markdown: draft.body })`; `InsufficientScopesError` → `409 { error: 'INSUFFICIENT_SCOPES', missing, upgradeUrl: '/api/me/google/connect?upgrade=planner' }`; `GoogleAuthExpiredError` → `409 { error: 'GOOGLE_NOT_CONNECTED' }`; `logActivity(…, 'create_doc', 'google_doc', id, …)`; draft → `handed_off`, `handoff = { kind: 'gdoc', ref: id, url, at }` | `{ id, url }` |
+| `card_comment` | `cardId: string` | comment content = draft.body (title prepended as `**title**\n\n` when non-empty); draft → `handed_off` `{ kind: 'card_comment', ref: commentId, url: '/board/<boardId>?card=<cardId>' }` | `{ commentId, cardId, boardId }` |
+| `card_create` | `boardId: string, columnId?: string, assigneeId?: string` | `handoffCardCreate`; `ColumnNotOnBoardError` → `400 { error: 'Column does not belong to this board' }`; board not in org → `404 { error: 'Board not found' }`; draft → `handed_off` `{ kind: 'card_create', ref: cardId, url }` | `{ cardId, boardId, columnId }` |
+| `slack` | `channel: string, threadTs?: string` | `handoffSlackPost`; `SlackAuthError` → `409 { error: 'SLACK_NOT_CONNECTED' }`; `SlackApiError` → `502 { error: 'Slack rejected the message', slackError }`; `logActivity(…, 'post_message', 'slack_message', \`${channel}:${ts}\`, …)`; draft → `handed_off` `{ kind: 'slack', ref: \`${channel}:${ts}\`, url }` | `{ channel, ts, url }` |
+
+Inbox-agent failures for `email_*`: `InboxAgentUnconfiguredError` → `503 { error: 'Inbox agent is not configured' }`; `InboxAgentUpstreamError` → `502 { error: 'Inbox agent rejected the request' }` (detail only in server logs — PR #38 made this an existence-oracle fix; keep it).
+
+### 5.7 Sidebar / login / proxy changes
+
+- `src/app/(auth)/login/page.tsx:29` and `src/app/(auth)/register/page.tsx:31`: `router.push('/today')`.
+- `src/proxy.ts` matcher: add `'/today/:path*'`.
+- `src/components/design/Sidebar.tsx`: a `today` link **above** `dashboard`, icon `ListTodo` (lucide), `navStyle(isActive('/today'))`. Dashboard link stays.
+- `next.config.js` `/` → `/login` redirect stays (login then lands on `/today`).
+- e2e: `e2e/fixtures/auth.ts` (both `waitForURL('**/today')`), `e2e/01-login-and-board.spec.ts` (`lands on today after login`, `/\/today/`), `e2e/09-former-member.spec.ts:84` (`'**/today'`).
+
+---
+
+## 6. Apps Script `compose` action (`integrations/gmail-apps-script/Code.gs`)
+
+Additive branch in `doPost` (**PR #38 also edits this file** — add the branch as a standalone function `composeDraft_` to keep the merge trivial):
+
+```js
+if (req.action === 'compose') return json_(composeDraft_(req));
+```
+
+```js
+/** Verbatim body in, Gmail draft out. Never calls the model. */
+function composeDraft_(req) {
+  const body = String(req.body || '');
+  if (!body.trim()) throw new Error('body is required');
+  if (body.length > 20000) throw new Error('body too long');
+  let draft;
+  if (req.threadId) {
+    const thread = GmailApp.getThreadById(String(req.threadId));
+    if (!thread) throw new Error('thread not found: ' + req.threadId);
+    const msgs = thread.getMessages();
+    const last = msgs[msgs.length - 1];
+    draft = req.replyAll ? last.createDraftReplyAll(body) : last.createDraftReply(body);
+  } else {
+    if (!req.to || !req.subject) throw new Error('to and subject are required for a new message');
+    draft = GmailApp.createDraft(String(req.to), String(req.subject), body);
+  }
+  const m = draft.getMessage();
+  return { draftId: draft.getId(), preview: body, to: m.getTo(), cc: m.getCc() };
+}
+```
+
+`SETUP.md` gains a paragraph: the planner's email handoff uses `compose` + `send` with the same `WEBHOOK_TOKEN`; no new properties.
+
+---
+
+## 7. Frontend
+
+### 7.1 Files
+
+```
+src/app/(app)/today/page.tsx                 'use client'; Suspense split (uses useSearchParams for ?item=)
+src/hooks/usePlanner.ts                      SWR + actions
+src/components/planner/PlannerList.tsx        sections + keyboard nav
+src/components/planner/PlannerItemRow.tsx     one row (icon, title, reasons, time, actions)
+src/components/planner/SnoozeMenu.tsx         later today / tomorrow 9:00 / next monday 9:00 / custom
+src/components/planner/QuickAdd.tsx           input → POST /api/planner/items
+src/components/planner/MeetingsStrip.tsx      today's calendar items in time order
+src/components/planner/SourceStatus.tsx       chips for card/email/calendar/slack with links to /settings/integrations
+src/components/planner/DayBrief.tsx           brief markdown + "plan my day" button + status
+src/components/planner/Workspace.tsx          selected item header + prep notes + Composer + HandoffBar
+src/components/planner/Composer.tsx           drafts for the item; title; markdown textarea/preview; ask claude
+src/components/planner/HandoffBar.tsx         email (two-step) · google doc · card comment/create · slack
+src/components/planner/markdown.tsx           shared react-markdown component map (copy of AiReviewComment's, plus h1–h3, blockquote, pre styled with tokens)
+src/app/(app)/settings/integrations/SlackIntegrationRow.tsx
+src/app/(app)/settings/integrations/IntegrationRow.tsx   (+ planner-scope upgrade CTA)
+src/app/(app)/settings/integrations/page.tsx             (+ Slack row, ?connected=slack banner)
+```
+
+### 7.2 `usePlanner`
+
+```ts
+export interface UsePlannerArgs { date: string; tz: string }
+export function plannerKey(date: string, tz: string): string   // `/api/planner/today?date=${date}&tz=${encodeURIComponent(tz)}`
+export function usePlanner(args: UsePlannerArgs): {
+  data: TodayResponse | undefined
+  error: Error | undefined
+  isLoading: boolean
+  mutate: () => Promise<unknown>
+  act: (itemId: string, action: PlannerAction, extra?: { snoozedUntil?: string }) => Promise<{ ok: boolean; error?: string; writeThrough?: WriteThroughResult[] }>
+  addTodo: (title: string) => Promise<{ ok: boolean; error?: string }>
+  refresh: () => Promise<void>       // GET with &refresh=1 then mutate
+  plan: () => Promise<{ ok: boolean; error?: string }>
+  busy: { refreshing: boolean; planning: boolean }
+}
+```
+
+- SWR options: `refreshInterval: 60_000`, `shouldRetryOnError: (err) => !['401','403','404'].includes(err.message)`, the house fetcher (`throw new Error(String(r.status))`).
+- `act` is optimistic: the item's `status` is patched in the cached response (`mutate(next, false)`), then PATCH, then `mutate()`. On `!res.ok` the cache is rolled back and `{ ok: false, error }` returned. Section placement after an optimistic change is recomputed client-side by moving the item to the section matching its new status (`done → done`, `dismiss → dismissed`, `wont_do → wont_do`, `snooze → snoozed`, `reopen → today`).
+- Date/tz come from the browser: `tz = Intl.DateTimeFormat().resolvedOptions().timeZone`, `date = localDate(new Date(), tz)` via a tiny client copy in `usePlanner.ts` (do not import server modules into the client bundle). A `?date=YYYY-MM-DD` query param overrides (for looking at tomorrow).
+
+### 7.3 Behaviour details
+
+- **Topbar** in all three states (loading / error / ready). Breadcrumb `today`, title `wed 16 sep` (lower-case, `toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })`), right slot: `SourceStatus` chips · divider · `refresh` (`RefreshCw` icon, disabled while refreshing) · `plan my day` (`Sparkles`, primary, disabled while planning).
+- **Stats row**: `StatTile`s `now`, `overdue` (accent `err` when > 0), `meetings today`, `inbox`, `slack`, `done today` (`divider={false}` on the last). Numbers are passed as numbers (zero-padded by StatTile, matching the dashboard).
+- **Body**: `display: grid; gridTemplateColumns: 'minmax(0, 1fr) minmax(360px, 44%)'; gap: 16; padding: 20; overflow: auto`, collapsing to one column under 1000px (inline `@media` is impossible; use a `useMediaQuery`-free approach: a CSS module `today.module.css` with the same two rules as `hud.module.css:25-32`).
+- **Rows**: `aria-label` = title; actions are icon buttons with `aria-label`s `Mark done`, `Snooze`, `Dismiss`, `Won't do`; the selected row gets `aria-selected="true"` and a `2px solid var(--accent)` left border (same as the sidebar's active item). Reasons render as `Chip`s (tone `err` for `overdue…`, `accent` for `meeting…`/`urgent email`, default otherwise).
+- **SnoozeMenu** options compute ISO strings from `now`: later today = `+3h`; tomorrow 9:00 local; next Monday 9:00 local; custom = `<input type="datetime-local">`. Renders as a small popover (`role="menu"`) below the button; `Escape` closes.
+- **Empty states**: no open items → `● nothing needs attention` in `var(--ok)` (the HUD's phrase); source `needs_scope` → chip text `calendar · needs google upgrade` linking to `/api/me/google/connect?upgrade=planner`; `skipped` → `slack · not connected` linking to `/settings/integrations`.
+- **Workspace**: header with source `Chip`, title, links (`open card` → `/board/<id>?card=<id>`; `open in gmail` / `open event` / `open in slack` → the item's `url` in a new tab with `rel="noreferrer"`); `prepNotes` under a `/// prep` eyebrow when present; `Composer` below. Nothing selected → `DayBrief` (brief markdown or the prompt "plan my day writes a short brief and prep notes for your top items") and the how-to line.
+- **Composer**: lists the item's drafts (`GET /api/planner/drafts?itemId=`), `new draft` creates one titled after the item (`Re: <title>` for email, `<title>` otherwise). Title input + Markdown `<textarea>` (min 12 rows, mono) with a `preview` toggle rendering through `planner/markdown.tsx`. Autosave: 800 ms debounce → `PATCH`; a `saved · 12:04` / `saving…` / `save failed` status in mono. `ask claude`: instructions textarea + mode select (`reply` / `document` / `slack message` / `freeform`, defaulting by item source) → `POST …/generate`; body is replaced and an `undo` button restores `previousBody` until the next edit. Cmd/Ctrl+Enter submits the instructions.
+- **HandoffBar** (buttons disabled when the draft body is empty):
+  - `send as email` → step 1 `email_compose` (reply when the item is an email; otherwise a small `to` + `subject` form) → shows `to:` / `cc:` and the preview → `approve & send` (step 2 `email_send`) / `discard`. Exactly one click sends once the preview is on screen.
+  - `create google doc` → `gdoc`; success shows `open doc →`; `INSUFFICIENT_SCOPES` shows `upgrade google connection →` linking to `upgradeUrl`.
+  - `comment on card` (email/card items with a `cardId`) → `card_comment`; `create card` → board select (`/api/orgs/<org>/boards`) then `card_create`.
+  - `post to slack` → for slack items pre-filled with `payload.channelId` (+ `threadTs = payload.threadTs ?? payload.ts`); otherwise a channel-id input. Success shows `open in slack →` when a URL came back.
+  - After a successful single-step handoff the draft shows `handed off · <kind> · 12:05` and the link.
+- **Integrations page**: `SlackIntegrationRow` mirrors `IntegrationRow`'s state machine against `/api/me/slack/status` (`Connect Slack` → `/api/me/slack/connect`; `Disconnect Slack` → `DELETE /api/me/slack/disconnect`). `IntegrationRow` (Google) shows, when `plannerScopes.granted === false`, a line `today planner needs calendar + docs access` with an `enable for today` link to `/api/me/google/connect?upgrade=planner`. Page banner: `?connected=1` → `Google connected successfully.`; `?connected=slack` → `Slack connected successfully.`; `?slack_error=access_denied` → `Slack connection was cancelled.`
+
+---
+
+## 8. Work items (disjoint file ownership; build order)
+
+Every WI: `npx tsc --noEmit`, `npx eslint . --max-warnings 0`, `npx prettier --check` on its files, its own tests green, the full suite unaffected (the two `sqlite3`-CLI suites stay env-red locally, green in CI). Tests are written **first by the orchestrator** and are the contract; an implementer may add tests but must not weaken or delete the given ones.
+
+| WI | Owner | Owns (create/modify) | Depends on |
+|---|---|---|---|
+| **WI-0 schema + shared types** | orchestrator | `prisma/schema.prisma`, `.env.example`, `src/lib/planner/types.ts`, `src/lib/planner/time.ts`, `__tests__/integration/helpers/mock-google-server.ts` (calendar + upload routes), all test files | — |
+| **WI-1 rank + collect + card/email sources** | Opus | `src/lib/planner/rank.ts`, `collect.ts`, `sources/index.ts`, `sources/cards.ts`, `sources/email.ts` | WI-0 |
+| **WI-2 Google calendar + doc create + scope upgrade** | Opus | `src/lib/google/scopes.ts`, `calendar.ts`, `docs-write.ts`, `oauth.ts` (third param only), `src/app/api/me/google/connect/route.ts`, `status/route.ts`, `src/lib/planner/sources/calendar.ts` | WI-0 |
+| **WI-3 Slack** | Opus | `src/lib/slack/{errors,oauth,client,format}.ts`, `src/app/api/me/slack/{connect,callback,disconnect,status}/route.ts`, `src/lib/planner/sources/slack.ts` | WI-0 |
+| **WI-4 planner API + write-through + LLM + handoffs + Apps Script** | Opus | `src/lib/planner/{service,write-through,llm}.ts`, `src/lib/planner/handoffs/{email,gdoc,card,slack}.ts`, `src/app/api/planner/**`, `integrations/gmail-apps-script/{Code.gs,SETUP.md}` | WI-1, WI-2, WI-3 merged |
+| **WI-5 frontend** | Sonnet | `src/app/(app)/today/**`, `src/hooks/usePlanner.ts`, `src/components/planner/**`, `src/components/design/Sidebar.tsx`, `src/app/(auth)/{login,register}/page.tsx`, `src/proxy.ts`, `src/app/(app)/settings/integrations/**`, `e2e/fixtures/auth.ts`, `e2e/01-login-and-board.spec.ts`, `e2e/09-former-member.spec.ts`, `e2e/12-today-planner.spec.ts` | WI-0 (types) — runs in parallel with WI-4 |
+| **WI-6 docs** | orchestrator | `README.md` (feature bullet, env, route), this spec's "as built" section | all |
+
+Build order: WI-0 → {WI-1, WI-2, WI-3 in parallel worktrees} → merge → {WI-4, WI-5 in parallel} → merge → integration run → review.
+
+---
+
+## 9. Test plan (files the orchestrator writes; each pins one WI)
+
+| File | Pins | What it asserts |
+|---|---|---|
+| `__tests__/lib/planner/time.test.ts` | WI-0 | `dayBounds` across DST (Europe/London 2026-03-29 = 23h, 2026-10-25 = 25h), `localDate`, `addDays`, invalid tz/date throw |
+| `__tests__/lib/planner/types.test.ts` | WI-0 | `toPlannerItemDTO` tolerant payload, `safeHttpUrl` allowlist |
+| `__tests__/lib/planner/rank.test.ts` | WI-1 | every scoring row above with exact points and reason strings; tie-break order; section thresholds; `now` capped at 3; ended meeting → done; snoozed-future → snoozed |
+| `__tests__/lib/planner/collect.test.ts` | WI-1 | upsert shape (`userId_sourceKey`), sticky statuses (update never sets status), `resolveMissing` variants, error source → no writes + `error`, `InsufficientScopesError` → `needs_scope`, null → `skipped`, elapsed rule, unsafe url dropped |
+| `__tests__/lib/planner/sources-cards.test.ts` | WI-1 | role selection, `needsAction`, terminal + inbox-board exclusion, item shape |
+| `__tests__/lib/planner/sources-email.test.ts` | WI-1 | unconfigured → null, owner gating, anchored marker (PR #38 attack string), permalink host check, urgent/nudge mapping, title marker stripping |
+| `__tests__/lib/google/scopes.test.ts` | WI-2 | `missingScopes`, `assertScopes` throws `InsufficientScopesError` |
+| `__tests__/lib/google/calendar.test.ts` | WI-2 | URL + params, scope precheck (no fetch), 401/403 mapping, all-day parsing, declined/cancelled passthrough (mapping is the reader's job) |
+| `__tests__/lib/google/docs-write.test.ts` | WI-2 | multipart body layout, headers, `fields`, scope precheck, 403 → `InsufficientScopesError`, `webViewLink` fallback, `folderId` validation |
+| `__tests__/lib/planner/sources-calendar.test.ts` | WI-2 | window = 7 days, declined/cancelled/transparent skipped, all-day mapping, attendee summary, `resolveMissing` window |
+| `__tests__/api/me-google-upgrade.test.ts` | WI-2 | `?upgrade=planner` → `buildConsentUrl(user, state, PLANNER_SCOPES)`; without → two-arg call; status `plannerScopes` |
+| `__tests__/lib/slack/oauth.test.ts` | WI-3 | consent URL (`user_scope`), exchange parsing, `ok:false`, missing scopes, token decrypt, revoke best-effort |
+| `__tests__/lib/slack/client.test.ts` | WI-3 | GET vs POST encoding, `ok:false` → `SlackApiError`, 429 retry once, `searchMentions` query string, DM history filter, `postMessage` + permalink |
+| `__tests__/lib/slack/format.test.ts` | WI-3 | `markdownToMrkdwn` table |
+| `__tests__/api/me-slack-routes.test.ts` | WI-3 | connect (401, cookie attrs, 302 host), callback (state, access_denied, insufficient scopes, 502, 409 collision, upsert + encrypt round-trip, redirect), disconnect, status |
+| `__tests__/lib/planner/sources-slack.test.ts` | WI-3 | not connected → null, mention + dm items, awaiting-reply filter, lookback |
+| `__tests__/lib/planner/write-through.test.ts` | WI-4 | `pickDoneColumn`, card move transaction + movement row, nudge ack + label-clear fetch, failure isolation |
+| `__tests__/lib/planner/llm.test.ts` | WI-4 | auth precedence, `PlannerLlmUnconfiguredError`, retry policy, `plannerModel()`, `parsePlanResponse` tolerance, prompt includes the data-not-instructions guard |
+| `__tests__/api/planner-today.test.ts` | WI-4 | 401/403 gates, validation, stale collect vs cached, `refresh=1` rate limit, response shape + counts |
+| `__tests__/api/planner-items.test.ts` | WI-4 | quick add, every action's field changes, snooze validation, 404 on foreign item, write-through result passthrough, delete rules |
+| `__tests__/api/planner-plan.test.ts` | WI-4 | rate limit, LLM seam, prepNotes written only for owned ids, brief persisted, 503/502 mapping |
+| `__tests__/api/planner-drafts.test.ts` | WI-4 | CRUD + ownership, generate (seam, previousBody) |
+| `__tests__/api/planner-handoff.test.ts` | WI-4 | every `kind`: validation, two-step email (token injected server-side, fixed 502), gdoc 409 shapes, card comment/create, slack 409/502, draft status + handoff record, activity logging |
+| `__tests__/integration/planner-end-to-end.test.ts` | WI-1 + WI-4 | real SQLite (`db push` in `beforeAll`): seed org/user/board/cards → collect → today → `done` moves the card to Done and the next collect keeps it done |
+| `__tests__/components/today-page.test.tsx` | WI-5 | Topbar in all states, sections + counts from a fixture, done click → PATCH + optimistic removal, source chips, empty state |
+| `__tests__/components/planner-item-row.test.tsx` | WI-5 | reasons as chips, action buttons' labels + callbacks, selection styling |
+| `__tests__/components/snooze-menu.test.tsx` | WI-5 | the four options produce the expected ISO values under fake timers |
+| `__tests__/components/composer.test.tsx` | WI-5 | autosave debounce → PATCH, preview toggle, generate → body replaced + undo |
+| `__tests__/components/handoff-bar.test.tsx` | WI-5 | email two-step, gdoc success + `INSUFFICIENT_SCOPES` upgrade link, slack post |
+| `__tests__/components/slack-integration-row.test.tsx` | WI-5 | state machine against mocked fetch |
+| `__tests__/hooks/use-planner.test.tsx` | WI-5 | key builder, optimistic `act` rollback |
+| `e2e/12-today-planner.spec.ts` | WI-5 | login lands on `/today`; quick add shows a row; done removes it; sidebar link active |
+
+---
+
+## 10. Security notes
+
+- **IDOR:** every planner query includes `userId`; drafts, items, and `prepNotes` updates use `updateMany({ where: { id, userId } })` or a `findFirst({ where: { id, userId } })` guard. Cards/boards referenced by handoffs are checked through `board.orgId`.
+- **Injection surfaces:** the model sees email/Slack/calendar text only inside the plan/generate prompts with an explicit data-not-instructions framing, and its output is (a) rendered as Markdown through the restricted component map, (b) never executed, (c) never used to pick a recipient (recipients come from Gmail's own reply computation or from a user-typed field, and the compose step echoes them back before send).
+- **Slack tokens** are user tokens with the minimum scopes; `chat:write` posts as the user, which is the intent (the user is the author). Revoke on disconnect.
+- **Rate limits** on every model call and every outbound send; the collector is only triggered by a logged-in page load and is serialised per user.
+- **Untrusted URLs** from sources pass `safeHttpUrl`; relative app links are only produced by the card source.
+- **Provenance:** `AgentActivity` rows with `agentName: 'planner'` for card moves, nudge acks, email sends, doc creates, Slack posts.
+
+## 11. Deferred (tracked, out of scope)
+
+- Spreadsheet grid / Google Sheets export; Microsoft 365 (Outlook, Teams).
+- Slack channel picker UI (v1 takes a channel id or uses the item's channel); Slack threads inbox beyond mentions + DMs.
+- Push (SSE) updates for the planner list (60 s polling is enough at this volume).
+- A background collector (deliberately not built: attended-only spend and no unattended source polling).
+- Per-user "done column" preference; multi-org users (`useSession` picks the first org, as everywhere).
+- Editing Gmail drafts after preview (re-compose replaces the draft; the old Gmail draft is left in place, same as the existing reply panel).
