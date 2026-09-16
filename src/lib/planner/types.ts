@@ -85,16 +85,21 @@ export interface SourceItem {
 export interface SourceRead {
   items: SourceItem[]
   /**
-   * Which of this source's previously-open items are auto-resolved when absent
-   * from `items`: 'all' (cards/email/slack), 'none', or only those whose
-   * startsAt falls inside the window (calendar).
+   * Which of this source's previously-collected items are auto-resolved when
+   * absent from `items`:
+   *   'all'     — open AND snoozed rows (absence is a fact: the card left the board) — cards, email
+   *   'open'    — open rows only (absence just means "older than the lookback") — slack
+   *   'none'    — nothing (the read was partial/truncated)
+   *   DayWindow — open AND snoozed rows whose startsAt lies inside the fully-read window — calendar
    */
-  resolveMissing: 'all' | 'none' | DayWindow
+  resolveMissing: 'all' | 'open' | 'none' | DayWindow
 }
 
 export interface SourceContext {
   userId: string
   orgId: string
+  /** IANA zone of the request; needed to map all-day events to local days. */
+  tz: string
   now: Date
   window: DayWindow
 }
@@ -113,6 +118,7 @@ export interface TodayCounts {
   now: number
   open: number
   overdue: number
+  /** calendar items overlapping the window, excluding all-day */
   meetingsToday: number
   inbox: number
   slack: number
@@ -129,6 +135,8 @@ export interface TodayResponse {
   sourceErrors: Partial<Record<CollectedSource, string>>
   brief: { text: string; model: string | null; at: string } | null
   items: RankedItemDTO[]
+  /** true when either item query hit its cap (spec §4.12) — the UI shows a notice */
+  truncated: boolean
   counts: TodayCounts
 }
 
@@ -139,6 +147,17 @@ export interface PlannerHandoffRecord {
   at: string
 }
 
+/** Persisted by email_compose, consumed by email_send (spec §5.6). */
+export interface PendingEmail {
+  gmailDraftId: string
+  to: string
+  cc: string
+  threadId: string | null
+  /** sha256 hex of the composed body — the send is refused when the body changed */
+  bodyHash: string
+  at: string
+}
+
 export interface PlannerDraftDTO {
   id: string
   itemId: string | null
@@ -146,9 +165,23 @@ export interface PlannerDraftDTO {
   body: string
   status: 'draft' | 'handed_off'
   handoff: PlannerHandoffRecord | null
+  pendingEmail: PendingEmail | null
   createdAt: string
   updatedAt: string
 }
+
+// ─── cross-WI types (no runtime imports, client-safe) ────────────────────────
+
+export type WriteThroughKind = 'none' | 'card_moved' | 'nudge_acked'
+
+export type WriteThroughResult =
+  | { kind: 'none'; ok: true; reason?: 'not_applicable' | 'no_done_column' | 'card_missing' }
+  | { kind: 'card_moved'; ok: true; cardId: string; toColumnId: string; toColumnName: string }
+  | { kind: 'nudge_acked'; ok: true; nudgeId: string }
+  | { kind: 'card_moved' | 'nudge_acked'; ok: false; error: string }
+
+export type DraftMode = 'reply_email' | 'document' | 'slack_message' | 'freeform'
+export const DRAFT_MODES = ['reply_email', 'document', 'slack_message', 'freeform'] as const
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -226,6 +259,20 @@ export function toPlannerDraftDTO(row: PlannerDraft): PlannerDraftDTO {
           ...(typeof raw.url === 'string' ? { url: raw.url } : {}),
         }
       : null
+  const pe = parseJsonObject(row.pendingEmail)
+  const pendingEmail: PendingEmail | null =
+    typeof pe.gmailDraftId === 'string' &&
+    typeof pe.bodyHash === 'string' &&
+    typeof pe.at === 'string'
+      ? {
+          gmailDraftId: pe.gmailDraftId,
+          to: typeof pe.to === 'string' ? pe.to : '',
+          cc: typeof pe.cc === 'string' ? pe.cc : '',
+          threadId: typeof pe.threadId === 'string' ? pe.threadId : null,
+          bodyHash: pe.bodyHash,
+          at: pe.at,
+        }
+      : null
   return {
     id: row.id,
     itemId: row.itemId ?? null,
@@ -233,6 +280,7 @@ export function toPlannerDraftDTO(row: PlannerDraft): PlannerDraftDTO {
     body: row.body,
     status: row.status === 'handed_off' ? 'handed_off' : 'draft',
     handoff,
+    pendingEmail,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }

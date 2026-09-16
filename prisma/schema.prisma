@@ -692,6 +692,9 @@ model PlannerDraft {
   status  String  @default("draft")
   // JSON: { kind, ref, url?, at } — the last successful handoff (spec §5.6)
   handoff String?
+  // JSON: { gmailDraftId, to, cc, threadId, bodyHash, at } — set by email_compose,
+  // consumed by email_send, cleared by any title/body edit and by a successful send
+  pendingEmail String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

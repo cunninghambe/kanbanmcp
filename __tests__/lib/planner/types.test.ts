@@ -143,6 +143,7 @@ describe('planner/types', () => {
       body: '# hi',
       status: 'draft',
       handoff: null,
+      pendingEmail: null,
       createdAt: new Date('2026-09-16T08:00:00Z'),
       updatedAt: new Date('2026-09-16T08:05:00Z'),
     }
@@ -155,9 +156,34 @@ describe('planner/types', () => {
         body: '# hi',
         status: 'draft',
         handoff: null,
+        pendingEmail: null,
         createdAt: '2026-09-16T08:00:00.000Z',
         updatedAt: '2026-09-16T08:05:00.000Z',
       })
+    })
+
+    it('parses a pendingEmail record and drops malformed ones', () => {
+      const ok = toPlannerDraftDTO({
+        ...base,
+        pendingEmail: JSON.stringify({
+          gmailDraftId: 'r-123',
+          to: 'jane@example.com',
+          cc: '',
+          threadId: 'thr1',
+          bodyHash: 'abc',
+          at: '2026-09-16T08:10:00.000Z',
+        }),
+      })
+      expect(ok.pendingEmail).toEqual({
+        gmailDraftId: 'r-123',
+        to: 'jane@example.com',
+        cc: '',
+        threadId: 'thr1',
+        bodyHash: 'abc',
+        at: '2026-09-16T08:10:00.000Z',
+      })
+      expect(toPlannerDraftDTO({ ...base, pendingEmail: '{"to":"x"}' }).pendingEmail).toBeNull()
+      expect(toPlannerDraftDTO({ ...base, pendingEmail: 'nope' }).pendingEmail).toBeNull()
     })
 
     it('parses a handoff record and drops malformed ones', () => {
