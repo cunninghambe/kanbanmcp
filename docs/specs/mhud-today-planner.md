@@ -445,9 +445,11 @@ export const NOW_MAX_ITEMS = 3
 export const TODAY_MIN_SCORE = 12
 export const SOON_MIN_SCORE = 5
 export const SOON_DAYS = 7
-export const MEETING_IMMINENT_MS = 15 * 60 * 1000
-export const MEETING_NEAR_MS = 60 * 60 * 1000
-export const MEETING_SOON_MS = 2 * 60 * 60 * 1000
+export const MEETING_IMMINENT_MS = 15 * 60 * 1000 // → 80
+export const MEETING_NEAR_MS = 60 * 60 * 1000 // → 50
+export const MEETING_SOON_MS = 2 * 60 * 60 * 1000 // → 30
+export const MEETING_NOW_SCORE = 65
+export const ALL_DAY_SCORE = 3
 
 export function scoreItem(item: PlannerItemDTO, ctx: RankContext): { score: number; reasons: string[] }
 export function sectionFor(item: PlannerItemDTO, score: number, ctx: RankContext, nowRank: number | null): PlannerSection
@@ -470,16 +472,17 @@ Scoring table (additive; reasons are the exact strings, used by the UI as chips)
 | source `manual` | 5 | `your to-do` |
 | source `card` with `payload.role` of `reviewer` or `approver` | 5 | `needs your review` |
 | calendar with `payload.allDay === true` (checked first; none of the rows below apply) | 3 | `all day` |
-| calendar (timed): `startsAt <= now < endsAt` | 60 | `meeting now` |
-| calendar (timed): `0 < startsAt - now <= 15m` | 70 | `meeting in ${m}m` |
-| calendar (timed): `15m < startsAt - now <= 60m` | 45 | `meeting in ${m}m` |
+| calendar (timed): `startsAt <= now < endsAt` | 65 | `meeting now` |
+| calendar (timed): `0 < startsAt - now <= 15m` | 80 | `meeting in ${m}m` (m = ceil(minutes)) |
+| calendar (timed): `15m < startsAt - now <= 60m` | 50 | `meeting in ${m}m` |
 | calendar (timed): `60m < startsAt - now <= 2h` | 30 | `meeting in ${m}m` |
+| calendar (timed): `endsAt <= now` (ended; normally resolved by the collector) | 0 | `meeting ended` — never `now`/`today` |
 | calendar (timed): starts later inside the window | 20 | `meeting today` |
 | calendar (timed): starts after the window | 0 | `meeting ${localDate(startsAt, ctx.tz)}` (e.g. `meeting 2026-09-18`) |
 | age: `days since createdAt` for open items, cap 7 | `min(days, 7)` | `waiting ${days}d` (only when `days >= 2`) |
 | `status = snoozed` and `snoozedUntil <= now` | 5 | `back from snooze` |
 
-Sorting: score desc, then `dueAt` asc (nulls last), then `startsAt` asc (nulls last), then `createdAt` asc, then `id` asc. `rankItems` is stable and total. Items with `status` in `done / dismissed / wont_do` get `score = 0`, `reasons = []`, and their status section. A `snoozed` item whose `snoozedUntil > now` gets section `snoozed` regardless of score. The meeting ramp deliberately exceeds the overdue floor (40 + up to 20) so a meeting starting within the hour, or one in progress, always reaches `now` ahead of stale backlog; an ended meeting (`endsAt <= now`) is never `now`/`today` (the collector marks it done). Every date-bearing reason string is rendered in `ctx.tz`; `rank.ts` never reads the process time zone.
+Sorting: score desc, then `dueAt` asc (nulls last), then `startsAt` asc (nulls last), then `createdAt` asc, then `id` asc. `rankItems` is stable and total. Items with `status` in `done / dismissed / wont_do` get `score = 0`, `reasons = []`, and their status section. A `snoozed` item whose `snoozedUntil > now` gets section `snoozed` regardless of score. The meeting ramp deliberately exceeds the overdue floor (40 + up to 20, + priority) so a meeting starting within 15 minutes (80) beats a 3-day-overdue critical card (40 + 6 + 25 = 71) and one in progress (65) or within the hour (50) reaches `now` ahead of ordinary backlog; an ended meeting (`endsAt <= now`) is never `now`/`today` (the collector marks it done). Every date-bearing reason string is rendered in `ctx.tz`; `rank.ts` never reads the process time zone.
 
 ### 4.4 `src/lib/planner/collect.ts` — the per-user collector
 
@@ -633,7 +636,7 @@ export async function exchangeSlackCode(code: string): Promise<SlackExchangeResu
 //   { ok, authed_user: { id, scope, access_token, token_type: 'user' }, team: { id, name } }
 //   ok=false → SlackApiError(error); missing scopes (split on ',') → SlackInsufficientScopesError(missing)
 export async function getSlackAccessToken(userId: string): Promise<{ token: string; slackUserId: string; teamId: string; teamUrl: string | null }>
-// decrypts; no row → SlackAuthError
+// decrypts; no row → SlackAuthError; touches lastUsedAt (fire-and-forget)
 export async function revokeSlackToken(userId: string): Promise<void>  // POST auth.revoke, best-effort, never throws
 ```
 
@@ -648,15 +651,20 @@ Routes `src/app/api/me/slack/` mirror the Google ones exactly (state cookie `sla
 | `DELETE /api/me/slack/disconnect` | `requireSession`; no row → 204; `revokeSlackToken` then delete → 204. |
 | `GET /api/me/slack/status` | `{ connected: false }` or `{ connected: true, teamName, teamId, slackUserId, scopes: string[], lastUsedAt: string | null }`. |
 
-### 4.8 Slack client — `src/lib/slack/client.ts`, `src/lib/slack/format.ts`
+### 4.8 Slack client — `src/lib/slack/fetch.ts`, `src/lib/slack/client.ts`, `src/lib/slack/format.ts`
 
 ```ts
-// client.ts
+// fetch.ts — the one place Slack is called over the network (shared by oauth.ts and client.ts, so neither imports the other)
 export type SlackFetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) =>
   Promise<{ status: number; ok: boolean; headers?: { get(name: string): string | null }; text: () => Promise<string>; json: () => Promise<unknown> }>
+export function slackFetch(url: string, init?: Parameters<SlackFetch>[1]): ReturnType<SlackFetch>  // global fetch unless stubbed
 export function __setSlackFetchForTests(mock: SlackFetch | null): void
+export function __setSlackSleeperForTests(s: ((ms: number) => Promise<void>) | null): void
+// client.ts also exports __resetSlackCachesForTests(): void (clears the users.info memo)
 
-/** Low-level call. GET with query for reads, POST JSON for writes. ok:false → SlackApiError(error). 429 → wait Retry-After (max 5s) once, then throw SlackHttpError. */
+// client.ts
+/** Low-level call: GET `https://slack.com/api/<method>?<query>` for reads, POST JSON for writes (opts.post), `Authorization: Bearer <token>`.
+ *  Non-2xx → SlackHttpError(status, body), except 429: sleep min(Retry-After, 5)s once and retry, then SlackHttpError. `ok:false` → SlackApiError(error). */
 export async function slackApi<T = Record<string, unknown>>(token: string, method: string, params: Record<string, string | number | boolean | undefined>, opts?: { post?: boolean }): Promise<T>
 
 export interface SlackMessage { channelId: string; channelName: string | null; ts: string; threadTs: string | null; userId: string; userName: string; text: string; permalink: string | null }
@@ -970,7 +978,7 @@ Every WI: `npx tsc --noEmit`, `npx eslint . --max-warnings 0`, `npx prettier --c
 | **WI-0 schema + shared types** | orchestrator | `prisma/schema.prisma`, `.env.example`, `src/lib/inbox-agent.ts` (vendored from PR #38), `src/lib/planner/types.ts`, `src/lib/planner/time.ts`, `__tests__/integration/helpers/mock-google-server.ts` (calendar + upload routes), every `__tests__/**` file, `e2e/12-today-planner.spec.ts` | — |
 | **WI-1 rank + collect + card/email sources** | Opus | `src/lib/planner/rank.ts`, `collect.ts`, `sources/cards.ts`, `sources/email.ts` | WI-0 |
 | **WI-2 Google calendar + doc create + scope upgrade** | Opus | `src/lib/google/scopes.ts`, `calendar.ts`, `docs-write.ts`, `oauth.ts` (third param only), `src/app/api/me/google/connect/route.ts`, `status/route.ts`, `src/lib/planner/sources/calendar.ts` | WI-0 |
-| **WI-3 Slack** | Opus | `src/lib/slack/{errors,oauth,client,format}.ts`, `src/app/api/me/slack/{connect,callback,disconnect,status}/route.ts`, `src/lib/planner/sources/slack.ts` | WI-0 |
+| **WI-3 Slack** | Opus | `src/lib/slack/{errors,fetch,oauth,client,format}.ts`, `src/app/api/me/slack/{connect,callback,disconnect,status}/route.ts`, `src/lib/planner/sources/slack.ts` | WI-0 |
 | **WI-4 planner API + write-through + LLM + handoffs + Apps Script** | Opus | `src/lib/planner/{service,write-through,llm}.ts`, `src/lib/planner/sources/index.ts`, `src/lib/planner/handoffs/{email,gdoc,card,slack}.ts`, `src/app/api/planner/**`, `integrations/gmail-apps-script/{Code.gs,SETUP.md}` | WI-1, WI-2, WI-3 merged |
 | **WI-5 frontend** | Sonnet | `src/app/(app)/today/**`, `src/hooks/usePlanner.ts`, `src/components/planner/**`, `src/components/design/Sidebar.tsx`, `src/app/(auth)/{login,register}/page.tsx`, `src/proxy.ts`, `src/app/(app)/settings/integrations/**`, `e2e/fixtures/auth.ts`, `e2e/01-login-and-board.spec.ts`, `e2e/09-former-member.spec.ts` | WI-0 (types — includes `WriteThroughResult` and `DraftMode`) — runs in parallel with WI-4 |
 | **WI-6 docs** | orchestrator | `README.md` (feature bullet, env, route), this spec's "as built" section | all |

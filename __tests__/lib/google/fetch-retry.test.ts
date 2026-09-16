@@ -7,7 +7,12 @@ import {
 } from '../../../src/lib/google/fetch'
 import { __resetBucketsForTests } from '../../../src/lib/google/rate-limit'
 
-type FakeResponse = { status: number; ok: boolean; text: () => Promise<string>; json: () => Promise<unknown> }
+type FakeResponse = {
+  status: number
+  ok: boolean
+  text: () => Promise<string>
+  json: () => Promise<unknown>
+}
 
 function makeResponse(status: number, body = ''): FakeResponse {
   return {
@@ -111,11 +116,13 @@ describe('googleFetch retry behaviour', () => {
     const { sleeper, calls } = makeFakeSleeper()
     __setFetchSleeperForTests(sleeper)
 
-    __setRawFetchForTests(async () => { throw new TypeError('fetch failed') })
+    __setRawFetchForTests(async () => {
+      throw new TypeError('fetch failed')
+    })
 
-    await expect(
-      googleFetch('https://example.com', undefined, { retry: true })
-    ).rejects.toThrow('fetch failed')
+    await expect(googleFetch('https://example.com', undefined, { retry: true })).rejects.toThrow(
+      'fetch failed'
+    )
     expect(calls).toEqual([1000, 4000])
   })
 

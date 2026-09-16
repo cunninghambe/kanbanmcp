@@ -4,7 +4,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 vi.mock('../../../src/lib/db', () => {
   const findUnique = vi.fn()
   const update = vi.fn()
-  return { prisma: { googleCredential: { findUnique, update } }, default: { googleCredential: { findUnique, update } } }
+  return {
+    prisma: { googleCredential: { findUnique, update } },
+    default: { googleCredential: { findUnique, update } },
+  }
 })
 
 // ─── Mock secrets ─────────────────────────────────────────────────────────────
@@ -28,7 +31,12 @@ import {
   REQUIRED_SCOPES,
 } from '../../../src/lib/google/oauth'
 import { __setGoogleFetchForTests } from '../../../src/lib/google/fetch'
-import { GoogleAuthExpiredError, GoogleHttpError, InsufficientScopesError, TokenRevokedError } from '../../../src/lib/google/errors'
+import {
+  GoogleAuthExpiredError,
+  GoogleHttpError,
+  InsufficientScopesError,
+  TokenRevokedError,
+} from '../../../src/lib/google/errors'
 
 const mockPrisma = prisma as unknown as {
   googleCredential: {
@@ -106,7 +114,9 @@ describe('buildConsentUrl', () => {
     const url = buildConsentUrl('user-1', 'my-state')
     const parsed = new URL(url)
     expect(parsed.searchParams.get('client_id')).toBe('test-client-id')
-    expect(parsed.searchParams.get('redirect_uri')).toBe('http://localhost:3000/api/me/google/callback')
+    expect(parsed.searchParams.get('redirect_uri')).toBe(
+      'http://localhost:3000/api/me/google/callback'
+    )
   })
 
   it('includes all four REQUIRED_SCOPES', () => {
@@ -140,7 +150,7 @@ describe('exchangeCode', () => {
       makeFetch([
         { status: 200, ok: true, body: TOKEN_RESPONSE },
         { status: 200, ok: true, body: USERINFO_RESPONSE },
-      ]),
+      ])
     )
 
     const result = await exchangeCode('auth-code-123')
@@ -161,7 +171,7 @@ describe('exchangeCode', () => {
       makeFetch([
         { status: 200, ok: true, body: TOKEN_RESPONSE },
         { status: 200, ok: true, body: USERINFO_RESPONSE },
-      ]),
+      ])
     )
 
     const result = await exchangeCode('auth-code-123')
@@ -174,9 +184,7 @@ describe('exchangeCode', () => {
 
   it('throws GoogleHttpError when token endpoint returns 400 (AC-1)', async () => {
     __setGoogleFetchForTests(
-      makeFetch([
-        { status: 400, ok: false, body: '{"error":"invalid_client"}' },
-      ]),
+      makeFetch([{ status: 400, ok: false, body: '{"error":"invalid_client"}' }])
     )
 
     await expect(exchangeCode('bad-code')).rejects.toBeInstanceOf(GoogleHttpError)
@@ -217,9 +225,7 @@ describe('refreshAccessToken', () => {
     mockPrisma.googleCredential.findUnique.mockResolvedValue(storedCred)
     mockPrisma.googleCredential.update.mockResolvedValue({})
 
-    __setGoogleFetchForTests(
-      makeFetch([{ status: 200, ok: true, body: TOKEN_RESPONSE }]),
-    )
+    __setGoogleFetchForTests(makeFetch([{ status: 200, ok: true, body: TOKEN_RESPONSE }]))
 
     const token = await refreshAccessToken('user-1')
 
@@ -234,7 +240,7 @@ describe('refreshAccessToken', () => {
           accessToken: 'enc:fresh-access-token',
           lastUsedAt: expect.any(Date),
         }),
-      }),
+      })
     )
   })
 
@@ -246,7 +252,7 @@ describe('refreshAccessToken', () => {
     __setGoogleFetchForTests(
       makeFetch([
         { status: 200, ok: true, body: { ...TOKEN_RESPONSE, refresh_token: newRefreshToken } },
-      ]),
+      ])
     )
 
     await refreshAccessToken('user-1')
@@ -261,7 +267,7 @@ describe('refreshAccessToken', () => {
     mockPrisma.googleCredential.update.mockResolvedValue({})
 
     __setGoogleFetchForTests(
-      makeFetch([{ status: 400, ok: false, body: { error: 'invalid_grant' } }]),
+      makeFetch([{ status: 400, ok: false, body: { error: 'invalid_grant' } }])
     )
 
     await expect(refreshAccessToken('user-1')).rejects.toBeInstanceOf(TokenRevokedError)
@@ -282,9 +288,7 @@ describe('refreshAccessToken', () => {
     mockPrisma.googleCredential.findUnique.mockResolvedValue(storedCred)
     mockPrisma.googleCredential.update.mockResolvedValue({})
 
-    __setGoogleFetchForTests(
-      makeFetch([{ status: 200, ok: true, body: TOKEN_RESPONSE }]),
-    )
+    __setGoogleFetchForTests(makeFetch([{ status: 200, ok: true, body: TOKEN_RESPONSE }]))
 
     await refreshAccessToken('user-1')
 
@@ -351,9 +355,7 @@ describe('ensureFreshAccessToken', () => {
       })
     mockPrisma.googleCredential.update.mockResolvedValue({})
 
-    __setGoogleFetchForTests(
-      makeFetch([{ status: 200, ok: true, body: TOKEN_RESPONSE }]),
-    )
+    __setGoogleFetchForTests(makeFetch([{ status: 200, ok: true, body: TOKEN_RESPONSE }]))
 
     const token = await ensureFreshAccessToken('user-1')
 
@@ -376,9 +378,7 @@ describe('ensureFreshAccessToken', () => {
       })
     mockPrisma.googleCredential.update.mockResolvedValue({})
 
-    __setGoogleFetchForTests(
-      makeFetch([{ status: 200, ok: true, body: TOKEN_RESPONSE }]),
-    )
+    __setGoogleFetchForTests(makeFetch([{ status: 200, ok: true, body: TOKEN_RESPONSE }]))
 
     const token = await ensureFreshAccessToken('user-1')
 
@@ -403,7 +403,9 @@ describe('revokeRefreshToken', () => {
 
   it('resolves on 400 (best-effort — Google returns 400 for already-invalid tokens)', async () => {
     mockPrisma.googleCredential.findUnique.mockResolvedValue(storedCred)
-    __setGoogleFetchForTests(makeFetch([{ status: 400, ok: false, body: '{"error":"invalid_token"}' }]))
+    __setGoogleFetchForTests(
+      makeFetch([{ status: 400, ok: false, body: '{"error":"invalid_token"}' }])
+    )
 
     await expect(revokeRefreshToken('user-1')).resolves.toBeUndefined()
   })
@@ -440,7 +442,7 @@ describe('AC-19: no sensitive values logged', () => {
       makeFetch([
         { status: 200, ok: true, body: tokenResp },
         { status: 200, ok: true, body: USERINFO_RESPONSE },
-      ]),
+      ])
     )
     await exchangeCode('auth-code').catch(() => undefined)
 
@@ -459,11 +461,7 @@ describe('AC-19: no sensitive values logged', () => {
     __setGoogleFetchForTests(makeFetch([{ status: 200, ok: true, body: '' }]))
     await revokeRefreshToken('user-1').catch(() => undefined)
 
-    const allLogArgs = [
-      ...spyLog.mock.calls,
-      ...spyWarn.mock.calls,
-      ...spyError.mock.calls,
-    ]
+    const allLogArgs = [...spyLog.mock.calls, ...spyWarn.mock.calls, ...spyError.mock.calls]
       .flat()
       .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
       .join(' ')
