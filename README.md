@@ -199,7 +199,7 @@ user's item or draft.
 | `POST /api/planner/plan` | the one attended model call: a short brief + prep notes (3 runs / 10 min) |
 | `GET/POST /api/planner/drafts` · `PATCH/DELETE …/[id]` | Markdown drafts per item |
 | `POST /api/planner/drafts/[id]/generate` | "ask claude" revision of a draft (10 / 10 min) |
-| `POST /api/planner/drafts/[id]/handoff` | `email_compose` → `email_send` (two-step, server-held Gmail draft id, body hash + 15-min window), `gdoc`, `card_comment`, `card_create`, `slack` |
+| `POST /api/planner/drafts/[id]/handoff` | `email_compose` → `email_send` (two-step, server-held Gmail draft id, body hash + 10-min window), `gdoc`, `card_comment`, `card_create`, `slack` |
 
 Email handoffs are additionally gated by `INBOX_AGENT_OWNER` (the mailbox owner allowlist shared with the
 inbox agent). Google Calendar + Doc creation need the extra scopes granted by
