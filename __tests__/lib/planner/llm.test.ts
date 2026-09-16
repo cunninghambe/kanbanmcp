@@ -53,6 +53,11 @@ import {
 import { encryptSecret } from '../../../src/lib/secrets'
 import type { PlannerItemDTO, RankedItemDTO } from '../../../src/lib/planner/types'
 
+// The SDK's real error constructors take 4-5 arguments; the vi.mock above substitutes
+// 1-2 argument classes at runtime, so give the test the runtime signatures.
+const RL = RateLimitError as unknown as new (message: string) => Error
+const API = APIError as unknown as new (status: number, message: string) => Error
+
 function sdk() {
   const M = Anthropic as unknown as { _mockCreate: ReturnType<typeof vi.fn>; _ctorCalls: unknown[] }
   return { create: M._mockCreate, ctorCalls: M._ctorCalls }
@@ -193,9 +198,7 @@ describe('planner/llm runPlannerCompletion', () => {
 
   it('retries on a rate limit (1s, 4s) and succeeds', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-env'
-    sdk()
-      .create.mockRejectedValueOnce(new RateLimitError('slow down'))
-      .mockResolvedValueOnce(completion('ok'))
+    sdk().create.mockRejectedValueOnce(new RL('slow down')).mockResolvedValueOnce(completion('ok'))
     const p = runPlannerCompletion(REQ)
     await vi.runAllTimersAsync()
     expect((await p).text).toBe('ok')
@@ -205,7 +208,7 @@ describe('planner/llm runPlannerCompletion', () => {
   it('retries a 500 and a network error, but not a 400', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-env'
     sdk()
-      .create.mockRejectedValueOnce(new APIError(500, 'server'))
+      .create.mockRejectedValueOnce(new API(500, 'server'))
       .mockRejectedValueOnce(new Error('ECONNRESET'))
       .mockResolvedValueOnce(completion('ok'))
     const p = runPlannerCompletion(REQ)
@@ -214,7 +217,7 @@ describe('planner/llm runPlannerCompletion', () => {
     expect(sdk().create).toHaveBeenCalledTimes(3)
 
     sdk().create.mockReset()
-    sdk().create.mockRejectedValue(new APIError(400, 'bad request'))
+    sdk().create.mockRejectedValue(new API(400, 'bad request'))
     const p2 = runPlannerCompletion(REQ).catch((e) => e)
     await vi.runAllTimersAsync()
     expect(await p2).toBeInstanceOf(APIError)
@@ -223,7 +226,7 @@ describe('planner/llm runPlannerCompletion', () => {
 
   it('gives up after three attempts and rethrows the last error', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-env'
-    sdk().create.mockRejectedValue(new APIError(503, 'down'))
+    sdk().create.mockRejectedValue(new API(503, 'down'))
     const p = runPlannerCompletion(REQ).catch((e) => e)
     await vi.runAllTimersAsync()
     expect(await p).toBeInstanceOf(APIError)
