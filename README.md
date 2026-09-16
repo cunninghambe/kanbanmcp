@@ -7,6 +7,7 @@ Built with Next.js 16 (App Router), Prisma + SQLite, iron-session, and the Anthr
 ## Features
 
 - **mhud — the Host Meeting HUD:** live in-meeting surface with a situational rail (overdue/stalled) and a console to dispatch read-only agents (board · drive · email · slack) for cited answers; suggested board changes flow through a chair-approved ChangeSet — agents propose, humans approve
+- **Today planner (`/today`, the home page):** one ranked day plan built from your cards, Gmail inbox-agent cards, Google Calendar and Slack mentions/DMs plus native to-dos; done / snooze / dismiss / won't-do with sticky decisions and write-through (an assignee card moves to Done, an inbox nudge is acked); a Markdown workspace to draft in place and hand off as a Gmail reply (compose → preview real recipients → approve), a Google Doc, a card comment/new card, or a Slack post; `plan my day` is the only model call and only runs when you click it — see `docs/specs/mhud-today-planner.md`
 
 - **Board + columns + cards** with assignees, sprints, labels, priorities, due dates
 - **Review workflow (M1):** required assignee, optional reviewer, optional approver per card; advisory signoffs (APPROVED / REJECTED / REQUESTED_CHANGES)
@@ -38,6 +39,13 @@ cp .env.example .env
 #   ANTHROPIC_API_KEY=<sk-ant-...>      # for AI review
 #   AI_REVIEW_DEFAULT_MODEL=claude-sonnet-4-6
 #   AI_REVIEW_DEFAULT_RUBRIC=<your default rubric prompt>
+#
+# Today planner (optional sources; the page works with cards + to-dos alone):
+#   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET   # calendar + Google Doc handoff; users connect
+#                                                          # in /settings/integrations and click "enable for today"
+#   SLACK_CLIENT_ID / SLACK_CLIENT_SECRET / SLACK_OAUTH_REDIRECT_URI   # Slack mentions/DMs + posting (user token)
+#   INBOX_AGENT_URL / INBOX_AGENT_TOKEN / INBOX_AGENT_OWNER            # Gmail inbox-agent cards + reply handoff (owner-only)
+#   PLANNER_MODEL=claude-sonnet-4-6    # "plan my day" / "ask claude"; attended clicks only, never a cron
 
 # Apply schema and seed demo data (idempotent)
 npm run db:push
@@ -127,20 +135,27 @@ src/
       artifacts/        # download, delete, manual review trigger
       reviews/          # AI review status lookup
       mcp/              # JSON-RPC endpoint for agents
-      me/               # assignments feed
+      me/               # assignments feed, google + slack OAuth (connect/callback/status/disconnect)
+      planner/          # today, items, plan, drafts (+ generate, handoff) — human sessions only
       cron/digest/      # daily email digest (bearer auth)
       orgs/             # org membership management
       sprints/          # sprint CRUD
       tickets/          # helpdesk tickets
       webhooks/         # outbound webhooks
-    (app)/              # authenticated app pages: dashboard, board, sprints, etc.
+    (app)/              # authenticated app pages: today (home), dashboard, board, sprints, etc.
   components/board/     # CardModal, CardDetailSections, SubcardTree, RoleSelector,
                         # AiReviewToggle, ArtifactList, SignoffPanel
   components/dashboard/ # AssignmentWidget
+  components/planner/   # PlannerList, PlannerItemRow, SnoozeMenu, Composer, HandoffBar, …
   components/layout/    # Sidebar with avatar + assignment badge
   lib/
     ai-review/          # worker, queue, extractors (PDF/text/image), claude-client,
                         # inheritance walker
+    planner/            # rank (pure), collect, sources/{cards,email,calendar,slack},
+                        # service, write-through, handoffs/{email,gdoc,card,slack}, llm
+    google/             # OAuth + fetch, docs/drive readers, calendar reader, doc create
+    slack/              # user-token OAuth, Web API client, markdown → mrkdwn
+    inbox-agent.ts      # mailbox owner allowlist for the Gmail inbox agent
     email/              # pluggable provider (log default; resend stub for M2)
     tree.ts             # subtree path recompute, cycle detection
     cards.ts            # shared card helpers (Zod schemas, role IDOR check)
@@ -169,6 +184,29 @@ docs/POST_M1_FOLLOWUPS.md
 - **IDOR on user-id fields:** every `assigneeId`, `reviewerId`, `approverId`, `uploaderId` validated as a member of the session's org before write.
 - **Zod at boundaries:** every request body validated; 400 on validation failure.
 - **Tree paths:** materialised, leading slash, format `/grandparentId/parentId/`. Empty string for root.
+
+## Today planner
+
+The planner is a per-user layer over the sources; it never edits a source except through the two
+write-throughs (assignee card → Done column, inbox nudge ack). Every `/api/planner/*` route requires a
+human session (API keys get `403`), scopes every query by `userId`, and answers `404` for another
+user's item or draft.
+
+| Route | Purpose |
+|---|---|
+| `GET /api/planner/today?date=YYYY-MM-DD&tz=<IANA>[&refresh=1]` | collect (when stale or forced) + rank + counts |
+| `POST /api/planner/items` · `PATCH/DELETE /api/planner/items/[id]` | quick-add to-dos; `done / dismiss / wont_do / snooze / reopen` |
+| `POST /api/planner/plan` | the one attended model call: a short brief + prep notes (3 runs / 10 min) |
+| `GET/POST /api/planner/drafts` · `PATCH/DELETE …/[id]` | Markdown drafts per item |
+| `POST /api/planner/drafts/[id]/generate` | "ask claude" revision of a draft (10 / 10 min) |
+| `POST /api/planner/drafts/[id]/handoff` | `email_compose` → `email_send` (two-step, server-held Gmail draft id, body hash + 15-min window), `gdoc`, `card_comment`, `card_create`, `slack` |
+
+Email handoffs are additionally gated by `INBOX_AGENT_OWNER` (the mailbox owner allowlist shared with the
+inbox agent). Google Calendar + Doc creation need the extra scopes granted by
+`/api/me/google/connect?upgrade=planner`; the Slack source needs a user-token OAuth app with
+`search:read`, `channels:history`, `groups:history`, `im:history`, `mpim:history`, `im:read`,
+`users:read`, `chat:write`. The Apps Script gains a `compose` action that creates a Gmail draft and
+returns its real recipients (`integrations/gmail-apps-script/SETUP.md`).
 
 ## AI review pipeline
 
@@ -220,6 +258,7 @@ Manifest: `GET /api/mcp` (no auth).
 - bcrypt cost factor 12 for password hashes
 - AI Reviewer service user has `isAgent: true` — login route blocks `isAgent=true` accounts after a constant-time bcrypt compare (no timing oracle)
 - API-key auth carries `userId = ''` so it can never match a real user ID (used to block agent signoffs and similar role-gated endpoints)
+- Planner: sends are two-step and the server holds the Gmail draft id (a client-supplied id is never relayed); Slack/Google tokens are encrypted at rest and never leave the server; email, Slack and calendar text is rendered as text and links are scheme-allowlisted; every handoff and write-through is logged as `AgentActivity` under `planner`
 - `npm audit --omit=dev`: 0 HIGH (Next.js 16.2.6 cleared the prior 4 HIGHs). 2 moderate remain — both transitive PostCSS inside Next 16, upstream issue.
 
 ## Tests
