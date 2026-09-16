@@ -69,9 +69,19 @@ function isInvalidGrant(v: unknown): boolean {
   )
 }
 
-export function buildConsentUrl(userId: string, state: string): string {
+/**
+ * `extraScopes` are appended to REQUIRED_SCOPES for an incremental upgrade (the
+ * planner's calendar/drive.file consent, §4.6). The two-argument call is
+ * unchanged: REQUIRED_SCOPES alone, in order.
+ */
+export function buildConsentUrl(
+  userId: string,
+  state: string,
+  extraScopes?: readonly string[]
+): string {
   const { clientId, redirectUri } = requireEnv()
-  const scopes = process.env.GOOGLE_SCOPES_OVERRIDE ?? REQUIRED_SCOPES.join(' ')
+  const scopes =
+    process.env.GOOGLE_SCOPES_OVERRIDE ?? [...REQUIRED_SCOPES, ...(extraScopes ?? [])].join(' ')
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
