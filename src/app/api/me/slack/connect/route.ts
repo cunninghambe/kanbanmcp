@@ -7,12 +7,6 @@ const HUMAN_ONLY = 'Connecting Slack requires a human session'
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
-    // A Slack user token belongs to a person, never to an agent key. Reject the
-    // bearer before it is looked up: this route can never serve an API key.
-    if ((req.headers.get('authorization') ?? '').startsWith('Bearer ')) {
-      return apiError(403, HUMAN_ONLY)
-    }
-
     const session = await requireSession(req)
     if (session.isApiKeyAuth) return apiError(403, HUMAN_ONLY)
 

@@ -15,7 +15,7 @@ vi.mock('next/headers', () => ({ cookies: vi.fn().mockReturnValue({}) }))
 
 const mockPrisma = vi.hoisted(() => ({
   slackCredential: { findUnique: vi.fn(), findFirst: vi.fn(), upsert: vi.fn(), delete: vi.fn() },
-  apiKey: { findUnique: vi.fn() },
+  apiKey: { findUnique: vi.fn(), update: vi.fn().mockResolvedValue({}) },
 }))
 vi.mock('../../src/lib/db', () => ({ prisma: mockPrisma, default: mockPrisma }))
 

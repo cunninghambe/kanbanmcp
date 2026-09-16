@@ -950,7 +950,7 @@ export function usePlanner(args: UsePlannerArgs): {
 
 ### 7.3 Behaviour details
 
-- **Topbar** in all three states (loading / error / ready). Breadcrumb `today`, title `wed 16 sep` (lower-case, `toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })`), right slot: `SourceStatus` chips · divider · `refresh` (`RefreshCw` icon, disabled while refreshing) · `plan my day` (`Sparkles`, primary, disabled while planning).
+- **Topbar** in all three states (loading / error / ready). Breadcrumb `today`, title `wed 16 sep` (lower-case `${weekday} ${day} ${month}` built from `Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', month: 'short' }).formatToParts(new Date(y, m - 1, d, 12))` — never `toLocaleDateString`, whose en-GB output is `Sept`), right slot: `SourceStatus` chips · divider · `refresh` (`RefreshCw` icon, disabled while refreshing) · `plan my day` (`Sparkles`, primary, disabled while planning).
 - **Stats row**: `StatTile`s `now`, `overdue` (accent `err` when > 0), `meetings today`, `inbox`, `slack`, `done today` (`divider={false}` on the last). Numbers are passed as numbers (zero-padded by StatTile, matching the dashboard).
 - **Body**: layout lives entirely in `src/app/(app)/today/today.module.css` — no inline `style` for these properties (an inline declaration outranks any module rule, media query included):
   ```css
@@ -965,7 +965,7 @@ export function usePlanner(args: UsePlannerArgs): {
 - **Workspace**: header with source `Chip`, title, links (`open card` → `/board/<id>?card=<id>`; `open in gmail` / `open event` / `open in slack` → the item's `url` in a new tab with `rel="noreferrer"`); `prepNotes` under a `/// prep` eyebrow when present; `Composer` below. Nothing selected → `DayBrief` (brief markdown or the prompt "plan my day writes a short brief and prep notes for your top items") and the how-to line.
 - **Composer**: lists the item's drafts (`GET /api/planner/drafts?itemId=`), `new draft` creates one titled after the item (`Re: <title>` for email, `<title>` otherwise). Title input + Markdown `<textarea>` (min 12 rows, mono) with a `preview` toggle rendering through `planner/markdown.tsx`. Autosave: 800 ms debounce → `PATCH`; a `saved · 12:04` / `saving…` / `save failed` status in mono. `ask claude`: instructions textarea + mode select (`reply` / `document` / `slack message` / `freeform`, defaulting by item source) → `POST …/generate`. **Ordering rule:** submitting `ask claude` (button or Cmd/Ctrl+Enter) first flushes any pending autosave (cancel the debounce timer, `await` the PATCH with the current textarea value), sends the typed text as `currentBody`, then sets a `generating` state that disables the body textarea, the title input and autosave for the duration. The response's `draft.body` is authoritative: it replaces the textarea value and resets the autosave baseline (no autosave PATCH is issued for that replacement). `undo` restores that response's `previousBody` until the next edit. On error the textarea is re-enabled with the user's text unchanged.
 - **HandoffBar** (buttons disabled when the draft body is empty):
-  - `send as email` → step 1 `email_compose` (reply when the item is an email; otherwise a small `to` + `subject` form) → shows `to:` / `cc:` and the preview → `approve & send` (step 2 `email_send`, empty body) / `discard`. Exactly one click sends once the preview is on screen, with this state machine: while a compose result is held (`previewing`), the Composer's title input and textarea are `readOnly` (visually muted) and `ask claude` / `new draft` / draft switching are disabled; the only exits are `approve & send` and `discard`. `approve & send` is enabled only while `hashBody(draft.body) === pendingEmail.bodyHash` (computed client-side with the Web Crypto `SubtleCrypto.digest`, or simply while the textarea value equals the body the compose was issued with); if they differ (an in-flight autosave landed, a `generate` replaced the body, the selected draft/item changed) the compose result is discarded, the bar returns to `editing` and shows `body changed · re-compose to send`. A server `409` on send shows the same message. Selecting a different item or draft discards any held compose result (the abandoned Gmail draft is left in place, consistent with §11).
+  - `send as email` → first flushes any pending autosave exactly like `ask claude` (cancel the debounce, `await` the PATCH with the current textarea value) so the server composes the text on screen; then step 1 `email_compose` (reply when the item has `payload.gmailThreadId`; otherwise a small `to` + `subject` form) → shows `to:` / `cc:` and the preview → `approve & send` (step 2 `email_send`, empty body) / `discard`. Exactly one click sends once the preview is on screen, with this state machine: the compose result is held as `previewing` together with `composedBody` (the textarea value at compose time). `approve & send` is enabled only while the textarea value `=== composedBody`. **Any body change discards the preview**: typing, a `generate` result, switching draft or item → `previewing` is cleared, the bar returns to `editing` and shows `body changed · re-compose to send`. A server `409` on send shows the same message and clears the preview. The abandoned Gmail draft is left in place, consistent with §11. `new draft` and `ask claude` stay enabled (they change the body and therefore discard the preview by the same rule).
   - `create google doc` → `gdoc`; success shows `open doc →`; `INSUFFICIENT_SCOPES` shows `upgrade google connection →` linking to `upgradeUrl`.
   - `comment on card` (email/card items with a `cardId`) → `card_comment`; `create card` → board select (`/api/orgs/<org>/boards`) then `card_create`.
   - `post to slack` → for slack items pre-filled with `payload.channelId` (+ `threadTs = payload.threadTs ?? payload.ts`); otherwise a channel-id input. Success shows `open in slack →` when a URL came back.
@@ -974,6 +974,89 @@ export function usePlanner(args: UsePlannerArgs): {
 - **Integrations page**: `SlackIntegrationRow` mirrors `IntegrationRow`'s state machine against `/api/me/slack/status` (`Connect Slack` → `/api/me/slack/connect`; `Disconnect Slack` → `DELETE /api/me/slack/disconnect`). `IntegrationRow` (Google) shows, when `plannerScopes.granted === false`, a line `today planner needs calendar + docs access` with an `enable for today` link to `/api/me/google/connect?upgrade=planner`. Page banner: `?connected=1` → `Google connected successfully.`; `?connected=slack` → `Slack connected successfully.`; `?slack_error=access_denied` → `Slack connection was cancelled.`
 
 ---
+
+### 7.4 Component contracts (the WI-5 tests render exactly these)
+
+```ts
+// src/hooks/usePlanner.ts
+export function localDate(now: Date, tz: string): string          // client copy of time.ts's helper (Intl only)
+export function plannerKey(date: string, tz: string): string
+export function usePlanner(args: UsePlannerArgs): UsePlannerResult   // §7.2
+
+// src/components/planner/PlannerItemRow.tsx
+export interface PlannerItemRowProps {
+  item: RankedItemDTO
+  selected: boolean
+  onSelect: () => void
+  onAct: (action: PlannerAction, extra?: { snoozedUntil?: string }) => void
+  error?: string | null            // from PlannerList's actionErrors map
+  onRetry?: () => void
+  onDismissError?: () => void
+}
+// <li role="listitem" aria-label={item.title} aria-selected={selected}> … </li>
+// action buttons (aria-label): 'Mark done' | 'Mark reviewed' (card + payload.role reviewer/approver) · 'Snooze' · 'Dismiss' · "Won't do"
+// resolved rows (done/dismissed/wont_do): one 'Reopen' button only
+// error → <Chip tone="err">{error}</Chip> + button 'retry' + button aria-label 'Dismiss error'
+// reason chip tones: /^overdue/ → err; /^meeting/ or 'urgent email' → accent; others default
+
+// src/components/planner/SnoozeMenu.tsx
+export interface SnoozeOption { key: 'later_today' | 'tomorrow' | 'next_monday'; label: string; at: Date }
+export function snoozeOptions(now: Date): SnoozeOption[]
+//   later today = now + 3h; tomorrow = local 09:00 of now + 1 day; next monday = local 09:00 of the next Monday strictly after today
+export interface SnoozeMenuProps { onPick: (snoozedUntilIso: string) => void; onClose: () => void; now?: () => Date }
+// <div role="menu" aria-label="Snooze until"> with role="menuitem" buttons labelled 'later today' · 'tomorrow 9:00' · 'next monday 9:00' · 'custom…'
+// 'custom…' reveals <input type="datetime-local" aria-label="Snooze until"> + button 'snooze' → onPick(new Date(value).toISOString()); Escape → onClose
+
+// src/components/planner/PlannerList.tsx
+export interface PlannerListProps {
+  data: TodayResponse
+  selectedId: string | null
+  onSelect: (id: string | null) => void
+  act: UsePlannerResult['act']
+}
+// one <section aria-label="<name>"> per section, in order: 'meetings today' (MeetingsStrip), 'now', 'today', 'soon', 'later', 'snoozed', 'done today', "won't do", 'dismissed' (rendered only when the toggle button 'show dismissed' is on)
+// each section: Eyebrow '/// <name>' + <ul aria-label="<name> items"> of PlannerItemRow; empty sections are omitted except 'now' (which shows the empty state)
+// the whole list root: <div role="list" aria-label="planner items" tabIndex={0}> handling ↑/↓ (select prev/next open row; first row when none) · d · s · x · w
+// actionErrors: Map<itemId, string> in component state; set on { ok: false } (section move reverted) or any writeThrough[i].ok === false (status stands)
+
+// src/components/planner/SourceStatus.tsx
+export function SourceStatus({ sources, sourceErrors }: Pick<TodayResponse, 'sources' | 'sourceErrors'>)
+// chip text `<source> · ok` (tone ok) · `<source> · error` (tone err, title = message) · `<source> · not connected` (link → /settings/integrations)
+// · `<source> · needs google upgrade` (link → /api/me/google/connect?upgrade=planner)
+
+// src/components/planner/Composer.tsx
+export interface ComposerProps { item: RankedItemDTO; orgId: string }
+// SWR key `/api/planner/drafts?itemId=${item.id}`; controls: button 'new draft' · <select aria-label="Draft"> (one option per draft, value = id)
+// · <input aria-label="Draft title"> · <textarea aria-label="Draft body" rows>=12> · button 'preview' (aria-pressed) → <div data-testid="composer-preview">
+// · <span data-testid="save-status"> 'saving…' | 'saved · HH:MM' | 'save failed' · <textarea aria-label="Instructions"> · <select aria-label="Mode"> (values = DRAFT_MODES)
+// · button 'ask claude' (label 'generating…' while in flight) · button 'undo' after a generate until the next edit · renders <HandoffBar> below
+// no drafts yet → the body controls are hidden and only 'new draft' shows
+
+// src/components/planner/HandoffBar.tsx
+export interface HandoffBarProps {
+  item: RankedItemDTO
+  draft: PlannerDraftDTO
+  body: string                          // live textarea value
+  orgId: string
+  flush: () => Promise<void>            // Composer's "cancel debounce + await pending PATCH"
+  onDraftChange: (draft: PlannerDraftDTO) => void
+}
+// buttons: 'send as email' · 'create google doc' · 'comment on card' (only when payload.cardId) · 'create card' · 'post to slack'; all disabled while body.trim() === ''
+// email preview: text 'to: <to>' and 'cc: <cc>', buttons 'approve & send' / 'discard'; the non-reply form: <input aria-label="To"> + <input aria-label="Subject"> + button 'compose'
+// slack: slack items post to payload.channelId (threadTs = payload.threadTs ?? payload.ts); others show <input aria-label="Slack channel id"> + button 'post'
+// create card: <select aria-label="Board"> (options from GET /api/orgs/<orgId>/boards → { boards }) + button 'create'
+// success line: 'handed off · <kind> · HH:MM' + link 'open doc →' | 'open in slack →' | 'open card →'; INSUFFICIENT_SCOPES → link 'upgrade google connection →' (href = upgradeUrl)
+// 403 on email_compose → 'email is bound to another mailbox'; 503 → 'inbox agent not configured' (send as email disabled afterwards)
+
+// src/app/(app)/settings/integrations/SlackIntegrationRow.tsx
+export function SlackIntegrationRow(): JSX.Element
+// GET /api/me/slack/status → 'Not connected' + <a aria-label="Connect Slack workspace" href="/api/me/slack/connect">Connect Slack</a>
+// · connected → 'Connected to <teamName>' + <button aria-label="Disconnect Slack workspace">Disconnect</button> → DELETE /api/me/slack/disconnect (204 → disconnected)
+// · error → message + 'Retry'
+// IntegrationRow (Google): when status.plannerScopes.granted === false → 'today planner needs calendar + docs access' + <a href="/api/me/google/connect?upgrade=planner">enable for today</a>
+```
+
+The `/today` page (`src/app/(app)/today/page.tsx`): `usePlanner({ date, tz })` with `date` from `?date=` or `localDate(new Date(), tz)`; `orgId` from `useSession().org.id`; `?item=` preselects a row. States: loading → body text `loading…`; error → `<div role="alert">couldn't load today · <message></div>` (the Topbar still renders); ready → stats + list + workspace. `refresh` (`aria-label="Refresh"`) and `plan my day` buttons are disabled while their `busy` flag is set; `plan()` errors render in a `role="alert"`.
 
 ## 8. Work items (disjoint file ownership; build order)
 
@@ -1025,7 +1108,8 @@ Build order: WI-0 → {WI-1, WI-2, WI-3 in parallel worktrees} → merge → {WI
 | `__tests__/components/planner-item-row.test.tsx` | WI-5 | reasons as chips, action buttons' labels + callbacks, selection styling |
 | `__tests__/components/snooze-menu.test.tsx` | WI-5 | the four options produce the expected ISO values under fake timers |
 | `__tests__/components/composer.test.tsx` | WI-5 | autosave debounce → PATCH, preview toggle, generate flushes the pending autosave first (PATCH resolves before the generate request, which carries the typed `currentBody`), textarea disabled while generating, generate → body replaced + undo |
-| `__tests__/components/handoff-bar.test.tsx` | WI-5 | email two-step (textarea frozen while previewing; editing the body after compose clears the preview and blocks send until re-compose; 409 shows the re-compose message), gdoc success + `INSUFFICIENT_SCOPES` upgrade link, slack post |
+| `__tests__/components/handoff-bar.test.tsx` | WI-5 | email two-step through `Composer` (compose flushes the pending autosave; editing the body after compose clears the preview and blocks send until re-compose; 409 shows the re-compose message; 403/503 messages), gdoc success + `INSUFFICIENT_SCOPES` upgrade link, slack post, card comment |
+| `__tests__/components/integration-row-upgrade.test.tsx` | WI-5 | Google `IntegrationRow` shows the planner-scope CTA only when `plannerScopes.granted === false` |
 | `__tests__/components/slack-integration-row.test.tsx` | WI-5 | state machine against mocked fetch |
 | `__tests__/hooks/use-planner.test.tsx` | WI-5 | key builder, optimistic `act` rollback on `!ok`, a 200 carrying a failed write-through resolves `{ ok: true, writeThrough }` without rollback |
 | `e2e/12-today-planner.spec.ts` | WI-5 | login lands on `/today`; quick add shows a row; done removes it; sidebar link active |
