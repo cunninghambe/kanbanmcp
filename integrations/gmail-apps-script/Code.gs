@@ -340,6 +340,7 @@ function doPost(e) {
     if (req.action === 'draft')  return json_(draftReply_(c, req.threadId, req.instructions, !!req.replyAll));
     if (req.action === 'send')   return json_(sendDraft_(req.draftId));
     if (req.action === 'ack')    return json_(ackUrgent_(req.threadId));
+    if (req.action === 'compose') return json_(composeDraft_(req));
     return json_({ error: 'unknown action' });
   } catch (err) {
     return json_({ error: String(err) });
@@ -367,6 +368,26 @@ function draftReply_(c, threadId, instructions, replyAll) {
   const last = msgs[msgs.length - 1];
   const draft = replyAll ? last.createDraftReplyAll(body) : last.createDraftReply(body);
   return { draftId: draft.getId(), preview: body, to: last.getFrom() };
+}
+
+/** Verbatim body in, Gmail draft out. Never calls the model. */
+function composeDraft_(req) {
+  const body = String(req.body || '');
+  if (!body.trim()) throw new Error('body is required');
+  if (body.length > 20000) throw new Error('body too long');
+  let draft;
+  if (req.threadId) {
+    const thread = GmailApp.getThreadById(String(req.threadId));
+    if (!thread) throw new Error('thread not found: ' + req.threadId);
+    const msgs = thread.getMessages();
+    const last = msgs[msgs.length - 1];
+    draft = req.replyAll ? last.createDraftReplyAll(body) : last.createDraftReply(body);
+  } else {
+    if (!req.to || !req.subject) throw new Error('to and subject are required for a new message');
+    draft = GmailApp.createDraft(String(req.to), String(req.subject), body);
+  }
+  const m = draft.getMessage();
+  return { draftId: draft.getId(), preview: body, to: m.getTo(), cc: m.getCc() };
 }
 
 function sendDraft_(draftId) {
