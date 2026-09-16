@@ -1016,7 +1016,8 @@ export interface PlannerListProps {
 }
 // one <section aria-label="<name>"> per section, in order: 'meetings today' (MeetingsStrip), 'now', 'today', 'soon', 'later', 'snoozed', 'done today', "won't do", 'dismissed' (rendered only when the toggle button 'show dismissed' is on)
 // each section: Eyebrow '/// <name>' + <ul aria-label="<name> items"> of PlannerItemRow; empty sections are omitted except 'now' (which shows the empty state)
-// the whole list root: <div role="list" aria-label="planner items" tabIndex={0}> handling ↑/↓ (select prev/next open row; first row when none) · d · s · x · w
+// the whole list root: <div role="group" aria-label="planner items" tabIndex={0}> handling ↑/↓ (select prev/next unresolved row; first row when none) · d · s · x · w
+// QuickAdd: <input aria-label="Quick add" placeholder="quick add a to-do…">, Enter submits → addTodo(title) then clears; the 'show dismissed' toggle is a button with aria-pressed
 // actionErrors: Map<itemId, string> in component state; set on { ok: false } (section move reverted) or any writeThrough[i].ok === false (status stands)
 
 // src/components/planner/SourceStatus.tsx
@@ -1029,7 +1030,8 @@ export interface ComposerProps { item: RankedItemDTO; orgId: string }
 // SWR key `/api/planner/drafts?itemId=${item.id}`; controls: button 'new draft' · <select aria-label="Draft"> (one option per draft, value = id)
 // · <input aria-label="Draft title"> · <textarea aria-label="Draft body" rows>=12> · button 'preview' (aria-pressed) → <div data-testid="composer-preview">
 // · <span data-testid="save-status"> 'saving…' | 'saved · HH:MM' | 'save failed' · <textarea aria-label="Instructions"> · <select aria-label="Mode"> (values = DRAFT_MODES)
-// · button 'ask claude' (label 'generating…' while in flight) · button 'undo' after a generate until the next edit · renders <HandoffBar> below
+// · button 'ask claude' (label 'generating…' while in flight) · button 'undo' after a generate until the next edit (undo restores previousBody and autosaves it) · renders <HandoffBar> below
+// mode default by item source: email → 'reply_email', slack → 'slack_message', anything else → 'document'; generate errors render in a <div role="alert">
 // no drafts yet → the body controls are hidden and only 'new draft' shows
 
 // src/components/planner/HandoffBar.tsx
@@ -1042,7 +1044,8 @@ export interface HandoffBarProps {
   onDraftChange: (draft: PlannerDraftDTO) => void
 }
 // buttons: 'send as email' · 'create google doc' · 'comment on card' (only when payload.cardId) · 'create card' · 'post to slack'; all disabled while body.trim() === ''
-// email preview: text 'to: <to>' and 'cc: <cc>', buttons 'approve & send' / 'discard'; the non-reply form: <input aria-label="To"> + <input aria-label="Subject"> + button 'compose'
+// email preview: <div data-testid="email-preview"> containing 'to: <to>' and 'cc: <cc>' lines and the body, buttons 'approve & send' / 'discard'; the non-reply form: <input aria-label="To"> + <input aria-label="Subject"> + button 'compose'
+// handoff errors (other than the mapped messages) render in a <div role="alert">
 // slack: slack items post to payload.channelId (threadTs = payload.threadTs ?? payload.ts); others show <input aria-label="Slack channel id"> + button 'post'
 // create card: <select aria-label="Board"> (options from GET /api/orgs/<orgId>/boards → { boards }) + button 'create'
 // success line: 'handed off · <kind> · HH:MM' + link 'open doc →' | 'open in slack →' | 'open card →'; INSUFFICIENT_SCOPES → link 'upgrade google connection →' (href = upgradeUrl)
