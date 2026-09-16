@@ -767,7 +767,11 @@ export function hashBody(body: string): string // sha256 hex
 // gdoc.ts
 export async function handoffGoogleDoc(args: { userId: string; title: string; markdown: string; folderId?: string }): Promise<{ id: string; url: string }>  // → createDocFromMarkdown
 // card.ts
-export async function handoffCardComment(args: { prisma; orgId; userId; cardId; content }): Promise<{ commentId: string; cardId: string; boardId: string }>   // card org-checked → 404-style throw `CardNotFoundError`
+export class CardNotFoundError extends Error {}      // card missing or outside the org
+export class BoardNotFoundError extends Error {}     // board missing or outside the org
+export class ColumnNotOnBoardError extends Error {}
+export class AssigneeNotMemberError extends Error {}
+export async function handoffCardComment(args: { prisma; orgId; userId; cardId; content }): Promise<{ commentId: string; cardId: string; boardId: string }>   // card org-checked → throws `CardNotFoundError`
 export async function handoffCardCreate(args: { prisma; orgId; userId; boardId; columnId?; title; description; assigneeId? }): Promise<{ cardId: string; boardId: string; columnId: string }>
 // board org-checked; columnId must belong to the board (else `ColumnNotOnBoardError`), default = lowest-position column;
 // `assigneeId`, when supplied, is validated with `roleMembershipCheck(prisma, [assigneeId], orgId)` (src/lib/cards.ts:34) and a
@@ -839,6 +843,8 @@ Body `{ date, tz }`. Rate limit `checkRateLimit(\`planner-plan:${userId}\`, 3, 1
 | `DELETE /api/planner/drafts/[id]` | `204`; not owned → 404 |
 | `POST /api/planner/drafts/[id]/generate` | `{ instructions: string (1..4000), mode: DraftMode, currentBody?: string (..50_000) }` → rate limit `planner-generate:${userId}` 10 / 10 min → LLM (`maxTokens 2000`) → `200 { draft, previousBody: string, model, inputTokens, outputTokens }`. `currentBody`, when present, is what the model revises and what `previousBody` echoes (it is also persisted as the pre-generate body); otherwise the stored body is used. The body is replaced with the model text verbatim (no JSON parsing) and `pendingEmail` is cleared. 503 / 502 as in §5.5. |
 | `POST /api/planner/drafts/[id]/handoff` | discriminated union below → `200 { draft, handoff, result }` |
+
+Common to every kind: the draft must belong to the caller (`404 { error: 'Draft not found' }`), and `draft.body.trim()` must be non-empty (`400 { error: 'Draft body is empty' }`) — checked before any rate limit or upstream call. `BoardNotFoundError` → `404 { error: 'Board not found' }`, `CardNotFoundError` → `404 { error: 'Card not found' }`.
 
 Handoff bodies (Zod `discriminatedUnion('kind')`):
 
