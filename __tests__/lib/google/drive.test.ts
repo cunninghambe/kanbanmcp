@@ -7,11 +7,7 @@ vi.mock('../../../src/lib/google/oauth', () => ({
 
 import { ensureFreshAccessToken } from '../../../src/lib/google/oauth'
 import { __setGoogleFetchForTests } from '../../../src/lib/google/fetch'
-import {
-  parseDriveUrl,
-  getFileMeta,
-  listFolderRecursive,
-} from '../../../src/lib/google/drive'
+import { parseDriveUrl, getFileMeta, listFolderRecursive } from '../../../src/lib/google/drive'
 import {
   DriveNotFoundError,
   DriveForbiddenError,
@@ -39,9 +35,16 @@ function makeFetch(responses: Array<{ status: number; body: unknown }>) {
   })
 }
 
-function makeFileResource(overrides: Partial<{
-  id: string; name: string; mimeType: string; modifiedTime: string; size: string; trashed: boolean
-}> = {}) {
+function makeFileResource(
+  overrides: Partial<{
+    id: string
+    name: string
+    mimeType: string
+    modifiedTime: string
+    size: string
+    trashed: boolean
+  }> = {}
+) {
   return {
     id: 'file-id-1',
     name: 'My Doc',
@@ -141,18 +144,30 @@ describe('parseDriveUrl', () => {
       // searchParams.get('id') can return arbitrary strings; "../../tokeninfo"
       // would otherwise traverse to a different googleapis endpoint.
       expect(parseDriveUrl('https://drive.google.com/open?id=..%2F..%2Ftokeninfo')).toBeNull()
-      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('../../tokeninfo'))).toBeNull()
+      expect(
+        parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('../../tokeninfo'))
+      ).toBeNull()
     })
 
     it('rejects id with a slash, space, or query-injection char', () => {
-      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc/def'))).toBeNull()
-      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc def'))).toBeNull()
-      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc?x=1'))).toBeNull()
-      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc#frag'))).toBeNull()
+      expect(
+        parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc/def'))
+      ).toBeNull()
+      expect(
+        parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc def'))
+      ).toBeNull()
+      expect(
+        parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc?x=1'))
+      ).toBeNull()
+      expect(
+        parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('abc#frag'))
+      ).toBeNull()
     })
 
     it('rejects empty / dot-only id', () => {
-      expect(parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('..'))).toBeNull()
+      expect(
+        parseDriveUrl('https://drive.google.com/open?id=' + encodeURIComponent('..'))
+      ).toBeNull()
     })
 
     it('NEGATIVE: still accepts a legitimate Drive id (alnum, _ and -)', () => {
@@ -167,9 +182,9 @@ describe('parseDriveUrl', () => {
 
 describe('getFileMeta', () => {
   it('happy path: returns shaped DriveFileMeta with numeric sizeBytes from string', async () => {
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeFileResource({ size: '12345' }) },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([{ status: 200, body: makeFileResource({ size: '12345' }) }])
+    )
 
     const meta = await getFileMeta('user-1', 'file-id-1')
 
@@ -184,9 +199,11 @@ describe('getFileMeta', () => {
   })
 
   it('returns null sizeBytes for Google-native types (no size field)', async () => {
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeFileResource() }, // no size field
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: makeFileResource() }, // no size field
+      ])
+    )
 
     const meta = await getFileMeta('user-1', 'file-id-1')
 
@@ -206,9 +223,9 @@ describe('getFileMeta', () => {
   })
 
   it('trashed: true → DriveTrashedError (E4)', async () => {
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeFileResource({ trashed: true }) },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([{ status: 200, body: makeFileResource({ trashed: true }) }])
+    )
 
     await expect(getFileMeta('user-1', 'file-id-1')).rejects.toBeInstanceOf(DriveTrashedError)
   })
@@ -224,14 +241,19 @@ describe('getFileMeta', () => {
   it('shortcut path: fetches target on second call and returns target meta', async () => {
     const shortcutResource = {
       ...makeFileResource({ mimeType: 'application/vnd.google-apps.shortcut' }),
-      shortcutDetails: { targetId: 'target-id-X', targetMimeType: 'application/vnd.google-apps.document' },
+      shortcutDetails: {
+        targetId: 'target-id-X',
+        targetMimeType: 'application/vnd.google-apps.document',
+      },
     }
     const targetResource = makeFileResource({ id: 'target-id-X', name: 'Real Doc', size: '999' })
 
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: shortcutResource },
-      { status: 200, body: targetResource },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: shortcutResource },
+        { status: 200, body: targetResource },
+      ])
+    )
 
     const meta = await getFileMeta('user-1', 'file-id-1')
 
@@ -243,17 +265,25 @@ describe('getFileMeta', () => {
   it('nested shortcut → throws GoogleHttpError with NESTED_SHORTCUT', async () => {
     const shortcut1 = {
       ...makeFileResource({ mimeType: 'application/vnd.google-apps.shortcut' }),
-      shortcutDetails: { targetId: 'shortcut-2', targetMimeType: 'application/vnd.google-apps.shortcut' },
+      shortcutDetails: {
+        targetId: 'shortcut-2',
+        targetMimeType: 'application/vnd.google-apps.shortcut',
+      },
     }
     const shortcut2 = {
       ...makeFileResource({ id: 'shortcut-2', mimeType: 'application/vnd.google-apps.shortcut' }),
-      shortcutDetails: { targetId: 'shortcut-3', targetMimeType: 'application/vnd.google-apps.shortcut' },
+      shortcutDetails: {
+        targetId: 'shortcut-3',
+        targetMimeType: 'application/vnd.google-apps.shortcut',
+      },
     }
 
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: shortcut1 },
-      { status: 200, body: shortcut2 },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: shortcut1 },
+        { status: 200, body: shortcut2 },
+      ])
+    )
 
     const err = await getFileMeta('user-1', 'file-id-1').catch((e: unknown) => e)
     expect(err).toBeInstanceOf(GoogleHttpError)
@@ -284,32 +314,41 @@ const DEFAULT_OPTS = { maxDepth: 3, maxCount: 50, maxFileBytes: 5_242_880 }
 
 describe('listFolderRecursive — E6 happy path', () => {
   it('3 supported docs → files.length===3, rejected===[]', async () => {
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeListResponse([makeDoc('d1', 'Alpha'), makeDoc('d2', 'Beta'), makeDoc('d3', 'Gamma')]) },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        {
+          status: 200,
+          body: makeListResponse([
+            makeDoc('d1', 'Alpha'),
+            makeDoc('d2', 'Beta'),
+            makeDoc('d3', 'Gamma'),
+          ]),
+        },
+      ])
+    )
 
     const result = await listFolderRecursive('user-1', 'folder-root', DEFAULT_OPTS)
 
     expect(result.files).toHaveLength(3)
     expect(result.rejected).toHaveLength(0)
-    expect(result.files.map(f => f.name)).toEqual(['Alpha', 'Beta', 'Gamma'])
+    expect(result.files.map((f) => f.name)).toEqual(['Alpha', 'Beta', 'Gamma'])
   })
 })
 
 describe('listFolderRecursive — E7 TOO_MANY_FILES', () => {
   it('60 docs → files.length===50, rejected.length===10 with TOO_MANY_FILES', async () => {
-    const docs = Array.from({ length: 60 }, (_, i) => makeDoc(`d${String(i).padStart(3, '0')}`, `Doc${String(i).padStart(3, '0')}`))
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeListResponse(docs) },
-    ]))
+    const docs = Array.from({ length: 60 }, (_, i) =>
+      makeDoc(`d${String(i).padStart(3, '0')}`, `Doc${String(i).padStart(3, '0')}`)
+    )
+    __setGoogleFetchForTests(makeFetch([{ status: 200, body: makeListResponse(docs) }]))
 
     const result = await listFolderRecursive('user-1', 'folder-root', DEFAULT_OPTS)
 
     expect(result.files).toHaveLength(50)
     expect(result.rejected).toHaveLength(10)
-    expect(result.rejected.every(r => r.reason === 'TOO_MANY_FILES')).toBe(true)
+    expect(result.rejected.every((r) => r.reason === 'TOO_MANY_FILES')).toBe(true)
     // The last 10 alphabetically are rejected
-    const rejectedNames = result.rejected.map(r => r.name)
+    const rejectedNames = result.rejected.map((r) => r.name)
     expect(rejectedNames).toContain('Doc050')
     expect(rejectedNames).toContain('Doc059')
   })
@@ -319,9 +358,9 @@ describe('listFolderRecursive — E8 TOO_LARGE', () => {
   it('1 file >5MB and 1 file <5MB → files.length===1, rejected.length===1 with TOO_LARGE', async () => {
     const bigFile = makeDoc('big', 'BigFile', 6 * 1024 * 1024)
     const smallFile = makeDoc('small', 'SmallFile', 1 * 1024 * 1024)
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeListResponse([bigFile, smallFile]) },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([{ status: 200, body: makeListResponse([bigFile, smallFile]) }])
+    )
 
     const result = await listFolderRecursive('user-1', 'folder-root', DEFAULT_OPTS)
 
@@ -338,13 +377,19 @@ describe('listFolderRecursive — E9 DEPTH_EXCEEDED', () => {
     // F1 (depth=2) contains F2 (depth=3)
     // F2 (depth=3) contains F3 — depth=3 is maxDepth, so F3 would be at depth=4 → rejected
     // F3 contains a doc — not reached
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeListResponse([makeFolder('f1', 'F1')]) },       // root children
-      { status: 200, body: makeListResponse([makeFolder('f2', 'F2')]) },       // F1 children
-      { status: 200, body: makeListResponse([makeFolder('f3', 'F3')]) },       // F2 children — depth=3, F3 would be depth=4
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: makeListResponse([makeFolder('f1', 'F1')]) }, // root children
+        { status: 200, body: makeListResponse([makeFolder('f2', 'F2')]) }, // F1 children
+        { status: 200, body: makeListResponse([makeFolder('f3', 'F3')]) }, // F2 children — depth=3, F3 would be depth=4
+      ])
+    )
 
-    const result = await listFolderRecursive('user-1', 'f0', { maxDepth: 3, maxCount: 50, maxFileBytes: 5_242_880 })
+    const result = await listFolderRecursive('user-1', 'f0', {
+      maxDepth: 3,
+      maxCount: 50,
+      maxFileBytes: 5_242_880,
+    })
 
     expect(result.files).toHaveLength(0)
     expect(result.rejected).toHaveLength(1)
@@ -355,10 +400,12 @@ describe('listFolderRecursive — E9 DEPTH_EXCEEDED', () => {
 describe('listFolderRecursive — E10 silently skip unsupported types', () => {
   it('1 supported doc + 1 form → files.length===1, rejected.length===0', async () => {
     const doc = makeDoc('d1', 'GoodDoc')
-    const form = makeFileResource({ id: 'f1', name: 'AForm', mimeType: 'application/vnd.google-apps.form' })
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeListResponse([doc, form]) },
-    ]))
+    const form = makeFileResource({
+      id: 'f1',
+      name: 'AForm',
+      mimeType: 'application/vnd.google-apps.form',
+    })
+    __setGoogleFetchForTests(makeFetch([{ status: 200, body: makeListResponse([doc, form]) }]))
 
     const result = await listFolderRecursive('user-1', 'folder-root', DEFAULT_OPTS)
 
@@ -374,15 +421,17 @@ describe('listFolderRecursive — E17 FORBIDDEN_CHILD', () => {
       makeFolder('sub1', 'SubFolder'),
       makeDoc('d2', 'Beta'),
     ]
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeListResponse(rootChildren) },  // root list
-      { status: 403, body: 'forbidden' },                      // sub1 list → 403
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: makeListResponse(rootChildren) }, // root list
+        { status: 403, body: 'forbidden' }, // sub1 list → 403
+      ])
+    )
 
     const result = await listFolderRecursive('user-1', 'folder-root', DEFAULT_OPTS)
 
     expect(result.files).toHaveLength(2)
-    expect(result.files.map(f => f.name)).toEqual(['Alpha', 'Beta'])
+    expect(result.files.map((f) => f.name)).toEqual(['Alpha', 'Beta'])
     expect(result.rejected).toHaveLength(1)
     expect(result.rejected[0]).toMatchObject({ id: 'sub1', reason: 'FORBIDDEN_CHILD' })
   })
@@ -390,27 +439,33 @@ describe('listFolderRecursive — E17 FORBIDDEN_CHILD', () => {
 
 describe('listFolderRecursive — Pagination', () => {
   it('120 files across 2 pages → first 50 in files, 70 in rejected TOO_MANY_FILES', async () => {
-    const firstPage = Array.from({ length: 70 }, (_, i) => makeDoc(`d${String(i).padStart(3, '0')}`, `Doc${String(i).padStart(3, '0')}`))
-    const secondPage = Array.from({ length: 50 }, (_, i) => makeDoc(`d${String(i + 70).padStart(3, '0')}`, `Doc${String(i + 70).padStart(3, '0')}`))
+    const firstPage = Array.from({ length: 70 }, (_, i) =>
+      makeDoc(`d${String(i).padStart(3, '0')}`, `Doc${String(i).padStart(3, '0')}`)
+    )
+    const secondPage = Array.from({ length: 50 }, (_, i) =>
+      makeDoc(`d${String(i + 70).padStart(3, '0')}`, `Doc${String(i + 70).padStart(3, '0')}`)
+    )
 
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeListResponse(firstPage, 'page-token-2') },
-      { status: 200, body: makeListResponse(secondPage) },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: makeListResponse(firstPage, 'page-token-2') },
+        { status: 200, body: makeListResponse(secondPage) },
+      ])
+    )
 
     const result = await listFolderRecursive('user-1', 'folder-root', DEFAULT_OPTS)
 
     expect(result.files).toHaveLength(50)
     expect(result.rejected).toHaveLength(70)
-    expect(result.rejected.every(r => r.reason === 'TOO_MANY_FILES')).toBe(true)
+    expect(result.rejected.every((r) => r.reason === 'TOO_MANY_FILES')).toBe(true)
   })
 })
 
 describe('listFolderRecursive — Token acquisition', () => {
   it('calls ensureFreshAccessToken exactly once at the start', async () => {
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: makeListResponse([makeDoc('d1', 'Doc1')]) },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([{ status: 200, body: makeListResponse([makeDoc('d1', 'Doc1')]) }])
+    )
 
     await listFolderRecursive('user-1', 'folder-root', DEFAULT_OPTS)
 
@@ -420,13 +475,21 @@ describe('listFolderRecursive — Token acquisition', () => {
 
   it('throws Error for maxDepth <= 0', async () => {
     await expect(
-      listFolderRecursive('user-1', 'folder-root', { maxDepth: 0, maxCount: 50, maxFileBytes: 5_242_880 }),
+      listFolderRecursive('user-1', 'folder-root', {
+        maxDepth: 0,
+        maxCount: 50,
+        maxFileBytes: 5_242_880,
+      })
     ).rejects.toThrow('Invalid FolderEnumOpts')
   })
 
   it('throws Error for maxCount <= 0', async () => {
     await expect(
-      listFolderRecursive('user-1', 'folder-root', { maxDepth: 3, maxCount: 0, maxFileBytes: 5_242_880 }),
+      listFolderRecursive('user-1', 'folder-root', {
+        maxDepth: 3,
+        maxCount: 0,
+        maxFileBytes: 5_242_880,
+      })
     ).rejects.toThrow('Invalid FolderEnumOpts')
   })
 })

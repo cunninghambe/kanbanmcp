@@ -10,7 +10,11 @@ import { __setGoogleFetchForTests } from '../../../src/lib/google/fetch'
 import { exportDocAsMarkdown } from '../../../src/lib/google/docs'
 import { exportSheetAsCsv, SHEETS_MAX_ROWS, SHEETS_MAX_COLS } from '../../../src/lib/google/sheets'
 import { extractSlides, SLIDES_IMAGES_PER_SLIDE_CAP } from '../../../src/lib/google/slides'
-import { DriveNotFoundError, DriveForbiddenError, GoogleHttpError } from '../../../src/lib/google/errors'
+import {
+  DriveNotFoundError,
+  DriveForbiddenError,
+  GoogleHttpError,
+} from '../../../src/lib/google/errors'
 
 const mockEnsure = ensureFreshAccessToken as ReturnType<typeof vi.fn>
 
@@ -58,7 +62,9 @@ describe('exportDocAsMarkdown', () => {
 
   it('403 → DriveForbiddenError', async () => {
     __setGoogleFetchForTests(makeFetch([{ status: 403, body: 'forbidden' }]))
-    await expect(exportDocAsMarkdown('user-1', 'doc-id')).rejects.toBeInstanceOf(DriveForbiddenError)
+    await expect(exportDocAsMarkdown('user-1', 'doc-id')).rejects.toBeInstanceOf(
+      DriveForbiddenError
+    )
   })
 
   it('500 → GoogleHttpError with status 500', async () => {
@@ -95,8 +101,17 @@ function makeValuesResponse(values: string[][]) {
 describe('exportSheetAsCsv', () => {
   it('single tab, 3 rows × 3 cols → header + 3 CSV lines', async () => {
     const meta = makeMetaResponse([{ title: 'Sheet1', rowCount: 3 }])
-    const values = makeValuesResponse([['a', 'b', 'c'], ['1', '2', '3'], ['x', 'y', 'z']])
-    __setGoogleFetchForTests(makeFetch([{ status: 200, body: meta }, { status: 200, body: values }]))
+    const values = makeValuesResponse([
+      ['a', 'b', 'c'],
+      ['1', '2', '3'],
+      ['x', 'y', 'z'],
+    ])
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: meta },
+        { status: 200, body: values },
+      ])
+    )
 
     const result = await exportSheetAsCsv('user-1', 'sheet-id')
 
@@ -110,11 +125,13 @@ describe('exportSheetAsCsv', () => {
     ])
     const valA = makeValuesResponse([['hello']])
     const valB = makeValuesResponse([['world']])
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: meta },
-      { status: 200, body: valA },
-      { status: 200, body: valB },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: meta },
+        { status: 200, body: valA },
+        { status: 200, body: valB },
+      ])
+    )
 
     const result = await exportSheetAsCsv('user-1', 'sheet-id')
 
@@ -124,7 +141,12 @@ describe('exportSheetAsCsv', () => {
   it('E14: 150 rows → rows 1..100 then truncation notice', async () => {
     const meta = makeMetaResponse([{ title: 'Big', rowCount: 150 }])
     const values = makeValuesResponse(Array.from({ length: 150 }, (_, i) => [`row${i + 1}`]))
-    __setGoogleFetchForTests(makeFetch([{ status: 200, body: meta }, { status: 200, body: values }]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: meta },
+        { status: 200, body: values },
+      ])
+    )
 
     const result = await exportSheetAsCsv('user-1', 'sheet-id')
     const lines = result.replace('## Sheet: Big\n', '').split('\n')
@@ -139,7 +161,12 @@ describe('exportSheetAsCsv', () => {
     const meta = makeMetaResponse([{ title: 'Wide', rowCount: 1, colCount: 30 }])
     const row = Array.from({ length: 30 }, (_, i) => `col${i + 1}`)
     const values = makeValuesResponse([row])
-    __setGoogleFetchForTests(makeFetch([{ status: 200, body: meta }, { status: 200, body: values }]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: meta },
+        { status: 200, body: values },
+      ])
+    )
 
     const result = await exportSheetAsCsv('user-1', 'sheet-id')
     const csvLine = result.replace('## Sheet: Wide\n', '')
@@ -153,7 +180,12 @@ describe('exportSheetAsCsv', () => {
   it('CSV quoting: cell with comma and quotes → properly escaped', async () => {
     const meta = makeMetaResponse([{ title: 'Q', rowCount: 1 }])
     const values = makeValuesResponse([['Hello, "world"']])
-    __setGoogleFetchForTests(makeFetch([{ status: 200, body: meta }, { status: 200, body: values }]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: meta },
+        { status: 200, body: values },
+      ])
+    )
 
     const result = await exportSheetAsCsv('user-1', 'sheet-id')
 
@@ -163,7 +195,10 @@ describe('exportSheetAsCsv', () => {
   it('tab title with special characters → URL-encoded in values fetch URL', async () => {
     const meta = makeMetaResponse([{ title: "Foo/Bar's", rowCount: 1 }])
     const values = makeValuesResponse([['val']])
-    const fetchMock = makeFetch([{ status: 200, body: meta }, { status: 200, body: values }])
+    const fetchMock = makeFetch([
+      { status: 200, body: meta },
+      { status: 200, body: values },
+    ])
     __setGoogleFetchForTests(fetchMock)
 
     await exportSheetAsCsv('user-1', 'sheet-id')
@@ -176,10 +211,12 @@ describe('exportSheetAsCsv', () => {
 
 // ─── Slides (E13) ─────────────────────────────────────────────────────────────
 
-function makePresentation(slides: Array<{
-  texts?: string[]
-  imageUrls?: string[]
-}>) {
+function makePresentation(
+  slides: Array<{
+    texts?: string[]
+    imageUrls?: string[]
+  }>
+) {
   return {
     slides: slides.map((slide) => ({
       objectId: `slide-${Math.random()}`,
@@ -214,10 +251,12 @@ describe('extractSlides', () => {
   it('slide with one image → imageDataUrls[0] is correct base64', async () => {
     const pres = makePresentation([{ imageUrls: ['https://img.example.com/1.png'] }])
     const imgBytes = new Uint8Array([0xde, 0xad, 0xbe])
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: pres },
-      { status: 200, body: '', bytes: imgBytes },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: pres },
+        { status: 200, body: '', bytes: imgBytes },
+      ])
+    )
 
     const result = await extractSlides('user-1', 'pres-id')
 
@@ -231,7 +270,11 @@ describe('extractSlides', () => {
     const imgBytes = new Uint8Array([1, 2, 3])
     const responses = [
       { status: 200, body: pres },
-      ...Array.from({ length: SLIDES_IMAGES_PER_SLIDE_CAP }, () => ({ status: 200, body: '', bytes: imgBytes })),
+      ...Array.from({ length: SLIDES_IMAGES_PER_SLIDE_CAP }, () => ({
+        status: 200,
+        body: '',
+        bytes: imgBytes,
+      })),
     ]
     __setGoogleFetchForTests(makeFetch(responses))
 
@@ -242,15 +285,21 @@ describe('extractSlides', () => {
   })
 
   it('image fetch 404 mid-slide → skipped silently; remaining images included', async () => {
-    const imageUrls = ['https://img.example.com/a.png', 'https://img.example.com/b.png', 'https://img.example.com/c.png']
+    const imageUrls = [
+      'https://img.example.com/a.png',
+      'https://img.example.com/b.png',
+      'https://img.example.com/c.png',
+    ]
     const pres = makePresentation([{ imageUrls }])
     const imgBytes = new Uint8Array([0xff])
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: pres },
-      { status: 200, body: '', bytes: imgBytes },
-      { status: 404, body: 'not found' },
-      { status: 200, body: '', bytes: imgBytes },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: pres },
+        { status: 200, body: '', bytes: imgBytes },
+        { status: 404, body: 'not found' },
+        { status: 200, body: '', bytes: imgBytes },
+      ])
+    )
 
     const result = await extractSlides('user-1', 'pres-id')
 
@@ -275,11 +324,13 @@ describe('extractSlides', () => {
     const imageUrls = ['https://img.example.com/1.png', 'https://img.example.com/2.png']
     const pres = makePresentation([{ imageUrls }])
     const imgBytes = new Uint8Array([0xaa])
-    __setGoogleFetchForTests(makeFetch([
-      { status: 200, body: pres },
-      { status: 200, body: '', bytes: imgBytes },
-      { status: 200, body: '', bytes: imgBytes },
-    ]))
+    __setGoogleFetchForTests(
+      makeFetch([
+        { status: 200, body: pres },
+        { status: 200, body: '', bytes: imgBytes },
+        { status: 200, body: '', bytes: imgBytes },
+      ])
+    )
 
     await extractSlides('user-1', 'pres-id')
 

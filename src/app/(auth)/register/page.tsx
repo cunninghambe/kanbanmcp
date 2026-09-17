@@ -28,7 +28,7 @@ export default function RegisterPage() {
       })
 
       if (res.ok) {
-        router.push('/dashboard')
+        router.push('/today')
       } else {
         const data = await res.json()
         setError(data.error || 'Registration failed. Please try again.')
