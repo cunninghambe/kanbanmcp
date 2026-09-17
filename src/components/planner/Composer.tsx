@@ -77,6 +77,35 @@ export function Composer({ item, orgId }: ComposerProps) {
 
   const dirtyRef = useRef<PendingFields>({})
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef = useRef(true)
+  const activeIdRef = useRef<string | null>(null)
+  const activeDraftId = activeDraft?.id ?? null
+  useEffect(() => {
+    activeIdRef.current = activeDraftId
+  }, [activeDraftId])
+
+  // Unmount: stop the debounce, send any pending edit once (fire-and-forget,
+  // no state touched), and make in-flight saves skip their state updates.
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+      const pending = dirtyRef.current
+      const id = activeIdRef.current
+      dirtyRef.current = {}
+      if (id && Object.keys(pending).length > 0) {
+        void fetch(`/api/planner/drafts/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pending),
+        }).catch(() => {})
+      }
+    }
+  }, [])
 
   // Sync local editable state from the selected draft. This is the
   // documented "adjust state when a prop changes" effect pattern — the
@@ -131,6 +160,7 @@ export function Composer({ item, orgId }: ComposerProps) {
         body: JSON.stringify(pending),
       })
       const json = await readJson(res)
+      if (!mountedRef.current) return
       if (!res.ok) {
         setSaveStatus('error')
         return
@@ -139,7 +169,7 @@ export function Composer({ item, orgId }: ComposerProps) {
       setSaveStatus('saved')
       setSavedAt(new Date())
     } catch {
-      setSaveStatus('error')
+      if (mountedRef.current) setSaveStatus('error')
     }
   }
 

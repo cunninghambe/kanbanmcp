@@ -304,6 +304,36 @@ describe('Composer', () => {
     expect(screen.queryByRole('button', { name: 'undo' })).toBeNull()
   })
 
+  it('unmounting with a pending autosave sends it once and never touches state afterwards', async () => {
+    const user = userEvent.setup()
+    const patch = deferred<FetchReply>()
+    const f = installFetch(defaultHandler({ patch: () => patch.promise }))
+    const view = render(<Composer item={emailItem()} orgId="org-1" />, { wrapper })
+    const body = await screen.findByLabelText('Draft body')
+    await user.type(body, 'Z')
+    expect(f.of('PATCH', PATCH_RE)).toHaveLength(0)
+    view.unmount()
+    await waitFor(() => expect(f.of('PATCH', PATCH_RE)).toHaveLength(1))
+    expect(f.of('PATCH', PATCH_RE)[0].body).toEqual({ body: 'Hello Jane,\n\nDone.Z' })
+    patch.resolve({ json: { draft: draftDTO({ body: 'Hello Jane,\n\nDone.Z' }) } })
+    await sleep(1000)
+    expect(f.of('PATCH', PATCH_RE)).toHaveLength(1)
+  })
+
+  it('an in-flight save that resolves after unmount is ignored', async () => {
+    const user = userEvent.setup()
+    const patch = deferred<FetchReply>()
+    const f = installFetch(defaultHandler({ patch: () => patch.promise }))
+    const view = render(<Composer item={emailItem()} orgId="org-1" />, { wrapper })
+    const body = await screen.findByLabelText('Draft body')
+    await user.type(body, 'Q')
+    await waitFor(() => expect(f.of('PATCH', PATCH_RE)).toHaveLength(1), { timeout: 3000 })
+    view.unmount()
+    patch.resolve({ json: { draft: draftDTO({ body: 'Hello Jane,\n\nDone.Q' }) } })
+    await sleep(50)
+    expect(f.of('PATCH', PATCH_RE)).toHaveLength(1)
+  })
+
   it('switching drafts loads the other draft into the editor', async () => {
     const user = userEvent.setup()
     installFetch((c) =>
