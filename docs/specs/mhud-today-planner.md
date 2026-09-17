@@ -1156,3 +1156,49 @@ Three adversarial critics (security, contract-correctness, product) attacked the
 - **Build order:** `WriteThroughResult` and `DraftMode` live in `types.ts` (WI-0) so WI-4 and WI-5 compile independently; `sources/index.ts` moves to WI-4; the orchestrator owns every `__tests__/**` file and `e2e/12-today-planner.spec.ts` (§4.1, §8).
 
 Refuted (kept as written): handoff `email_compose` "burns model tokens" (it never calls the model); the relative-URL relaxation admitting `//host` (`safeItemUrl` rejects it); the scope-upgrade flow "silently" no-ops (the status route and the integrations row already expose `plannerScopes`); `ComposeArgs` not being literal TypeScript (declaration sketches throughout §4); `now` rendering empty on an ordinary day (the flat `items` payload has no empty container).
+
+---
+
+## 13. As built (2026-09-17)
+
+Build order held: WI-0 (orchestrator) → WI-1/2/3 in parallel worktrees (Opus) → merge → WI-4 (Opus) ∥ WI-5 (Sonnet) → merge → integration (full vitest, `tsc`, ESLint, `next build`, Playwright) → two adversarial code reviews (backend: 5 lenses, 24 findings, 8 confirmed by both refuters; frontend: 4 lenses) → fixes. Every implementer worked against the tests in §9 without editing them; no `testDisputes` were raised. Deviations from the text above, all deliberate and small:
+
+**WI-1 rank + collect**
+- `CollectResult.resolved` counts the per-source `resolveMissing` passes only, not the calendar "elapsed" pass (the collect test pins the sum).
+- `collect.ts` types its Prisma dependency as an exported `CollectPrisma` (`plannerItem.upsert` + `updateMany`) rather than `Pick<PrismaClient, 'plannerItem'>`; the real client satisfies it.
+- Age points apply to every unresolved item (open and elapsed-snoozed); an ended meeting is also excluded from `now`/`today` in `sectionFor`.
+- `cards.ts` filters the inbox board and terminal columns in JS (the test pins `where.board = { orgId }`); `email.ts` accepts only `mail.google.com` permalinks and strips the 🔴 / ✉️ title markers.
+
+**WI-2 Google**
+- `buildConsentUrl(userId, state, extraScopes?)`: two-argument calls stay byte-identical; `GOOGLE_SCOPES_OVERRIDE` still wins.
+- `calendar.ts` drops items without an id or a timed start instead of throwing; all-day events missing `end.date` get `start + 1 day`; `sources/calendar.ts` falls back to Google's instants when the tz re-derivation throws.
+- The status route's connected variant carries `plannerScopes: { granted, missing }`.
+
+**WI-3 Slack**
+- `fetch.ts` also exports `slackSleep` (the seam-installed sleeper used by the 429 retry).
+- `searchMentions` costs one API call (no `users.info`); after the review it returns `{ messages, truncated }` and a truncated page forces `resolveMissing: 'none'`.
+- DM history runs with a 4-way concurrency cap; `conversationHistory` permalinks are built from the credential's `teamUrl`.
+
+**WI-4 planner API**
+- `buildTodayResponse` takes an optional `day` so the route can thread the row `ensureCollected` just wrote; `ensureCollected` / `applyItemAction` take an optional `now` so one request timestamp is shared by collector, ranker and update.
+- `getOrCreateDay` upserts on `(userId, date)`; `tz` is recorded at creation, the response always echoes the request's tz.
+- `plannerDateSchema` rejects impossible dates (`2026-02-30`); manual `sourceKey`s are `manual:<uuid>`.
+- `updatedItems` on `POST /plan` is the summed `updateMany({ where: { id, userId } })` count: foreign ids are issued and update nothing.
+- Email handoffs run `assertInboxOwner` before the rate limit (a 403 never consumes a slot). Unpinned limit messages: "Too many email drafts / sends / documents / Slack posts. Try again in a few minutes." and "Ask claude is limited to 10 runs per 10 minutes".
+- `write-through` reads the card with `card.findFirst({ where: { id, board: { orgId } } })` (a foreign card is `card_missing`); `handoffCardCreate` throws `ColumnNotOnBoardError('This board has no columns')` when the board is empty.
+- Apps Script: `composeDraft_` sits directly above `sendDraft_` with one dispatch line; `SETUP.md` gained a web-app actions table.
+
+**WI-5 frontend**
+- `QuickAdd` is rendered by the page beside `PlannerList` (the list's pinned props carry no `addTodo`); the dismissed toggle and the `actionErrors` map live inside `PlannerList`.
+- `s` opens the selected row's snooze menu through an optional controlled `snoozeOpen` / `onSnoozeOpenChange` pair on `PlannerItemRow` (added after merge; the first cut snoozed three hours silently).
+- `usePlanner.act` is a plain optimistic `mutate(next, false)` → PATCH → `mutate()`; a `flushSync` workaround was removed once the hook test's server stub was made consistent.
+- `markdown.tsx` keeps the author's `href` string once `safeHttpUrl` accepts it (normalisation would add a trailing slash to bare origins). Targeted `eslint-disable` lines cover `react-hooks/set-state-in-effect` (prop → editable state sync) and `aria-selected` on `role="listitem"`.
+
+**Review fixes (backend, all confirmed by two refuters)**
+- `llm.ts`: item titles/summaries are neutralised like attributes so source text can never close the `<item>` tag; SDK-level retries are disabled and each attempt has a 120 s deadline; a connection error (an `APIError` without a status) is retried.
+- `slack/format.ts`: `|` inside a link target is percent-encoded (Slack splits `<url|label>` at the first pipe).
+- Mention-search truncation (above); `service.ts` counts use the ranker's open-ness (an elapsed snooze is open) and `ensureCollected` re-checks staleness inside the per-user lock; `time.ts` keys its formatter cache by the canonical zone name and caps it; a revoked Google refresh token maps to `409 GOOGLE_NOT_CONNECTED`.
+
+Refuted and kept as written (16): among them an unthrottled non-forced collect (the staleness window bounds it), `reopen` being undone by the next collect (the sticky rule holds: the row's `lastSeenAt` is refreshed on each run), double `email_send` (Gmail refuses the second send of a consumed draft), and non-atomic plan output (prep notes are per-item and the brief is independent by design).
+
+**Sandbox notes.** This box has no `sqlite3` CLI (the two `__tests__/prisma` migration suites are env-red here, green in CI) and ships a different Chromium build than `@playwright/test` pins; the e2e run used an untracked Playwright config override with `launchOptions.executablePath` and a `sqlite3` shim over `prisma db execute`. Final local numbers: 1692 unit/integration tests green (7 env-red), 22/22 Playwright, `tsc` and ESLint clean, `next build` green.
