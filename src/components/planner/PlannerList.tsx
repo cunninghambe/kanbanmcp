@@ -46,12 +46,9 @@ function isFormField(target: EventTarget | null): boolean {
 }
 
 /** `later today` (+3h), for the 's' keyboard shortcut's quick snooze. */
-function laterTodayIso(): string {
-  return new Date(Date.now() + 3 * 3600_000).toISOString()
-}
-
 export function PlannerList({ data, selectedId, onSelect, act }: PlannerListProps) {
   const [showDismissed, setShowDismissed] = useState(false)
+  const [snoozeMenuFor, setSnoozeMenuFor] = useState<string | null>(null)
   const [actionErrors, setActionErrors] = useState<Map<string, ErrorEntry>>(new Map())
 
   const bySection = new Map<PlannerSection, RankedItemDTO[]>()
@@ -136,9 +133,10 @@ export function PlannerList({ data, selectedId, onSelect, act }: PlannerListProp
     } else if (e.key === 'w') {
       void handleAct(selectedId, 'wont_do')
     } else if (e.key === 's') {
-      // Quick keyboard snooze — the full picker is available on the row's
-      // Snooze button; the shortcut parks the item for later today.
-      void handleAct(selectedId, 'snooze', { snoozedUntil: laterTodayIso() })
+      // Opens the selected row's snooze menu (spec §1.1); the row reports
+      // close/pick back through onSnoozeOpenChange.
+      e.preventDefault()
+      setSnoozeMenuFor(selectedId)
     }
   }
 
@@ -184,6 +182,8 @@ export function PlannerList({ data, selectedId, onSelect, act }: PlannerListProp
                     error={actionErrors.get(item.id)?.message ?? null}
                     onRetry={() => handleRetry(item.id)}
                     onDismissError={() => handleDismissError(item.id)}
+                    snoozeOpen={snoozeMenuFor === item.id}
+                    onSnoozeOpenChange={(open) => setSnoozeMenuFor(open ? item.id : null)}
                   />
                 ))}
               </ul>
@@ -220,6 +220,8 @@ export function PlannerList({ data, selectedId, onSelect, act }: PlannerListProp
                 error={actionErrors.get(item.id)?.message ?? null}
                 onRetry={() => handleRetry(item.id)}
                 onDismissError={() => handleDismissError(item.id)}
+                snoozeOpen={snoozeMenuFor === item.id}
+                onSnoozeOpenChange={(open) => setSnoozeMenuFor(open ? item.id : null)}
               />
             ))}
           </ul>

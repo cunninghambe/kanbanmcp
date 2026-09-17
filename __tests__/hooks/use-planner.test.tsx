@@ -145,25 +145,40 @@ describe('usePlanner', () => {
     const { result } = renderHook(() => usePlanner(ARGS), { wrapper })
     await waitFor(() => expect(result.current.data).toBeDefined())
 
-    const snoozePromise = reactAct(() =>
-      result.current.act('it-1', 'snooze', { snoozedUntil: until })
-    )
+    let snoozePromise!: Promise<unknown>
+    reactAct(() => {
+      snoozePromise = result.current.act('it-1', 'snooze', { snoozedUntil: until })
+    })
     await waitFor(() => expect(result.current.data!.items[0].section).toBe('snoozed'))
-    await snoozePromise
+    await reactAct(async () => {
+      await snoozePromise
+    })
     expect(f.of('PATCH', /items\/it-1$/)[0].body).toEqual({ action: 'snooze', snoozedUntil: until })
 
     const doneRow = rankedItem({ status: 'done', section: 'done' })
-    installFetch((c) =>
-      c.method === 'PATCH'
-        ? { json: { item: rankedItem(), writeThrough: [] } }
-        : { json: todayResponse([doneRow]) }
-    )
+    const reopened = rankedItem({ status: 'open', section: 'today' })
+    const state = { today: todayResponse([doneRow]) }
+    installFetch((c) => {
+      if (c.method === 'PATCH') {
+        state.today = todayResponse([reopened])
+        return { json: { item: reopened, writeThrough: [] } }
+      }
+      return { json: state.today }
+    })
     const second = renderHook(() => usePlanner(ARGS), { wrapper })
     await waitFor(() => expect(second.result.current.data).toBeDefined())
-    const reopenPromise = reactAct(() => second.result.current.act('it-1', 'reopen'))
-    await waitFor(() => expect(second.result.current.data!.items[0].section).toBe('today'))
+    let reopenPromise!: Promise<unknown>
+    reactAct(() => {
+      reopenPromise = second.result.current.act('it-1', 'reopen')
+    })
+    await waitFor(() => {
+      expect(second.result.current.data!.items[0].section).toBe('today')
+      expect(second.result.current.data!.items[0].status).toBe('open')
+    })
+    await reactAct(async () => {
+      await reopenPromise
+    })
     expect(second.result.current.data!.items[0].status).toBe('open')
-    await reopenPromise
   })
 
   it('addTodo posts the title and refetches; a failure reports the server message', async () => {

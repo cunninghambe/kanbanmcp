@@ -992,6 +992,8 @@ export interface PlannerItemRowProps {
   error?: string | null            // from PlannerList's actionErrors map
   onRetry?: () => void
   onDismissError?: () => void
+  snoozeOpen?: boolean             // controlled snooze-menu state for the list's `s` shortcut; uncontrolled when omitted
+  onSnoozeOpenChange?: (open: boolean) => void
 }
 // <li role="listitem" aria-label={item.title} aria-selected={selected}> … </li>
 // action buttons (aria-label): 'Mark done' | 'Mark reviewed' (card + payload.role reviewer/approver) · 'Snooze' · 'Dismiss' · "Won't do"

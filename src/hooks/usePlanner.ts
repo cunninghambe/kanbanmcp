@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { flushSync } from 'react-dom'
 import useSWR from 'swr'
 import type {
   PlannerAction,
@@ -152,13 +151,8 @@ export function usePlanner(args: UsePlannerArgs): UsePlannerResult {
       ...data,
       items: data.items.map((it, i) => (i === idx ? optimisticItem : it)),
     }
-    // flushSync forces this optimistic update to commit synchronously rather
-    // than sitting in a React batch — callers that don't await this promise
-    // right away (an optimistic UI click handler) still see the new
-    // status/section applied immediately.
-    flushSync(() => {
-      mutate(next, false)
-    })
+    // Optimistic: patch the cache before the request leaves.
+    mutate(next, false)
 
     const body: Record<string, unknown> = { action }
     if (action === 'snooze' && extra?.snoozedUntil) body.snoozedUntil = extra.snoozedUntil
@@ -171,24 +165,18 @@ export function usePlanner(args: UsePlannerArgs): UsePlannerResult {
       })
       const json = await readJson(res)
       if (!res.ok) {
-        flushSync(() => {
-          mutate(previous, false)
-        })
+        mutate(previous, false)
         return { ok: false, error: (json.error as string | undefined) ?? String(res.status) }
       }
       // Commit the optimistic value as the cache's truth first (so the status
       // + section move is never lost even if the revalidate below is slow),
       // then kick off a background revalidate to reconcile anything the
       // write-through changed server-side (e.g. a card move).
-      flushSync(() => {
-        mutate(next, false)
-      })
+      mutate(next, false)
       mutate()
       return { ok: true, writeThrough: json.writeThrough as WriteThroughResult[] | undefined }
     } catch (err) {
-      flushSync(() => {
-        mutate(previous, false)
-      })
+      mutate(previous, false)
       return { ok: false, error: err instanceof Error ? err.message : 'Network error' }
     }
   }

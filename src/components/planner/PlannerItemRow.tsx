@@ -28,6 +28,9 @@ export interface PlannerItemRowProps {
   error?: string | null
   onRetry?: () => void
   onDismissError?: () => void
+  /** Controlled snooze-menu state (PlannerList's `s` shortcut); uncontrolled when omitted. */
+  snoozeOpen?: boolean
+  onSnoozeOpenChange?: (open: boolean) => void
 }
 
 function reasonTone(reason: string): 'err' | 'accent' | undefined {
@@ -70,8 +73,15 @@ export function PlannerItemRow({
   error,
   onRetry,
   onDismissError,
+  snoozeOpen: snoozeOpenProp,
+  onSnoozeOpenChange,
 }: PlannerItemRowProps) {
-  const [snoozeOpen, setSnoozeOpen] = useState(false)
+  const [snoozeOpenState, setSnoozeOpenState] = useState(false)
+  const snoozeOpen = snoozeOpenProp ?? snoozeOpenState
+  const setSnoozeOpen = (open: boolean) => {
+    setSnoozeOpenState(open)
+    onSnoozeOpenChange?.(open)
+  }
   const resolved = RESOLVED_STATUSES.has(item.status)
   const isReviewOnly =
     item.source === 'card' && (item.payload.role === 'reviewer' || item.payload.role === 'approver')
@@ -193,7 +203,7 @@ export function PlannerItemRow({
             <button
               type="button"
               aria-label="Snooze"
-              onClick={() => setSnoozeOpen((v) => !v)}
+              onClick={() => setSnoozeOpen(!snoozeOpen)}
               className="km-btn km-btn--ghost km-btn--sm"
               style={{ padding: 4 }}
             >

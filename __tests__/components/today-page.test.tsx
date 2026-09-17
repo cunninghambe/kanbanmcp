@@ -639,6 +639,29 @@ describe('/today page', () => {
     expect(f.of('PATCH', /\/api\/planner\/items\/n1$/)[0].body).toEqual({ action: 'done' })
   })
 
+  it("keyboard: s opens the selected row's snooze menu and a pick sends the snooze", async () => {
+    const user = userEvent.setup()
+    const f = installFetch(
+      makeRouter({ today: fixture() }, (c) =>
+        c.method === 'PATCH' ? { json: { item: fixtureItems()[0], writeThrough: [] } } : undefined
+      )
+    )
+    await renderPage()
+    await screen.findByRole('region', { name: 'now' })
+    const list = screen.getByRole('group', { name: 'planner items' })
+    list.focus()
+    await user.keyboard('{ArrowDown}')
+    await user.keyboard('s')
+    const menu = await screen.findByRole('menu', { name: 'Snooze until' })
+    await user.click(within(menu).getByRole('menuitem', { name: 'tomorrow 9:00' }))
+    await waitFor(() => expect(f.of('PATCH', /\/api\/planner\/items\/n1$/)).toHaveLength(1))
+    expect(f.of('PATCH', /\/api\/planner\/items\/n1$/)[0].body).toEqual({
+      action: 'snooze',
+      snoozedUntil: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
   it('keyboard shortcuts do not fire while typing in the quick-add input', async () => {
     const user = userEvent.setup()
     const f = installFetch(makeRouter({ today: fixture() }))
