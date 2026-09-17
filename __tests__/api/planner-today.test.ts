@@ -259,6 +259,33 @@ describe('GET /api/planner/today', () => {
   })
 
   describe('response', () => {
+    it('counts an elapsed snooze as open (agreeing with the section it is ranked into) and an active one as snoozed', async () => {
+      const open = [
+        row({
+          id: 'back',
+          sourceKey: 'email:back',
+          source: 'email',
+          status: 'snoozed',
+          snoozedUntil: new Date(NOW.getTime() - MIN),
+          payload: '{"cardId":"x","urgent":true}',
+        }),
+        row({
+          id: 'parked',
+          sourceKey: 'email:parked',
+          source: 'email',
+          status: 'snoozed',
+          snoozedUntil: new Date(NOW.getTime() + 60 * MIN),
+          payload: '{"cardId":"y","urgent":true}',
+        }),
+      ]
+      setItems(open, [])
+      const { body } = await today()
+      const byId = Object.fromEntries(body.items.map((i: { id: string }) => [i.id, i]))
+      expect(byId.back.section).toBe('now')
+      expect(byId.parked.section).toBe('snoozed')
+      expect(body.counts).toMatchObject({ now: 1, open: 1, inbox: 1, overdue: 0 })
+    })
+
     it('reads open/snoozed and today-resolved items with two capped queries and returns ranked items with sections', async () => {
       const win = dayBounds('2026-09-16', 'UTC')
       const open = [

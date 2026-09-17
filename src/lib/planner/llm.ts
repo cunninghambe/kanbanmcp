@@ -88,9 +88,14 @@ async function getAuth(orgId?: string): Promise<AnthropicAuth | null> {
 /** 429 / 5xx / network are retried; a 4xx is the caller's problem. */
 function shouldRetry(err: unknown): boolean {
   if (err instanceof RateLimitError) return true
-  if (err instanceof APIError) return err.status >= 500
-  return !(err instanceof APIError)
+  // APIConnectionError extends APIError with `status` undefined: a network failure.
+  if (err instanceof APIError) return err.status === undefined || err.status >= 500
+  return true
 }
+
+/** One attended click must not hang a request handler: the SDK's own retries are
+ *  disabled (this module retries) and each attempt gets a fixed deadline. */
+const SDK_OPTIONS = { maxRetries: 0, timeout: 120_000 } as const
 
 function textOf(response: Anthropic.Messages.Message): string {
   return response.content
@@ -108,8 +113,8 @@ export async function runPlannerCompletion(req: PlannerLlmRequest): Promise<Plan
   // OAuth wins and suppresses apiKey so the two auth headers are never both sent.
   const client =
     auth.kind === 'oauth'
-      ? new Anthropic({ apiKey: null, authToken: auth.token })
-      : new Anthropic({ apiKey: auth.key })
+      ? new Anthropic({ apiKey: null, authToken: auth.token, ...SDK_OPTIONS })
+      : new Anthropic({ apiKey: auth.key, ...SDK_OPTIONS })
 
   const model = plannerModel()
   let lastErr: unknown
@@ -147,6 +152,13 @@ function attr(value: string): string {
   return value.replace(/[<>"&]/g, ' ')
 }
 
+/** Tag bodies get the same neutralising pass as attributes: no `</item>` can be forged. */
+function body(value: string, max: number): string {
+  return attr(value.slice(0, max))
+}
+
+const MAX_TITLE_CHARS = 300
+
 function itemBlock(item: RankedItemDTO | PlannerItemDTO, section?: string): string {
   const ranked = item as Partial<RankedItemDTO>
   const attrs = [
@@ -159,8 +171,8 @@ function itemBlock(item: RankedItemDTO | PlannerItemDTO, section?: string): stri
     item.priority !== 'none' ? `priority="${attr(item.priority)}"` : null,
     ranked.reasons && ranked.reasons.length ? `reasons="${attr(ranked.reasons.join(', '))}"` : null,
   ].filter(Boolean)
-  const summary = item.summary ? `\n${item.summary.slice(0, MAX_SUMMARY_CHARS)}` : ''
-  return `<item ${attrs.join(' ')}>\n${item.title}${summary}\n</item>`
+  const summary = item.summary ? `\n${body(item.summary, MAX_SUMMARY_CHARS)}` : ''
+  return `<item ${attrs.join(' ')}>\n${body(item.title, MAX_TITLE_CHARS)}${summary}\n</item>`
 }
 
 export function buildPlanPrompt(input: {

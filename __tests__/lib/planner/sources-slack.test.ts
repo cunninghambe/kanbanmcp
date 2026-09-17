@@ -60,7 +60,7 @@ describe('planner/sources/slack', () => {
       teamId: 'T1',
       teamUrl: 'https://acme.slack.com',
     })
-    client.searchMentions.mockResolvedValue([])
+    client.searchMentions.mockResolvedValue({ messages: [], truncated: false })
     client.listDmConversations.mockResolvedValue({ conversations: [], truncated: false })
     client.conversationHistory.mockResolvedValue([])
   })
@@ -95,14 +95,17 @@ describe('planner/sources/slack', () => {
   })
 
   it('maps mentions to items with the channel in the title', async () => {
-    client.searchMentions.mockResolvedValue([
-      msg({
-        channelId: 'C1',
-        channelName: 'general',
-        ts: '1789721000.000100',
-        text: 'hey <@U_ME> thoughts on the plan?',
-      }),
-    ])
+    client.searchMentions.mockResolvedValue({
+      truncated: false,
+      messages: [
+        msg({
+          channelId: 'C1',
+          channelName: 'general',
+          ts: '1789721000.000100',
+          text: 'hey <@U_ME> thoughts on the plan?',
+        }),
+      ],
+    })
     const read = await readSlack(CTX)
     expect(read!.items).toEqual([
       {
@@ -161,9 +164,10 @@ describe('planner/sources/slack', () => {
 
   it('truncates long titles (80 chars of text) and summaries/text (500 / 4000)', async () => {
     const long = 'x'.repeat(5000)
-    client.searchMentions.mockResolvedValue([
-      msg({ channelId: 'C1', channelName: 'g', text: long }),
-    ])
+    client.searchMentions.mockResolvedValue({
+      truncated: false,
+      messages: [msg({ channelId: 'C1', channelName: 'g', text: long })],
+    })
     const [item] = (await readSlack(CTX))!.items
     expect(item.title).toBe(`Jane in #g: ${'x'.repeat(80)}`)
     expect((item.summary as string).length).toBe(500)
@@ -205,8 +209,21 @@ describe('planner/sources/slack', () => {
     expect(read!.resolveMissing).toBe('none')
   })
 
+  it('a truncated mention search downgrades resolveMissing to none, like a truncated DM listing', async () => {
+    client.searchMentions.mockResolvedValue({
+      messages: [msg({ channelId: 'C1', ts: '1789722000.000200' })],
+      truncated: true,
+    })
+    const read = await readSlack(CTX)
+    expect(read!.resolveMissing).toBe('none')
+    expect(read!.items).toHaveLength(1)
+  })
+
   it('dedupes a DM that is also a mention (same channel + ts)', async () => {
-    client.searchMentions.mockResolvedValue([msg({ channelId: 'D1', ts: '1789722000.000200' })])
+    client.searchMentions.mockResolvedValue({
+      truncated: false,
+      messages: [msg({ channelId: 'D1', ts: '1789722000.000200' })],
+    })
     client.listDmConversations.mockResolvedValue({
       conversations: [{ id: 'D1', isMpim: false }],
       truncated: false,

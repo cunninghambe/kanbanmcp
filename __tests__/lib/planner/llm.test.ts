@@ -146,7 +146,7 @@ describe('planner/llm runPlannerCompletion', () => {
       inputTokens: 12,
       outputTokens: 34,
     })
-    expect(sdk().ctorCalls[0]).toEqual({ apiKey: 'sk-env' })
+    expect(sdk().ctorCalls[0]).toEqual({ apiKey: 'sk-env', maxRetries: 0, timeout: 120_000 })
     expect(sdk().create).toHaveBeenCalledWith({
       model: 'claude-sonnet-4-6',
       max_tokens: 500,
@@ -169,7 +169,12 @@ describe('planner/llm runPlannerCompletion', () => {
     process.env.CLAUDE_CODE_OAUTH_TOKEN = 'oauth-tok'
     sdk().create.mockResolvedValue(completion('x'))
     await runPlannerCompletion(REQ)
-    expect(sdk().ctorCalls[0]).toEqual({ apiKey: null, authToken: 'oauth-tok' })
+    expect(sdk().ctorCalls[0]).toEqual({
+      apiKey: null,
+      authToken: 'oauth-tok',
+      maxRetries: 0,
+      timeout: 120_000,
+    })
   })
 
   it('prefers the org key when orgId is given and the org has one', async () => {
@@ -180,7 +185,7 @@ describe('planner/llm runPlannerCompletion', () => {
     sdk().create.mockResolvedValue(completion('x'))
     await runPlannerCompletion({ ...REQ, orgId: 'org-1' })
     expect(mockPrisma.orgAiSettings.findUnique).toHaveBeenCalledWith({ where: { orgId: 'org-1' } })
-    expect(sdk().ctorCalls[0]).toEqual({ apiKey: 'sk-org' })
+    expect(sdk().ctorCalls[0]).toEqual({ apiKey: 'sk-org', maxRetries: 0, timeout: 120_000 })
   })
 
   it('never routes through ClaudeMCP even when it is configured', async () => {
@@ -199,6 +204,17 @@ describe('planner/llm runPlannerCompletion', () => {
   it('retries on a rate limit (1s, 4s) and succeeds', async () => {
     process.env.ANTHROPIC_API_KEY = 'sk-env'
     sdk().create.mockRejectedValueOnce(new RL('slow down')).mockResolvedValueOnce(completion('ok'))
+    const p = runPlannerCompletion(REQ)
+    await vi.runAllTimersAsync()
+    expect((await p).text).toBe('ok')
+    expect(sdk().create).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries an SDK connection error (an APIError with no status)', async () => {
+    process.env.ANTHROPIC_API_KEY = 'sk-env'
+    sdk()
+      .create.mockRejectedValueOnce(new API(undefined as unknown as number, 'Connection error.'))
+      .mockResolvedValueOnce(completion('ok'))
     const p = runPlannerCompletion(REQ)
     await vi.runAllTimersAsync()
     expect((await p).text).toBe('ok')

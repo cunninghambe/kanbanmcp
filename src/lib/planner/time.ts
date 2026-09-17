@@ -7,9 +7,15 @@ export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 const formatters = new Map<string, Intl.DateTimeFormat>()
 
+const MAX_CACHED_FORMATTERS = 256
+
 function formatter(tz: string): Intl.DateTimeFormat {
-  let f = formatters.get(tz)
+  // Cache by the canonical zone name: Intl accepts any case and many spellings
+  // of the same zone, and the key is client-supplied.
+  const key = new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone
+  let f = formatters.get(key)
   if (!f) {
+    if (formatters.size >= MAX_CACHED_FORMATTERS) formatters.clear()
     f = new Intl.DateTimeFormat('en-US', {
       timeZone: tz,
       hourCycle: 'h23',
@@ -20,7 +26,7 @@ function formatter(tz: string): Intl.DateTimeFormat {
       minute: '2-digit',
       second: '2-digit',
     })
-    formatters.set(tz, f)
+    formatters.set(key, f)
   }
   return f
 }

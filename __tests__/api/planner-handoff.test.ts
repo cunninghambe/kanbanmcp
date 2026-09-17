@@ -74,7 +74,11 @@ import {
   CardNotFoundError,
   ColumnNotOnBoardError,
 } from '../../src/lib/planner/handoffs/card'
-import { GoogleAuthExpiredError, InsufficientScopesError } from '../../src/lib/google/errors'
+import {
+  GoogleAuthExpiredError,
+  InsufficientScopesError,
+  TokenRevokedError,
+} from '../../src/lib/google/errors'
 import { SlackApiError, SlackAuthError } from '../../src/lib/slack/errors'
 
 const HUMAN = { userId: 'user-1', orgId: 'org-1' }
@@ -468,6 +472,12 @@ describe('POST /api/planner/drafts/[id]/handoff', () => {
       expect(b.res.status).toBe(409)
       expect(b.body.error).toBe('GOOGLE_NOT_CONNECTED')
       expect(mockPrisma.plannerDraft.update).not.toHaveBeenCalled()
+
+      // a revoked refresh token is the same user-facing state, never a 500
+      gdoc.handoffGoogleDoc.mockRejectedValue(new TokenRevokedError())
+      const c = await handoff({ kind: 'gdoc' })
+      expect(c.res.status).toBe(409)
+      expect(c.body.error).toBe('GOOGLE_NOT_CONNECTED')
 
       __resetRateLimitStore()
       gdoc.handoffGoogleDoc.mockResolvedValue({

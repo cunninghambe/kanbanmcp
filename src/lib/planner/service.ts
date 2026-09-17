@@ -90,10 +90,18 @@ export async function ensureCollected(
   const now = args.now ?? new Date()
   const day = await getOrCreateDay(prisma, { userId, orgId, date, tz })
 
-  const age = day.lastCollectedAt ? now.getTime() - day.lastCollectedAt.getTime() : Infinity
-  if (!force && age < collectStaleMs()) return { collected: false, result: null, day }
+  const isFresh = (row: PlannerDay) => {
+    const age = row.lastCollectedAt ? now.getTime() - row.lastCollectedAt.getTime() : Infinity
+    return age < collectStaleMs()
+  }
+  if (!force && isFresh(day)) return { collected: false, result: null, day }
 
   return withKeyedLock(`planner:${userId}`, async () => {
+    // Re-check inside the lock: a concurrent request may have just collected.
+    if (!force) {
+      const current = await prisma.plannerDay.findUnique({ where: { id: day.id } })
+      if (current && isFresh(current)) return { collected: false, result: null, day: current }
+    }
     const result = await collectForUser(
       { userId, orgId, tz, now, window: dayBounds(date, tz) },
       { prisma, readers: args.readers ?? defaultReaders() }
@@ -137,7 +145,11 @@ function countFor(
   window: { start: Date; end: Date },
   now: Date
 ): TodayCounts {
-  const isOpen = (i: RankedItemDTO) => i.status === 'open'
+  // The same open-ness the ranker uses (§1.3): an elapsed snooze counts as open.
+  const isOpen = (i: RankedItemDTO) =>
+    i.status === 'open' ||
+    (i.status === 'snoozed' &&
+      (i.snoozedUntil === null || new Date(i.snoozedUntil).getTime() <= now.getTime()))
   const meeting = (i: RankedItemDTO) => {
     if (i.source !== 'calendar' || i.payload.allDay === true) return false
     if (!i.startsAt || !i.endsAt) return false

@@ -548,7 +548,7 @@ Algorithm (order matters):
 **`slack.ts` — `readSlack(ctx)`** (uses `src/lib/slack/client.ts`, §4.8)
 
 - No `SlackCredential` → `null`. Lookback `PLANNER_SLACK_LOOKBACK_HOURS` (default 48).
-- Mentions: `searchMentions(userId, { slackUserId, oldest })` → items with `payload.kind = 'mention'`.
+- Mentions: `searchMentions(userId, { slackUserId, oldest })` → items with `payload.kind = 'mention'`; a truncated search (more matches than the page) forces `resolveMissing: 'none'` exactly like a truncated DM listing.
 - DMs: `const { conversations, truncated } = await listDmConversations(userId)` (paginated, exhaustive — `conversations.list` has no sort parameter, so `limit` must never be used to pick "recent" DMs); order by `updated` desc when Slack supplies it, else `priority` desc, else as returned; take the first `PLANNER_SLACK_MAX_DM_CONVERSATIONS` (this env is "how many DM conversations to fetch history for per run"); for each, `conversationHistory(userId, channelId, { oldest, limit: 20 })` with a small concurrency cap; keep only conversations whose **latest** message is not from the user (awaiting reply); the item is that latest message, `payload.kind = 'dm'`.
 - `SourceItem`: `sourceKey: \`slack:${channelId}:${ts}\``, `title: \`${userName}: ${text.slice(0, 80)}\`` (mention: `\`${userName} in #${channelName}: …\``), `summary: text.slice(0, 500)`, `url: permalink`, `payload: { channelId, channelName, ts, threadTs, slackUserId, userName, text: text.slice(0, 4000), kind }`.
 - `resolveMissing`: `'open'` normally (an *open* mention/DM older than the lookback is considered handled; a snoozed one is kept — absence here only means "older than the lookback"); `'none'` when the DM listing was truncated (page cap, or more conversations than `PLANNER_SLACK_MAX_DM_CONVERSATIONS`), so an unread conversation can never be resolved as `resolvedBy: 'source'`.
@@ -669,7 +669,8 @@ export async function slackApi<T = Record<string, unknown>>(token: string, metho
 
 export interface SlackMessage { channelId: string; channelName: string | null; ts: string; threadTs: string | null; userId: string; userName: string; text: string; permalink: string | null }
 export async function authTest(token: string): Promise<{ userId: string; teamId: string; url: string }>
-export async function searchMentions(userId: string, args: { slackUserId: string; oldest: Date; limit?: number }): Promise<SlackMessage[]>
+export interface MentionSearch { messages: SlackMessage[]; truncated: boolean }   // truncated: Slack reported more pages / a larger total than the page read
+export async function searchMentions(userId: string, args: { slackUserId: string; oldest: Date; limit?: number }): Promise<MentionSearch>
 // search.messages query `<@${slackUserId}> after:${YYYY-MM-DD of oldest - 1d}` sort=timestamp sort_dir=desc count=limit(20); filters matches with ts < oldest
 export async function listDmConversations(userId: string, args?: { maxPages?: number }): Promise<{ conversations: Array<{ id: string; isMpim: boolean; userId?: string; updated?: number; priority?: number }>; truncated: boolean }>
 // conversations.list types=im,mpim exclude_archived=true limit=200, following response_metadata.next_cursor

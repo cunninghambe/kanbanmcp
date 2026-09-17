@@ -203,7 +203,8 @@ describe('slack/client', () => {
       expect(q(calls[0]).get('sort')).toBe('timestamp')
       expect(q(calls[0]).get('sort_dir')).toBe('desc')
       expect(q(calls[0]).get('count')).toBe('20')
-      expect(res).toEqual([
+      expect(res.truncated).toBe(false)
+      expect(res.messages).toEqual([
         {
           channelId: 'C1',
           channelName: 'general',
@@ -215,6 +216,36 @@ describe('slack/client', () => {
           permalink: 'https://acme.slack.com/archives/C1/p1789730000000100',
         },
       ])
+    })
+
+    it('reports truncation when Slack has more pages or a larger total than the page', async () => {
+      const match = {
+        ts: '1789730000.000100',
+        text: 'hey <@U_ME>',
+        channel: { id: 'C1', name: 'general' },
+        user: 'U2',
+        username: 'jane',
+        permalink: 'https://acme.slack.com/archives/C1/p1789730000000100',
+      }
+      const paged = router({
+        'search.messages': {
+          body: { ok: true, messages: { matches: [match], total: 21, paging: { pages: 2 } } },
+        },
+      })
+      __setSlackFetchForTests(paged.fetch)
+      const oldest = new Date('2026-09-14T09:00:00Z')
+      const a = await searchMentions('user-1', { slackUserId: 'U_ME', oldest })
+      expect(a.truncated).toBe(true)
+      expect(a.messages).toHaveLength(1)
+
+      const single = router({
+        'search.messages': {
+          body: { ok: true, messages: { matches: [match], total: 1, paging: { pages: 1 } } },
+        },
+      })
+      __setSlackFetchForTests(single.fetch)
+      const b = await searchMentions('user-1', { slackUserId: 'U_ME', oldest })
+      expect(b.truncated).toBe(false)
     })
   })
 

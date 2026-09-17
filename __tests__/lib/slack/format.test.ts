@@ -46,6 +46,10 @@ describe('slack/format markdownToMrkdwn', () => {
     expect(markdownToMrkdwn('[a|b<c>](https://ok.example)')).toBe(
       '<https://ok.example/|ab&lt;c&gt;>'
     )
+    // a pipe smuggled into the URL must not become the label boundary
+    expect(markdownToMrkdwn('[Details](https://evil.example/?r=|https://intranet.corp/x)')).toBe(
+      '<https://evil.example/?r=%7Chttps://intranet.corp/x|Details>'
+    )
   })
 
   it('strips other markdown it cannot express', () => {

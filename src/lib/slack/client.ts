@@ -141,10 +141,16 @@ function dateMinusOneDay(at: Date): string {
 }
 
 /** Mentions of the user since `oldest`, newest first. */
+export interface MentionSearch {
+  messages: SlackMessage[]
+  /** true when Slack reported more matches than the single page read */
+  truncated: boolean
+}
+
 export async function searchMentions(
   userId: string,
   args: { slackUserId: string; oldest: Date; limit?: number }
-): Promise<SlackMessage[]> {
+): Promise<MentionSearch> {
   const { token } = await getSlackAccessToken(userId)
   const body = await slackApi(token, 'search.messages', {
     // `after:` is day-granular, so widen by a day and filter on ts below.
@@ -154,8 +160,13 @@ export async function searchMentions(
     count: args.limit ?? DEFAULT_SEARCH_COUNT,
   })
 
-  const matches = asRecord(body.messages).matches
-  if (!Array.isArray(matches)) return []
+  const messages = asRecord(body.messages)
+  const matches = messages.matches
+  if (!Array.isArray(matches)) return { messages: [], truncated: false }
+  const paging = asRecord(messages.paging)
+  const pages = typeof paging.pages === 'number' ? paging.pages : 1
+  const total = typeof messages.total === 'number' ? messages.total : matches.length
+  const truncated = pages > 1 || total > matches.length
   const oldestTs = args.oldest.getTime() / 1000
 
   const out: SlackMessage[] = []
@@ -175,7 +186,7 @@ export async function searchMentions(
       permalink: str(match.permalink),
     })
   }
-  return out
+  return { messages: out, truncated }
 }
 
 export interface SlackConversation {

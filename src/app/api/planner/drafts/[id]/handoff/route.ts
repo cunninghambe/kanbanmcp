@@ -12,7 +12,11 @@ import { z } from 'zod'
 import { logActivity } from '@/lib/agent-activity'
 import { apiError, requireOrgRole, requireSession } from '@/lib/api-helpers'
 import { prisma } from '@/lib/db'
-import { GoogleAuthExpiredError, InsufficientScopesError } from '@/lib/google/errors'
+import {
+  GoogleAuthExpiredError,
+  InsufficientScopesError,
+  TokenRevokedError,
+} from '@/lib/google/errors'
 import { assertInboxOwner } from '@/lib/inbox-agent'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { SlackApiError, SlackAuthError } from '@/lib/slack/errors'
@@ -241,7 +245,9 @@ async function handleGdoc(
         { status: 409 }
       )
     }
-    if (err instanceof GoogleAuthExpiredError) return apiError(409, 'GOOGLE_NOT_CONNECTED')
+    if (err instanceof GoogleAuthExpiredError || err instanceof TokenRevokedError) {
+      return apiError(409, 'GOOGLE_NOT_CONNECTED')
+    }
     throw err
   }
 

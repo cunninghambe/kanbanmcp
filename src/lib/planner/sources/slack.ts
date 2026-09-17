@@ -85,7 +85,7 @@ export async function readSlack(ctx: SourceContext): Promise<SourceRead | null> 
   )
   const oldest = new Date(ctx.now.getTime() - lookbackHours * 60 * 60 * 1000)
 
-  const mentions = await searchMentions(ctx.userId, {
+  const { messages: mentions, truncated: mentionsTruncated } = await searchMentions(ctx.userId, {
     slackUserId: cred.slackUserId,
     oldest,
   })
@@ -118,6 +118,6 @@ export async function readSlack(ctx: SourceContext): Promise<SourceRead | null> 
 
   // More conversations than this run read (or a truncated listing) means an
   // unread DM could be missing from `items` — claim no resolution authority.
-  const complete = !truncated && conversations.length <= maxConversations
+  const complete = !truncated && !mentionsTruncated && conversations.length <= maxConversations
   return { items, resolveMissing: complete ? 'open' : 'none' }
 }
