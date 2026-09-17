@@ -54,7 +54,7 @@ test.describe('12 – today planner', () => {
   test('login lands on /today with the sidebar link and the day title', async ({ page }) => {
     await expect(page).toHaveURL(/\/today/)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^[a-z]{3} \d{1,2} [a-z]{3}$/)
-    const link = page.getByRole('link', { name: 'today' })
+    const link = page.getByRole('link', { name: 'today', exact: true })
     await expect(link).toBeVisible()
     await expect(link).toHaveAttribute('href', '/today')
     await expect(page.getByRole('button', { name: 'plan my day' })).toBeVisible()
@@ -73,10 +73,12 @@ test.describe('12 – today planner', () => {
     await expect(input).toHaveValue('')
 
     await row.getByRole('button', { name: 'Mark done' }).click()
-    const doneRegion = page.getByRole('region', { name: 'done today' })
+    const doneRegion = page.getByRole('region', { name: 'done today', exact: true })
     await expect(doneRegion.getByRole('listitem', { name: title })).toBeVisible()
     await expect(
-      page.getByRole('region', { name: 'today' }).getByRole('listitem', { name: title })
+      page
+        .getByRole('region', { name: 'today', exact: true })
+        .getByRole('listitem', { name: title })
     ).toHaveCount(0)
 
     await doneRegion
@@ -96,7 +98,9 @@ test.describe('12 – today planner', () => {
     await expect(row).toBeVisible()
     await row.getByRole('button', { name: 'Mark done' }).click()
     await expect(
-      page.getByRole('region', { name: 'done today' }).getByRole('listitem', { name: CARD_TITLE })
+      page
+        .getByRole('region', { name: 'done today', exact: true })
+        .getByRole('listitem', { name: CARD_TITLE })
     ).toBeVisible()
 
     await expect
