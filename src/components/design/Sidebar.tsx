@@ -13,6 +13,7 @@ import {
   Plus,
   RadioTower,
   GitPullRequestArrow,
+  ListTodo,
 } from 'lucide-react'
 import { useSession } from '@/hooks/useSession'
 import { Wordmark } from './Wordmark'
@@ -134,19 +135,18 @@ export function DesignSidebar() {
       <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--line)' }}>
         <Wordmark size={15} />
         {org && (
-          <div
-            className="km-eyebrow"
-            style={{ marginTop: 8, fontSize: 9, color: 'var(--fg-3)' }}
-          >
-            org / {org.name.toLowerCase()}
-            {' '}·{' '}
-            <span style={{ color: 'var(--ok)' }}>● connected</span>
+          <div className="km-eyebrow" style={{ marginTop: 8, fontSize: 9, color: 'var(--fg-3)' }}>
+            org / {org.name.toLowerCase()} · <span style={{ color: 'var(--ok)' }}>● connected</span>
           </div>
         )}
       </div>
 
       {/* Top nav */}
       <div style={{ padding: '10px 0 6px' }}>
+        <Link href="/today" style={navStyle(isActive('/today'))}>
+          <ListTodo size={14} />
+          <span style={{ flex: 1 }}>today</span>
+        </Link>
         <Link href="/dashboard" style={navStyle(pathname === '/dashboard')}>
           <LayoutDashboard size={14} />
           <span style={{ flex: 1 }}>dashboard</span>
@@ -315,10 +315,16 @@ export function DesignSidebar() {
         </Link>
         {isActive('/settings') && (
           <>
-            <Link href="/settings/api-keys" style={{ ...navStyle(isActive('/settings/api-keys')), paddingLeft: 30 }}>
+            <Link
+              href="/settings/api-keys"
+              style={{ ...navStyle(isActive('/settings/api-keys')), paddingLeft: 30 }}
+            >
               <span style={{ flex: 1, fontSize: 12 }}>api keys</span>
             </Link>
-            <Link href="/settings/integrations" style={{ ...navStyle(isActive('/settings/integrations')), paddingLeft: 30 }}>
+            <Link
+              href="/settings/integrations"
+              style={{ ...navStyle(isActive('/settings/integrations')), paddingLeft: 30 }}
+            >
               <span style={{ flex: 1, fontSize: 12 }}>integrations</span>
             </Link>
           </>
@@ -357,7 +363,10 @@ export function DesignSidebar() {
               <div style={{ fontSize: 12, color: 'var(--fg-1)', letterSpacing: '-0.005em' }}>
                 {(user.name ?? '').toLowerCase()}
               </div>
-              <div className="km-mono" style={{ fontSize: 9, color: 'var(--fg-3)', letterSpacing: '0.06em' }}>
+              <div
+                className="km-mono"
+                style={{ fontSize: 9, color: 'var(--fg-3)', letterSpacing: '0.06em' }}
+              >
                 MEMBER
               </div>
             </div>
@@ -377,7 +386,9 @@ export function DesignSidebar() {
             </button>
           </div>
         ) : (
-          <div className="km-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>not signed in</div>
+          <div className="km-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+            not signed in
+          </div>
         )}
       </div>
     </aside>

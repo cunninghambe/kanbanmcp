@@ -11,7 +11,7 @@ export async function loginAsAdmin(page: Page) {
   await page.fill('input[name="email"]', 'admin@demo.com')
   await page.fill('input[name="password"]', 'demo1234')
   await page.click('button[type="submit"]')
-  await page.waitForURL('**/dashboard')
+  await page.waitForURL('**/today')
   // Confirm the sidebar rendered for an authenticated user — the "Sign out"
   // control only exists once /api/auth/me returned a valid session. (Robust to
   // sidebar redesigns that no longer surface the raw email.)
@@ -24,5 +24,5 @@ export async function loginAs(page: Page, email: string, password: string) {
   await page.fill('input[name="email"]', email)
   await page.fill('input[name="password"]', password)
   await page.click('button[type="submit"]')
-  await page.waitForURL('**/dashboard')
+  await page.waitForURL('**/today')
 }

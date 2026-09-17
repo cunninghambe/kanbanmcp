@@ -14,8 +14,8 @@ test.describe('01 – login and board', () => {
     await loginAsAdmin(page)
   })
 
-  test('lands on dashboard after login', async ({ page }) => {
-    await expect(page).toHaveURL(/\/dashboard/)
+  test('lands on today after login', async ({ page }) => {
+    await expect(page).toHaveURL(/\/today/)
   })
 
   test('Demo Board shows 4 columns and 6 cards', async ({ page }) => {

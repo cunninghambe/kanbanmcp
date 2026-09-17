@@ -1,0 +1,32 @@
+/* mhud Today planner — two-column layout (list · workspace). See
+   docs/specs/mhud-today-planner.md §7.3. Follows the hud.module.css pattern:
+   the grid + its media query both live in the module, never inline. */
+
+.body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 44%);
+  gap: 16px;
+  padding: 20px;
+  min-height: 0;
+  overflow: auto;
+}
+
+@media (max-width: 1000px) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.workspacePane {
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  min-height: 0;
+}

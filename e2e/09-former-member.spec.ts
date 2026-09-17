@@ -81,7 +81,7 @@ test('assignee removed from org shows (former member) in card detail', async ({ 
   await page.fill('input[name="email"]', 'b@e2e.test')
   await page.fill('input[name="password"]', 'testpass99')
   await page.click('button[type="submit"]')
-  await page.waitForURL('**/dashboard')
+  await page.waitForURL('**/today')
 
   await page.goto(`/board/${boardId}`)
   await page.getByText('Former-member card').click()
