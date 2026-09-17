@@ -1,34 +1,30 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { IntegrationRow } from './IntegrationRow'
+import { SlackIntegrationRow } from './SlackIntegrationRow'
+
+function bannerForParams(searchParams: URLSearchParams): string | null {
+  if (searchParams.get('connected') === '1') return 'Google connected successfully.'
+  if (searchParams.get('connected') === 'slack') return 'Slack connected successfully.'
+  if (searchParams.get('slack_error') === 'access_denied') return 'Slack connection was cancelled.'
+  return null
+}
 
 export default function IntegrationsPage() {
   const searchParams = useSearchParams()
-  const [banner, setBanner] = useState<string | null>(null)
-  const bannerDismissed = useRef(false)
-
-  useEffect(() => {
-    if (searchParams.get('connected') === '1' && !bannerDismissed.current) {
-      setBanner('Google connected successfully.')
-    }
-  }, [searchParams])
+  const [dismissed, setDismissed] = useState(false)
+  const banner = dismissed ? null : bannerForParams(searchParams)
 
   function dismissBanner() {
-    bannerDismissed.current = true
-    setBanner(null)
+    setDismissed(true)
   }
 
   return (
     <>
-      <Header
-        breadcrumbs={[
-          { label: 'Settings', href: '/settings' },
-          { label: 'Integrations' },
-        ]}
-      />
+      <Header breadcrumbs={[{ label: 'Settings', href: '/settings' }, { label: 'Integrations' }]} />
       <main className="flex-1 p-6 overflow-y-auto">
         <div className="max-w-3xl mx-auto">
           {banner && (
@@ -73,13 +69,11 @@ export default function IntegrationsPage() {
           </div>
 
           <section aria-label="Connected integrations">
-            <h2
-              className="text-lg font-semibold mb-4"
-              style={{ color: 'var(--fg-0)' }}
-            >
+            <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--fg-0)' }}>
               Integrations
             </h2>
             <IntegrationRow integration="google" />
+            <SlackIntegrationRow />
           </section>
         </div>
       </main>

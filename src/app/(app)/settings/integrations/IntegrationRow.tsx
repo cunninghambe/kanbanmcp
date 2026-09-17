@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 
 // ---- Types ----------------------------------------------------------------
 
+interface PlannerScopes {
+  granted: boolean
+  missing: string[]
+}
+
 type GoogleStatusResponse =
   | { connected: false }
   | {
@@ -12,12 +17,19 @@ type GoogleStatusResponse =
       scopes: string[]
       lastUsedAt: string | null
       expired: boolean
+      plannerScopes?: PlannerScopes
     }
 
 type View =
   | { phase: 'loading' }
   | { phase: 'disconnected' }
-  | { phase: 'connected'; email: string; lastUsedAt: string | null; scopes: string[] }
+  | {
+      phase: 'connected'
+      email: string
+      lastUsedAt: string | null
+      scopes: string[]
+      plannerScopes?: PlannerScopes
+    }
   | { phase: 'expired'; email: string }
   | { phase: 'error'; message: string }
 
@@ -48,6 +60,7 @@ function statusToView(data: GoogleStatusResponse): View {
     email: data.email,
     lastUsedAt: data.lastUsedAt,
     scopes: data.scopes,
+    plannerScopes: data.plannerScopes,
   }
 }
 
@@ -72,13 +85,18 @@ export function IntegrationRow({ integration: _integration }: Props) {
         if (!cancelled) setView(statusToView(data))
       } catch (err) {
         if (!cancelled) {
-          setView({ phase: 'error', message: err instanceof Error ? err.message : 'Failed to load status' })
+          setView({
+            phase: 'error',
+            message: err instanceof Error ? err.message : 'Failed to load status',
+          })
         }
       }
     }
 
     void load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [fetchKey])
 
   // Move focus to Connect button after a disconnect transition
@@ -150,9 +168,21 @@ export function IntegrationRow({ integration: _integration }: Props) {
               Connected as{' '}
               <span style={{ color: 'var(--fg-0)', fontWeight: 500 }}>{view.email}</span>
               <span style={{ display: 'block', fontSize: 12, color: 'var(--fg-3)', marginTop: 2 }}>
-                Last used:{' '}
-                {view.lastUsedAt ? formatRelative(view.lastUsedAt) : 'Never'}
+                Last used: {view.lastUsedAt ? formatRelative(view.lastUsedAt) : 'Never'}
               </span>
+              {view.plannerScopes?.granted === false && (
+                <span
+                  style={{ display: 'block', fontSize: 12, color: 'var(--fg-3)', marginTop: 4 }}
+                >
+                  today planner needs calendar + docs access{' '}
+                  <a
+                    href="/api/me/google/connect?upgrade=planner"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    enable for today
+                  </a>
+                </span>
+              )}
             </span>
           )}
           {view.phase === 'expired' && (
@@ -163,9 +193,7 @@ export function IntegrationRow({ integration: _integration }: Props) {
               </span>
             </span>
           )}
-          {view.phase === 'error' && (
-            <span style={{ color: 'var(--err)' }}>{view.message}</span>
-          )}
+          {view.phase === 'error' && <span style={{ color: 'var(--err)' }}>{view.message}</span>}
         </div>
       </div>
 
@@ -202,11 +230,7 @@ export function IntegrationRow({ integration: _integration }: Props) {
           </a>
         )}
         {view.phase === 'error' && (
-          <button
-            type="button"
-            onClick={handleRetry}
-            className="km-btn"
-          >
+          <button type="button" onClick={handleRetry} className="km-btn">
             Retry
           </button>
         )}

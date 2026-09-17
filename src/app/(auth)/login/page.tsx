@@ -26,7 +26,7 @@ export default function LoginPage() {
       })
 
       if (res.ok) {
-        router.push('/dashboard')
+        router.push('/today')
       } else {
         const data = await res.json()
         setError(data.error || 'Login failed. Please try again.')
