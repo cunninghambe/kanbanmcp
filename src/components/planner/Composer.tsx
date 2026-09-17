@@ -61,8 +61,10 @@ export function Composer({ item, orgId }: ComposerProps) {
   const drafts = data?.drafts ?? EMPTY_DRAFTS
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const activeDraft = drafts.find((d) => d.id === selectedId) ?? null
-  const lastSyncedIdRef = useRef<string | null>(null)
+  // The first draft is the default selection; no effect needed to pick it.
+  const effectiveSelectedId = selectedId ?? drafts[0]?.id ?? null
+  const activeDraft = drafts.find((d) => d.id === effectiveSelectedId) ?? null
+  const [syncedId, setSyncedId] = useState<string | null>(null)
 
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -80,9 +82,6 @@ export function Composer({ item, orgId }: ComposerProps) {
   const mountedRef = useRef(true)
   const activeIdRef = useRef<string | null>(null)
   const activeDraftId = activeDraft?.id ?? null
-  useEffect(() => {
-    activeIdRef.current = activeDraftId
-  }, [activeDraftId])
 
   // Unmount: stop the debounce, send any pending edit once (fire-and-forget,
   // no state touched), and make in-flight saves skip their state updates.
@@ -107,33 +106,40 @@ export function Composer({ item, orgId }: ComposerProps) {
     }
   }, [])
 
-  // Sync local editable state from the selected draft. This is the
-  // documented "adjust state when a prop changes" effect pattern — the
-  // eslint-disable below accepts the extra render it costs in exchange for
-  // not duplicating this logic at every place selectedId can change.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (!selectedId && drafts.length > 0) {
-      setSelectedId(drafts[0].id)
-      return
-    }
-    if (!selectedId || selectedId === lastSyncedIdRef.current) return
-    const d = drafts.find((x) => x.id === selectedId)
-    if (!d) return
-    lastSyncedIdRef.current = selectedId
-    setTitle(d.title)
-    setBody(d.body)
-    dirtyRef.current = {}
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
+  // The editor follows the selected draft. State is adjusted during render
+  // (the React "adjust state when a prop changes" pattern) so the textarea
+  // never paints a frame with the wrong body; the refs (debounce + pending
+  // edit) are handled in the effect below, where refs belong.
+  if (activeDraft && activeDraft.id !== syncedId) {
+    setSyncedId(activeDraft.id)
+    setTitle(activeDraft.title)
+    setBody(activeDraft.body)
     setSaveStatus('idle')
     setPreviousBody(null)
     setGenerateError(null)
     setPreviewOn(false)
-  }, [selectedId, drafts])
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }
+
+  // Switching drafts: stop the old debounce and send the old draft's pending
+  // edit once (fire-and-forget) so nothing typed is lost.
+  useEffect(() => {
+    const previousId = activeIdRef.current
+    activeIdRef.current = activeDraftId
+    if (previousId === activeDraftId) return
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    const pending = dirtyRef.current
+    dirtyRef.current = {}
+    if (previousId && Object.keys(pending).length > 0) {
+      void fetch(`/api/planner/drafts/${previousId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pending),
+      }).catch(() => {})
+    }
+  }, [activeDraftId])
 
   function upsertDraftLocal(updated: PlannerDraftDTO) {
     mutateDrafts((prev) => {
@@ -267,7 +273,7 @@ export function Composer({ item, orgId }: ComposerProps) {
         {drafts.length > 0 && (
           <select
             aria-label="Draft"
-            value={selectedId ?? ''}
+            value={effectiveSelectedId ?? ''}
             onChange={(e) => setSelectedId(e.target.value)}
             className="km-input"
             style={{ width: 'auto', height: 28, fontSize: 12 }}
