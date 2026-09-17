@@ -263,8 +263,8 @@ Manifest: `GET /api/mcp` (no auth).
 
 ## Tests
 
-- **Unit + integration:** 484 tests across 45 files, all passing. `npm test`.
-- **End-to-end:** 17 Playwright tests across 10 spec files, all passing — login, card create + roles, sub-card tree (nest + promote), signoff workflow, artifact upload + MIME/size rejects, real-Claude AI auto-review (artifact + description, captures inputTokens), assigned-to-me widget + badge, former-member assignee, reparent cycle detection. `npm run e2e`. Real-Claude tests use either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`; skip gracefully if neither is set.
+- **Unit + integration:** 1,692 tests across 153 files, all passing (the two `__tests__/prisma` migration suites need the `sqlite3` CLI and are green in CI). `npm test`.
+- **End-to-end:** 22 Playwright tests across 12 spec files, all passing — login (lands on `/today`), card create + roles, sub-card tree (nest + promote), signoff workflow, artifact upload + MIME/size rejects, real-Claude AI auto-review (artifact + description, captures inputTokens), assigned-to-me widget + badge, former-member assignee, reparent cycle detection, changes smoke, today planner (quick add, done with card write-through, reopen, workspace). `npm run e2e`. Real-Claude tests use either `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`; skip gracefully if neither is set.
 - **Smoke:** `scripts/smoke.sh` destroys the dev DB, re-applies schema, re-seeds, runs the full unit suite. `npm run smoke`.
 - **Migrations:** `npx prisma migrate deploy` on a fresh DB succeeds.
 
