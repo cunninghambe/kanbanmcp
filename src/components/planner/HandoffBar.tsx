@@ -18,7 +18,8 @@ export interface HandoffBarProps {
   draft: PlannerDraftDTO
   body: string
   orgId: string
-  flush: () => Promise<void>
+  /** Composer's "cancel debounce + await pending PATCH"; false when the save failed. */
+  flush: () => Promise<boolean | void>
   onDraftChange: (draft: PlannerDraftDTO) => void
 }
 
@@ -28,6 +29,13 @@ interface Board {
 }
 
 type GdocIssue = { kind: 'scopes'; url: string } | { kind: 'not_connected' } | null
+
+const UPGRADE_URL_DEFAULT = '/api/me/google/connect?upgrade=planner'
+
+/** Only an app-relative path from the API becomes an href; anything else falls back. */
+function sameOriginPath(value: unknown): string {
+  return typeof value === 'string' && /^\/(?![\/\\])/.test(value) ? value : UPGRADE_URL_DEFAULT
+}
 
 async function readJson(res: Response): Promise<Record<string, unknown>> {
   try {
@@ -54,6 +62,7 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
   const [composedBody, setComposedBody] = useState<string | null>(null)
   const [emailMessage, setEmailMessage] = useState<string | null>(null)
   const [emailDisabled, setEmailDisabled] = useState(false)
+  const [sending, setSending] = useState(false)
   const [showEmailForm, setShowEmailForm] = useState(false)
   const [emailTo, setEmailTo] = useState('')
   const [emailSubject, setEmailSubject] = useState('')
@@ -131,12 +140,22 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
     }
   }
 
+  /** The server must hold the text on screen before anything leaves the app. */
+  async function saved(): Promise<boolean> {
+    const ok = await flush()
+    if (ok === false) {
+      setGeneralError("couldn't save the draft · try again")
+      return false
+    }
+    return true
+  }
+
   // ---- email ----
 
   async function runCompose(fields: Record<string, unknown>) {
     setEmailMessage(null)
     setGeneralError(null)
-    await flush()
+    if (!(await saved())) return
     const bodyAtCompose = body
     const r = await postHandoff({ kind: 'email_compose', ...fields })
     if (!r.ok) {
@@ -176,6 +195,16 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
   }
 
   async function handleApproveSend() {
+    if (sending) return
+    setSending(true)
+    try {
+      await approveSend()
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function approveSend() {
     setEmailMessage(null)
     const r = await postHandoff({ kind: 'email_send' })
     if (!r.ok) {
@@ -206,12 +235,12 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
   async function handleGdoc() {
     setGeneralError(null)
     setGdocIssue(null)
-    await flush()
+    if (!(await saved())) return
     const r = await postHandoff({ kind: 'gdoc' })
     if (!r.ok) {
       const err = r.json.error as string | undefined
       if (err === 'INSUFFICIENT_SCOPES') {
-        setGdocIssue({ kind: 'scopes', url: r.json.upgradeUrl as string })
+        setGdocIssue({ kind: 'scopes', url: sameOriginPath(r.json.upgradeUrl) })
       } else if (err === 'GOOGLE_NOT_CONNECTED') {
         setGdocIssue({ kind: 'not_connected' })
       } else {
@@ -228,7 +257,7 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
 
   async function runSlackPost(fields: { channel: string; threadTs?: string }) {
     setGeneralError(null)
-    await flush()
+    if (!(await saved())) return
     const payload: Record<string, unknown> = { kind: 'slack', channel: fields.channel }
     if (fields.threadTs) payload.threadTs = fields.threadTs
     const r = await postHandoff(payload)
@@ -264,7 +293,7 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
 
   async function handleCardComment() {
     setGeneralError(null)
-    await flush()
+    if (!(await saved())) return
     const r = await postHandoff({ kind: 'card_comment', cardId })
     if (!r.ok) {
       setGeneralError((r.json.error as string | undefined) ?? 'Failed to comment')
@@ -293,7 +322,7 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
   async function handleCardCreateSubmit() {
     if (!selectedBoardId) return
     setGeneralError(null)
-    await flush()
+    if (!(await saved())) return
     const r = await postHandoff({ kind: 'card_create', boardId: selectedBoardId })
     if (!r.ok) {
       setGeneralError((r.json.error as string | undefined) ?? 'Failed to create card')
@@ -400,6 +429,7 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <input
             aria-label="To"
+            placeholder="to: jane@example.com"
             value={emailTo}
             onChange={(e) => setEmailTo(e.target.value)}
             className="km-input"
@@ -407,6 +437,7 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
           />
           <input
             aria-label="Subject"
+            placeholder="subject"
             value={emailSubject}
             onChange={(e) => setEmailSubject(e.target.value)}
             className="km-input"
@@ -438,7 +469,7 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
             <button
               type="button"
               onClick={() => void handleApproveSend()}
-              disabled={body !== composedBody}
+              disabled={body !== composedBody || sending}
               className="km-btn km-btn--primary km-btn--sm"
             >
               approve &amp; send
@@ -483,6 +514,7 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
         <div style={{ display: 'flex', gap: 6 }}>
           <input
             aria-label="Slack channel id"
+            placeholder="channel id, e.g. C0123ABCD"
             value={slackChannel}
             onChange={(e) => setSlackChannel(e.target.value)}
             className="km-input"

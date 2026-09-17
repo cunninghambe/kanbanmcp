@@ -109,6 +109,12 @@ export function PlannerList({ data, selectedId, onSelect, act }: PlannerListProp
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (isFormField(e.target)) return
+    // Keys inside an open snooze menu belong to the menu.
+    if (e.target instanceof HTMLElement && e.target.closest('[role="menu"]')) return
+    if (e.key === 'Escape') {
+      if (snoozeMenuFor) setSnoozeMenuFor(null)
+      return
+    }
     if (navItems.length === 0) return
 
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -145,8 +151,9 @@ export function PlannerList({ data, selectedId, onSelect, act }: PlannerListProp
       role="group"
       aria-label="planner items"
       tabIndex={0}
+      aria-activedescendant={selectedId ? `planner-item-${selectedId}` : undefined}
       onKeyDown={handleKeyDown}
-      style={{ display: 'flex', flexDirection: 'column', gap: 14, outline: 'none' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
     >
       {meetings.length > 0 && (
         <section aria-label="meetings today">

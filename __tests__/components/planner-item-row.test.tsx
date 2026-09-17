@@ -109,6 +109,22 @@ describe('PlannerItemRow', () => {
     expect(selected.row.style.borderLeft).toContain('var(--accent)')
   })
 
+  it('the title is keyboard-selectable, including on resolved rows', async () => {
+    const user = userEvent.setup()
+    const { onSelect } = renderRow({
+      id: 'kb',
+      title: 'Keyboard row',
+      status: 'done',
+      section: 'done',
+      resolvedBy: 'user',
+      resolvedAt: '2026-09-16T07:00:00.000Z',
+    })
+    const title = screen.getByRole('button', { name: 'Keyboard row' })
+    title.focus()
+    await user.keyboard('{Enter}')
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
   it('renders an action error as an err chip with retry and dismiss', async () => {
     const user = userEvent.setup()
     const onRetry = vi.fn()

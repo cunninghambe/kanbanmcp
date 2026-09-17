@@ -5,7 +5,7 @@
  * built with local-time constructors so the test is zone-independent. (WI-5)
  */
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within, fireEvent } from '@testing-library/react'
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { SnoozeMenu, snoozeOptions } from '../../src/components/planner/SnoozeMenu'
@@ -67,6 +67,17 @@ describe('SnoozeMenu', () => {
     fireEvent.change(input, { target: { value: '2026-09-18T10:00' } })
     await user.click(screen.getByRole('button', { name: 'snooze' }))
     expect(onPick).toHaveBeenCalledWith(new Date('2026-09-18T10:00').toISOString())
+  })
+
+  it('moves focus into the menu on open and cycles it with the arrow keys', async () => {
+    const user = userEvent.setup()
+    render(<SnoozeMenu onPick={vi.fn()} onClose={vi.fn()} now={() => WED} />)
+    const items = screen.getAllByRole('menuitem')
+    await waitFor(() => expect(items[0]).toHaveFocus())
+    await user.keyboard('{ArrowDown}')
+    expect(items[1]).toHaveFocus()
+    await user.keyboard('{ArrowUp}{ArrowUp}')
+    expect(items[items.length - 1]).toHaveFocus()
   })
 
   it('custom without a value does not pick; Escape closes', async () => {

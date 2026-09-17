@@ -61,7 +61,15 @@ export function Workspace({ item, brief, orgId }: WorkspaceProps) {
       <Eyebrow size={10}>{'/// workspace'}</Eyebrow>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
         <Chip>{item.source}</Chip>
-        <h2 style={{ fontSize: 15, fontWeight: 600, color: 'var(--fg-0)', margin: 0 }}>
+        <h2
+          style={{
+            fontSize: 15,
+            fontWeight: 600,
+            color: 'var(--fg-0)',
+            margin: 0,
+            overflowWrap: 'anywhere',
+          }}
+        >
           {item.title}
         </h2>
       </div>
@@ -91,7 +99,7 @@ export function Workspace({ item, brief, orgId }: WorkspaceProps) {
           </p>
         </div>
       )}
-      <Composer item={item} orgId={orgId} />
+      <Composer key={item.id} item={item} orgId={orgId} />
     </section>
   )
 }

@@ -566,6 +566,35 @@ describe('/today page', () => {
     )
   })
 
+  it('an invalid ?date= falls back to today instead of crashing', async () => {
+    nav.search = 'date=2026-02-30'
+    // the fallback date is "today", so answer any planner date
+    const f = installFetch((c) =>
+      /\/api\/planner\/today\?/.test(c.url) ? { json: fixture() } : { json: {} }
+    )
+    await renderPage()
+    await screen.findByRole('region', { name: 'now' })
+    expect(f.calls[0].url).toMatch(/^\/api\/planner\/today\?date=\d{4}-\d{2}-\d{2}&tz=/)
+    expect(f.calls[0].url).not.toContain('2026-02-30')
+  })
+
+  it('a failed refresh keeps the loaded page and shows a notice instead of the error screen', async () => {
+    const user = userEvent.setup()
+    const state = { today: fixture(), fail: false }
+    installFetch((c) => {
+      if (c.method === 'GET' && TODAY_RE.test(c.url) && state.fail)
+        return { status: 500, json: { error: 'Internal server error' } }
+      return makeRouter(state)(c)
+    })
+    await renderPage()
+    await screen.findByRole('region', { name: 'now' })
+    state.fail = true
+    await user.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/couldn't refresh/)
+    expect(screen.getByRole('region', { name: 'now' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('refresh requests a forced collection', async () => {
     const user = userEvent.setup()
     const f = installFetch(makeRouter({ today: fixture() }))

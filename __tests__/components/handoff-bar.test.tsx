@@ -138,6 +138,31 @@ describe('HandoffBar — email two-step through the Composer', () => {
     expect(screen.queryByRole('button', { name: 'approve & send' })).toBeNull()
   })
 
+  it('approve & send ignores a double click while the send is in flight', async () => {
+    const user = userEvent.setup()
+    const send = deferred<FetchReply>()
+    const f = installFetch(
+      composerHandler((h) =>
+        (h.body as { kind: string }).kind === 'email_compose'
+          ? composeReply('Hello Jane,\n\nDone.')
+          : send.promise
+      )
+    )
+    render(<Composer item={emailItem()} orgId="org-1" />, { wrapper })
+    await screen.findByLabelText('Draft body')
+    await user.click(screen.getByRole('button', { name: 'send as email' }))
+    await screen.findByTestId('email-preview')
+    const approve = screen.getByRole('button', { name: 'approve & send' })
+    await user.click(approve)
+    await user.click(approve)
+    await sleep(50)
+    expect(
+      f.of('POST', HANDOFF_RE).filter((c) => (c.body as { kind: string }).kind === 'email_send')
+    ).toHaveLength(1)
+    send.resolve(sendReply())
+    await screen.findByText(/handed off · email/)
+  })
+
   it('editing the body after compose discards the preview and blocks send until re-compose', async () => {
     const user = userEvent.setup()
     const f = installFetch(composerHandler(() => composeReply('Hello Jane,\n\nDone.')))

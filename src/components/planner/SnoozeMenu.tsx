@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // Spec: docs/specs/mhud-today-planner.md §7.3 "SnoozeMenu" / §7.4.
 
@@ -49,6 +49,31 @@ export function SnoozeMenu({ onPick, onClose, now }: SnoozeMenuProps) {
   const [custom, setCustom] = useState(false)
   const [customValue, setCustomValue] = useState('')
   const options = snoozeOptions(now ? now() : new Date())
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // Focus moves into the menu on open (it may have been opened from the
+  // keyboard); Escape closes it wherever focus is.
+  useEffect(() => {
+    rootRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose()
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [onClose])
+
+  function moveFocus(delta: 1 | -1) {
+    const items = Array.from(
+      rootRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
+    )
+    if (items.length === 0) return
+    const idx = items.findIndex((el) => el === document.activeElement)
+    const next = idx === -1 ? 0 : (idx + delta + items.length) % items.length
+    items[next].focus()
+  }
 
   function handleCustomSubmit() {
     if (!customValue) return
@@ -59,12 +84,14 @@ export function SnoozeMenu({ onPick, onClose, now }: SnoozeMenuProps) {
 
   return (
     <div
+      ref={rootRef}
       role="menu"
       aria-label="Snooze until"
       onKeyDown={(e) => {
-        if (e.key === 'Escape') {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault()
           e.stopPropagation()
-          onClose()
+          moveFocus(e.key === 'ArrowDown' ? 1 : -1)
         }
       }}
       style={{

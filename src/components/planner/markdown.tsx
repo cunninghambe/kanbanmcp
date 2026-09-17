@@ -10,6 +10,8 @@ import { safeHttpUrl } from '@/lib/planner/types'
 // text unless safeHttpUrl accepts them.
 
 export const plannerMarkdownComponents = {
+  // Images would auto-load a URL chosen by the text's author: render the alt text only.
+  img: ({ alt }: { alt?: string }) => <span>{alt ?? ''}</span>,
   h1: ({ children }: { children?: ReactNode }) => (
     <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--fg-0)', margin: '0 0 8px 0' }}>
       {children}

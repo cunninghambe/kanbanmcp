@@ -334,6 +334,82 @@ describe('Composer', () => {
     expect(f.of('PATCH', PATCH_RE)).toHaveLength(1)
   })
 
+  it('a generate that lands after switching drafts updates the cache but never the editor', async () => {
+    const user = userEvent.setup()
+    const generate = deferred<FetchReply>()
+    installFetch((c) => {
+      if (c.method === 'GET' && DRAFTS_RE.test(c.url)) {
+        return {
+          json: {
+            drafts: [draftDTO(), draftDTO({ id: 'd2', title: 'Second', body: 'Second body' })],
+          },
+        }
+      }
+      if (c.method === 'POST' && GENERATE_RE.test(c.url)) return generate.promise
+      return { json: {} }
+    })
+    render(<Composer item={emailItem()} orgId="org-1" />, { wrapper })
+    await screen.findByLabelText('Draft body')
+    await user.type(screen.getByLabelText('Instructions'), 'shorter')
+    await user.click(screen.getByRole('button', { name: 'ask claude' }))
+    await user.selectOptions(screen.getByLabelText('Draft'), 'd2')
+    expect(screen.getByLabelText('Draft body')).toHaveValue('Second body')
+    generate.resolve({
+      json: {
+        draft: draftDTO({ body: 'Generated for d1' }),
+        previousBody: 'x',
+        model: 'm',
+        inputTokens: 1,
+        outputTokens: 1,
+      },
+    })
+    await sleep(50)
+    expect(screen.getByLabelText('Draft body')).toHaveValue('Second body')
+    expect(screen.queryByRole('button', { name: 'undo' })).toBeNull()
+    await user.selectOptions(screen.getByLabelText('Draft'), 'd1')
+    expect(screen.getByLabelText('Draft body')).toHaveValue('Generated for d1')
+  })
+
+  it('a failed autosave is retried by ask claude and blocks it when the server still refuses', async () => {
+    const user = userEvent.setup()
+    const f = installFetch(
+      defaultHandler({ patch: () => ({ status: 500, json: { error: 'nope' } }) })
+    )
+    render(<Composer item={emailItem()} orgId="org-1" />, { wrapper })
+    const body = await screen.findByLabelText('Draft body')
+    await user.type(body, 'K')
+    await waitFor(
+      () => expect(screen.getByTestId('save-status')).toHaveTextContent('save failed'),
+      { timeout: 3000 }
+    )
+    await user.type(screen.getByLabelText('Instructions'), 'fix')
+    await user.click(screen.getByRole('button', { name: 'ask claude' }))
+    await waitFor(() => expect(f.of('PATCH', PATCH_RE)).toHaveLength(2))
+    expect(f.of('PATCH', PATCH_RE)[1].body).toEqual({ body: 'Hello Jane,\n\nDone.K' })
+    await sleep(50)
+    expect(f.of('POST', GENERATE_RE)).toHaveLength(0)
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't save your edits/)
+  })
+
+  it('the markdown preview never renders images', async () => {
+    const user = userEvent.setup()
+    installFetch((c) =>
+      c.method === 'GET'
+        ? {
+            json: {
+              drafts: [draftDTO({ body: 'Look ![tracker](https://evil.example/pixel.png) here' })],
+            },
+          }
+        : { json: {} }
+    )
+    render(<Composer item={emailItem()} orgId="org-1" />, { wrapper })
+    await screen.findByLabelText('Draft body')
+    await user.click(screen.getByRole('button', { name: 'preview' }))
+    const preview = screen.getByTestId('composer-preview')
+    expect(preview.querySelector('img')).toBeNull()
+    expect(preview).toHaveTextContent('tracker')
+  })
+
   it('switching drafts loads the other draft into the editor', async () => {
     const user = userEvent.setup()
     installFetch((c) =>

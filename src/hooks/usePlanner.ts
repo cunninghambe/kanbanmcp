@@ -143,16 +143,16 @@ export function usePlanner(args: UsePlannerArgs): UsePlannerResult {
     if (!data) return { ok: false, error: 'Not loaded' }
     const idx = data.items.findIndex((i) => i.id === itemId)
     if (idx === -1) return { ok: false, error: 'Item not found' }
-    const previous = data
     const prevItem = data.items[idx]
     const fields = optimisticFields(action, extra, new Date().toISOString())
     const optimisticItem: RankedItemDTO = { ...prevItem, ...fields }
-    const next: TodayResponse = {
-      ...data,
-      items: data.items.map((it, i) => (i === idx ? optimisticItem : it)),
-    }
+    // Only this row is touched, so a concurrent action on another row is never clobbered.
+    const withItem = (row: RankedItemDTO) => (current: TodayResponse | undefined) =>
+      current
+        ? { ...current, items: current.items.map((it) => (it.id === itemId ? row : it)) }
+        : current
     // Optimistic: patch the cache before the request leaves.
-    mutate(next, false)
+    mutate(withItem(optimisticItem), false)
 
     const body: Record<string, unknown> = { action }
     if (action === 'snooze' && extra?.snoozedUntil) body.snoozedUntil = extra.snoozedUntil
@@ -165,18 +165,18 @@ export function usePlanner(args: UsePlannerArgs): UsePlannerResult {
       })
       const json = await readJson(res)
       if (!res.ok) {
-        mutate(previous, false)
+        mutate(withItem(prevItem), false)
         return { ok: false, error: (json.error as string | undefined) ?? String(res.status) }
       }
       // Commit the optimistic value as the cache's truth first (so the status
       // + section move is never lost even if the revalidate below is slow),
       // then kick off a background revalidate to reconcile anything the
       // write-through changed server-side (e.g. a card move).
-      mutate(next, false)
+      mutate(withItem(optimisticItem), false)
       mutate()
       return { ok: true, writeThrough: json.writeThrough as WriteThroughResult[] | undefined }
     } catch (err) {
-      mutate(previous, false)
+      mutate(withItem(prevItem), false)
       return { ok: false, error: err instanceof Error ? err.message : 'Network error' }
     }
   }
@@ -207,6 +207,8 @@ export function usePlanner(args: UsePlannerArgs): UsePlannerResult {
         mutate(json, false)
       }
       await mutate()
+    } catch {
+      // SWR's own error state reports the failure on the next revalidation.
     } finally {
       setRefreshing(false)
     }
@@ -225,6 +227,8 @@ export function usePlanner(args: UsePlannerArgs): UsePlannerResult {
         return { ok: false, error: (json.error as string | undefined) ?? String(res.status) }
       await mutate()
       return { ok: true }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Network error' }
     } finally {
       setPlanning(false)
     }

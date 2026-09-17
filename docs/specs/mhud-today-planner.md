@@ -1043,7 +1043,7 @@ export interface HandoffBarProps {
   draft: PlannerDraftDTO
   body: string                          // live textarea value
   orgId: string
-  flush: () => Promise<void>            // Composer's "cancel debounce + await pending PATCH"
+  flush: () => Promise<boolean>         // Composer's "cancel debounce + await in-flight/pending PATCH"; false when the save failed (the bar refuses to hand off)
   onDraftChange: (draft: PlannerDraftDTO) => void
 }
 // buttons: 'send as email' · 'create google doc' · 'comment on card' (only when payload.cardId) · 'create card' · 'post to slack'; all disabled while body.trim() === ''

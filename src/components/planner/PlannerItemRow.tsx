@@ -93,6 +93,7 @@ export function PlannerItemRow({
     // row selection state the tests assert on.
     // eslint-disable-next-line jsx-a11y/role-supports-aria-props
     <li
+      id={`planner-item-${item.id}`}
       role="listitem"
       aria-label={item.title}
       aria-selected={selected}
@@ -112,9 +113,17 @@ export function PlannerItemRow({
       </span>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div
+        <button
+          type="button"
           onClick={onSelect}
           style={{
+            display: 'block',
+            width: '100%',
+            background: 'none',
+            border: 'none',
+            padding: 0,
+            font: 'inherit',
+            textAlign: 'left',
             cursor: 'pointer',
             fontSize: 13,
             color: 'var(--fg-0)',
@@ -124,7 +133,7 @@ export function PlannerItemRow({
           }}
         >
           {item.title}
-        </div>
+        </button>
         <div
           style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4, alignItems: 'center' }}
         >

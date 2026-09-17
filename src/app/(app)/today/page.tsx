@@ -26,11 +26,21 @@ function buildTitle(date: string): string {
   return `${get('weekday')} ${get('day')} ${get('month')}`.toLowerCase()
 }
 
+/** `?date=YYYY-MM-DD` and a real calendar date; anything else falls back to today. */
+function isValidDateParam(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  if (!m) return false
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const probe = new Date(Date.UTC(y, mo - 1, d))
+  return probe.getUTCFullYear() === y && probe.getUTCMonth() === mo - 1 && probe.getUTCDate() === d
+}
+
 function TodayInner() {
   const searchParams = useSearchParams()
   const { org } = useSession()
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const date = searchParams.get('date') ?? localDate(new Date(), tz)
+  const dateParam = searchParams.get('date')
+  const date = dateParam && isValidDateParam(dateParam) ? dateParam : localDate(new Date(), tz)
   const { data, error, isLoading, act, addTodo, refresh, plan, busy } = usePlanner({ date, tz })
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('item'))
   const [planError, setPlanError] = useState<string | null>(null)
@@ -81,7 +91,7 @@ function TodayInner() {
     )
   }
 
-  if (error) {
+  if (error && !data) {
     return (
       <>
         <Topbar breadcrumb="today" title={title} right={right} />
@@ -136,6 +146,11 @@ function TodayInner() {
 
       <div className={styles.body}>
         <div className={styles.left}>
+          {error && (
+            <div role="status" className="km-mono" style={{ fontSize: 11, color: 'var(--warn)' }}>
+              couldn&apos;t refresh · {error.message}
+            </div>
+          )}
           {data.truncated && (
             <div
               className="km-mono"

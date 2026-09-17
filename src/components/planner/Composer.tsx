@@ -79,6 +79,7 @@ export function Composer({ item, orgId }: ComposerProps) {
 
   const dirtyRef = useRef<PendingFields>({})
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null)
   const mountedRef = useRef(true)
   const activeIdRef = useRef<string | null>(null)
   const activeDraftId = activeDraft?.id ?? null
@@ -150,33 +151,48 @@ export function Composer({ item, orgId }: ComposerProps) {
     }, false)
   }
 
-  async function doSave(): Promise<void> {
+  /** Sends the pending fields. Resolves true when the server now has them; a
+   *  failed save puts the fields back so the next flush retries. */
+  async function doSave(): Promise<boolean> {
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
     const pending = dirtyRef.current
-    if (!activeDraft || Object.keys(pending).length === 0) return
+    if (!activeDraft || Object.keys(pending).length === 0) return true
     dirtyRef.current = {}
     setSaveStatus('saving')
-    try {
-      const res = await fetch(`/api/planner/drafts/${activeDraft.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pending),
-      })
-      const json = await readJson(res)
-      if (!mountedRef.current) return
-      if (!res.ok) {
-        setSaveStatus('error')
-        return
+    const draftId = activeDraft.id
+    let thisRun: Promise<boolean> | null = null
+    const run = (async (): Promise<boolean> => {
+      try {
+        const res = await fetch(`/api/planner/drafts/${draftId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pending),
+        })
+        const json = await readJson(res)
+        if (!res.ok) {
+          dirtyRef.current = { ...pending, ...dirtyRef.current }
+          if (mountedRef.current) setSaveStatus('error')
+          return false
+        }
+        if (!mountedRef.current) return true
+        if (json.draft) upsertDraftLocal(json.draft as PlannerDraftDTO)
+        setSaveStatus('saved')
+        setSavedAt(new Date())
+        return true
+      } catch {
+        dirtyRef.current = { ...pending, ...dirtyRef.current }
+        if (mountedRef.current) setSaveStatus('error')
+        return false
+      } finally {
+        if (saveInFlightRef.current === thisRun) saveInFlightRef.current = null
       }
-      if (json.draft) upsertDraftLocal(json.draft as PlannerDraftDTO)
-      setSaveStatus('saved')
-      setSavedAt(new Date())
-    } catch {
-      if (mountedRef.current) setSaveStatus('error')
-    }
+    })()
+    thisRun = run
+    saveInFlightRef.current = run
+    return run
   }
 
   function scheduleAutosave(fields: PendingFields) {
@@ -187,17 +203,24 @@ export function Composer({ item, orgId }: ComposerProps) {
     }, 800)
   }
 
-  async function flush(): Promise<void> {
+  /** Cancels the debounce and makes sure the server has the current text:
+   *  waits for an in-flight save, then sends whatever is still pending. */
+  async function flush(): Promise<boolean> {
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
-    if (Object.keys(dirtyRef.current).length === 0) return
-    await doSave()
+    if (saveInFlightRef.current) {
+      const ok = await saveInFlightRef.current
+      if (!ok) return false
+    }
+    if (Object.keys(dirtyRef.current).length === 0) return true
+    return doSave()
   }
 
   function handleBodyChange(v: string) {
     setBody(v)
+    setPreviousBody(null)
     scheduleAutosave({ body: v })
   }
 
@@ -214,7 +237,10 @@ export function Composer({ item, orgId }: ComposerProps) {
       body: JSON.stringify({ itemId: item.id, title: t }),
     })
     const json = await readJson(res)
-    if (!res.ok || !json.draft) return
+    if (!res.ok || !json.draft) {
+      setGenerateError((json.error as string | undefined) ?? 'Could not create a draft')
+      return
+    }
     upsertDraftLocal(json.draft as PlannerDraftDTO)
     setSelectedId((json.draft as PlannerDraftDTO).id)
   }
@@ -223,10 +249,14 @@ export function Composer({ item, orgId }: ComposerProps) {
     if (!activeDraft || generating) return
     setGenerateError(null)
     const currentBody = body
-    await flush()
+    const targetId = activeDraft.id
+    if (!(await flush())) {
+      setGenerateError("couldn't save your edits · try again")
+      return
+    }
     setGenerating(true)
     try {
-      const res = await fetch(`/api/planner/drafts/${activeDraft.id}/generate`, {
+      const res = await fetch(`/api/planner/drafts/${targetId}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ instructions, mode, currentBody }),
@@ -237,9 +267,11 @@ export function Composer({ item, orgId }: ComposerProps) {
         return
       }
       const draft = json.draft as PlannerDraftDTO
+      upsertDraftLocal(draft)
+      // The user may have switched drafts meanwhile: never write into the wrong editor.
+      if (activeIdRef.current !== targetId) return
       setPreviousBody((json.previousBody as string | undefined) ?? currentBody)
       setBody(draft.body)
-      upsertDraftLocal(draft)
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : 'Network error')
     } finally {
@@ -310,7 +342,8 @@ export function Composer({ item, orgId }: ComposerProps) {
             <span
               data-testid="save-status"
               className="km-mono"
-              style={{ fontSize: 10, color: 'var(--fg-3)' }}
+              aria-live="polite"
+              style={{ fontSize: 10, color: saveStatus === 'error' ? 'var(--err)' : 'var(--fg-3)' }}
             >
               {saveStatusText}
             </span>
