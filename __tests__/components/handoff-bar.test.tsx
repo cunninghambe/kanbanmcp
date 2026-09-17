@@ -47,12 +47,12 @@ const PENDING: PendingEmail = {
   at: T0,
 }
 
-function composeReply(body: string): FetchReply {
+function composeReply(body: string, preview: string = body): FetchReply {
   return {
     json: {
       draft: draftDTO({ body, pendingEmail: PENDING }),
       handoff: null,
-      result: { pendingEmail: PENDING },
+      result: { pendingEmail: PENDING, preview },
     },
   }
 }
@@ -136,6 +136,19 @@ describe('HandoffBar — email two-step through the Composer', () => {
     expect(f.of('POST', HANDOFF_RE)[1].body).toEqual({ kind: 'email_send' })
     expect(await screen.findByText(/handed off · email · \d{2}:\d{2}/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'approve & send' })).toBeNull()
+  })
+
+  it("the preview shows the server's copy of the text, never the local textarea", async () => {
+    const user = userEvent.setup()
+    installFetch(
+      composerHandler(() => composeReply('Hello Jane,\n\nDone.', 'Server copy of the body'))
+    )
+    render(<Composer item={emailItem()} orgId="org-1" />, { wrapper })
+    await screen.findByLabelText('Draft body')
+    await user.click(screen.getByRole('button', { name: 'send as email' }))
+    const preview = await screen.findByTestId('email-preview')
+    expect(preview).toHaveTextContent('Server copy of the body')
+    expect(preview).not.toHaveTextContent('Done.')
   })
 
   it('approve & send ignores a double click while the send is in flight', async () => {

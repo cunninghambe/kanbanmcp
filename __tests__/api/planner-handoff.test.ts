@@ -259,6 +259,7 @@ describe('POST /api/planner/drafts/[id]/handoff', () => {
       expect(upd.data).not.toHaveProperty('status')
       expect(JSON.parse(upd.data.pendingEmail)).toEqual(PENDING)
       expect(body.result.pendingEmail).toEqual(PENDING)
+      expect(body.result.preview).toBe(BODY)
       expect(body.draft.pendingEmail).toEqual(PENDING)
       expect(body.draft.status).toBe('draft')
     })

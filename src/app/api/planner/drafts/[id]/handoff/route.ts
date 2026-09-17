@@ -163,7 +163,12 @@ async function handleEmailCompose(
     data: { pendingEmail: JSON.stringify(pendingEmail) },
   })
   const dto = toPlannerDraftDTO(updated)
-  return NextResponse.json({ draft: dto, handoff: dto.handoff, result: { pendingEmail } })
+  // `preview` is the text as the server composed it: the UI shows that, not its local copy.
+  return NextResponse.json({
+    draft: dto,
+    handoff: dto.handoff,
+    result: { pendingEmail, preview: composed.preview },
+  })
 }
 
 async function handleEmailSend(session: SessionData, draft: PlannerDraft): Promise<NextResponse> {

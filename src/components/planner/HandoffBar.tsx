@@ -58,7 +58,12 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
 
   // email two-step
   const [emailPhase, setEmailPhase] = useState<'idle' | 'previewing'>('idle')
-  const [previewInfo, setPreviewInfo] = useState<{ to: string; cc: string } | null>(null)
+  const [previewInfo, setPreviewInfo] = useState<{
+    to: string
+    cc: string
+    /** the composed text as the server holds it; null when the API did not echo it */
+    preview: string | null
+  } | null>(null)
   const [composedBody, setComposedBody] = useState<string | null>(null)
   const [emailMessage, setEmailMessage] = useState<string | null>(null)
   const [emailDisabled, setEmailDisabled] = useState(false)
@@ -175,7 +180,12 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
     onDraftChange(draftResp)
     setHandoffRecord(draftResp.handoff)
     setComposedBody(bodyAtCompose)
-    setPreviewInfo({ to: pe.to, cc: pe.cc })
+    const serverPreview = (r.json.result as { preview?: unknown }).preview
+    setPreviewInfo({
+      to: pe.to,
+      cc: pe.cc,
+      preview: typeof serverPreview === 'string' ? serverPreview : null,
+    })
     setEmailPhase('previewing')
     setShowEmailForm(false)
   }
@@ -464,7 +474,9 @@ export function HandoffBar({ item, draft, body, orgId, flush, onDraftChange }: H
           <div className="km-mono" style={{ fontSize: 11, color: 'var(--fg-2)', marginBottom: 6 }}>
             cc: {previewInfo.cc}
           </div>
-          <ReactMarkdown components={plannerMarkdownComponents}>{body}</ReactMarkdown>
+          <ReactMarkdown components={plannerMarkdownComponents}>
+            {previewInfo.preview ?? body}
+          </ReactMarkdown>
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
             <button
               type="button"
